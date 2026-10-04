@@ -1,0 +1,63 @@
+{
+  "schema": 1,
+  "routes": [
+    "tatachatsdk.sdk.ci",
+    "tatachatsdk.sdk.release"
+  ],
+  "required_files": [
+    "pubspec.yaml",
+    "pubspec.lock",
+    "native/Cargo.toml",
+    "native/Cargo.lock",
+    "scripts/dependencies.mjs",
+    "scripts/generate-protocol.sh",
+    "scripts/release.mjs",
+    "scripts/release.test.mjs"
+  ],
+  "dart_applications": [
+    "."
+  ],
+  "cargo_projects": [
+    "native"
+  ],
+  "audited_scopes": [
+    "tatachatsdk"
+  ],
+  "tools": {
+    "protoc": {
+      "version": "35.0",
+      "source": "https://github.com/protocolbuffers/protobuf/releases/tag/v35.0",
+      "archives": {
+        "macos": {
+          "url": "https://github.com/protocolbuffers/protobuf/releases/download/v35.0/protoc-35.0-osx-aarch_64.zip",
+          "sha256": "45444963204757fd3e2fbe304bc1fdadfb488d8556ff099c4cc06575eab88976",
+          "executable": "bin/protoc"
+        },
+        "linux-arm": {
+          "url": "https://github.com/protocolbuffers/protobuf/releases/download/v35.0/protoc-35.0-linux-aarch_64.zip",
+          "sha256": "36b518ac14d90351cc6598228ed2bbe5afe4e357b1af470b07e0ec1609875de2",
+          "executable": "bin/protoc"
+        },
+        "linux-amd": {
+          "url": "https://github.com/protocolbuffers/protobuf/releases/download/v35.0/protoc-35.0-linux-x86_64.zip",
+          "sha256": "a45cda0989c17dd950db55f6fbe1e5814c50fda08e87aa422980ac1f89dddbbc",
+          "executable": "bin/protoc"
+        },
+        "windows": {
+          "url": "https://github.com/protocolbuffers/protobuf/releases/download/v35.0/protoc-35.0-win64.zip",
+          "sha256": "d1cede9e308cc3eb072392af1c02ccae4bdd3d2f374ec2970dbd8cdfdaa91363",
+          "executable": "bin/protoc.exe"
+        }
+      }
+    },
+    "protoc_plugin": {
+      "version": "25.0.0",
+      "source": "https://pub.dev/packages/protoc_plugin/versions/25.0.0",
+      "archive": {
+        "url": "https://pub.dev/api/archives/protoc_plugin-25.0.0.tar.gz",
+        "sha256": "d1ea363e9118f954d9d482c2f7281c5ff5149b059e68672d1faa564d49091f05",
+        "executable": "protoc-gen-dart"
+      }
+    }
+  }
+}

@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package chat.protocol;
+
+// 一块端到端加密附件的密文字节摘要。
+message AttachmentChunk {
+  uint32 chunk_index = 1;
+  uint64 cipher_byte_size = 2;
+  string cipher_sha256 = 3;
+}
+
+// 附件控制面元数据。服务端永远拿不到内容密钥和明文字节。
+message AttachmentMetadata {
+  string attachment_id = 1;
+  string sender_user_id = 2;
+  repeated string recipient_user_ids = 3;
+  repeated AttachmentChunk chunks = 4;
+  uint64 cipher_byte_size = 5;
+  string cipher_sha256 = 6;
+  uint64 created_at_millis = 7;
+}

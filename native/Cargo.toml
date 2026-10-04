@@ -1,0 +1,24 @@
+[package]
+name = "tatachat_sdk_native"
+version = "1.0.0"
+edition = "2021"
+license = "MIT"
+description = "TataChatSDK OpenMLS native engine"
+
+[lib]
+name = "tatachat_sdk"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.151"
+hex = "=0.4.3"
+openmls = "0.8.1"
+openmls_rust_crypto = "0.5.1"
+openmls_basic_credential = "0.5.0"
+openmls_traits = "0.5.0"
+openmls_memory_storage = { version = "0.5.0", features = ["persistence"] }
+aes-gcm = "=0.10.3"
+base64 = "=0.22.1"
+
+[workspace]

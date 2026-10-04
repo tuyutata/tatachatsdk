@@ -1,0 +1,131 @@
+syntax = "proto3";
+
+package chat.protocol;
+
+import "attachment.proto";
+import "message.proto";
+
+// WSS 唯一顶层二进制帧。业务相关性只使用消息、附件或密钥包自身编号。
+message ChatFrame {
+  oneof body {
+    Ready ready = 1;
+    Failure failure = 2;
+    Success success = 3;
+    Ping ping = 4;
+    Pong pong = 5;
+    PublishKeyPackage publish_key_package = 10;
+    ResolveKeyPackages resolve_key_packages = 11;
+    KeyPackageBatch key_package_batch = 12;
+    SendMessage send_message = 20;
+    SyncMessages sync_messages = 21;
+    MessageBatch message_batch = 22;
+    AcknowledgeMessages acknowledge_messages = 23;
+    MessageAvailable message_available = 24;
+    BeginAttachment begin_attachment = 30;
+    CompleteAttachment complete_attachment = 31;
+    AttachmentReady attachment_ready = 32;
+    AcknowledgeAttachment acknowledge_attachment = 33;
+    AbortAttachment abort_attachment = 34;
+    RegisterPush register_push = 40;
+    RemovePush remove_push = 41;
+  }
+}
+
+message Ready {
+  uint64 server_time_millis = 1;
+}
+
+message Failure {
+  string code = 1;
+  string message = 2;
+}
+
+message Success {
+  string kind = 1;
+  repeated string ids = 2;
+}
+
+message Ping {
+  uint64 sent_at_millis = 1;
+}
+
+message Pong {
+  uint64 sent_at_millis = 1;
+  uint64 server_time_millis = 2;
+}
+
+message KeyPackage {
+  string user_id = 1;
+  string device_id = 2;
+  string key_package_ref = 3;
+  bytes key_package = 4;
+  string cipher_suite = 5;
+  uint64 not_before = 6;
+  uint64 not_after = 7;
+  bool last_resort = 8;
+}
+
+message PublishKeyPackage {
+  KeyPackage key_package = 1;
+}
+
+message ResolveKeyPackages {
+  string user_id = 1;
+  string device_id = 2;
+  uint32 limit = 3;
+}
+
+message KeyPackageBatch {
+  repeated KeyPackage key_packages = 1;
+}
+
+message SendMessage {
+  EncryptedMessage message = 1;
+}
+
+message SyncMessages {
+  uint32 limit = 1;
+}
+
+message MessageBatch {
+  repeated EncryptedMessage messages = 1;
+}
+
+message AcknowledgeMessages {
+  repeated string message_ids = 1;
+}
+
+message MessageAvailable {
+  string message_id = 1;
+  string conversation_id = 2;
+  uint64 server_time_millis = 3;
+}
+
+message BeginAttachment {
+  AttachmentMetadata attachment = 1;
+}
+
+message CompleteAttachment {
+  string attachment_id = 1;
+}
+
+message AttachmentReady {
+  string attachment_id = 1;
+}
+
+message AcknowledgeAttachment {
+  string attachment_id = 1;
+}
+
+message AbortAttachment {
+  string attachment_id = 1;
+}
+
+message RegisterPush {
+  string platform = 1;
+  string token = 2;
+}
+
+message RemovePush {
+  string platform = 1;
+}

@@ -1,0 +1,17 @@
+include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  exclude:
+    # Isar 官方生成器会调用其自身标记为 experimental 的索引扩展；生成文件不手改。
+    - lib/src/storage/chat_isar.g.dart
+  language:
+    strict-casts: true
+    strict-inference: true
+    strict-raw-types: true
+
+linter:
+  rules:
+    - avoid_print
+    - directives_ordering
+    - unawaited_futures
+    - use_super_parameters

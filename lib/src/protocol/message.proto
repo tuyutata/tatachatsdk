@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+package chat.protocol;
+
+// 一个接收设备的中性路由身份。
+message Recipient {
+  string user_id = 1;
+  string device_id = 2;
+}
+
+// OpenMLS 为一个接收设备产生的独立密文。
+message EncryptedDelivery {
+  Recipient recipient = 1;
+  bytes openmls_ciphertext = 2;
+}
+
+// 一条逻辑消息。message_id 是消息全链路唯一编号。
+message EncryptedMessage {
+  string message_id = 1;
+  string conversation_id = 2;
+  string sender_user_id = 3;
+  string sender_device_id = 4;
+  repeated EncryptedDelivery deliveries = 5;
+  uint64 created_at_millis = 6;
+}
+
+// SDK 内部使用的设备路由快照。
+message ChatRoute {
+  string peer_user_id = 1;
+  string device_id = 2;
+  uint64 created_at_millis = 3;
+  uint64 expires_at_millis = 4;
+}

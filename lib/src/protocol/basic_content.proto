@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package chat.protocol;
+
+// 第一类聊天内容的唯一 wire 真源。协议依靠 protobuf 字段号演进，不增加
+// 自定义版本字段；未知字段和未知内容类型由 TataChatSDK 失败关闭。
+message BasicPayload {
+  oneof content {
+    TextContent text = 1;
+    EmojiContent emoji = 2;
+    StickerContent sticker = 3;
+  }
+}
+
+message TextContent {
+  string value = 1;
+}
+
+message EmojiContent {
+  string value = 1;
+}
+
+message StickerContent {
+  string pack_id = 1;
+  string sticker_id = 2;
+}
