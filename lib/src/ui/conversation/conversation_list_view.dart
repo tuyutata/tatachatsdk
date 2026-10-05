@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../style.dart';
@@ -484,11 +486,43 @@ class _ChatEntryMenu<T> extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.sizeOf(context).width;
-    final rawLeft = anchorCenterX - _width + 24;
-    final left = rawLeft.clamp(_edgeGap, screenWidth - _width - _edgeGap);
+    // 按实际字形、文字倍率和图标测量，保留原基准最小宽度及屏幕边界。
+    final labelStyle = Theme.of(context).textTheme.bodyMedium!
+        .copyWith(color: Colors.white, fontSize: style.scale(context, 15));
+    final maximumWidth = math.max(0.0, screenWidth - _edgeGap * 2);
+    final contentInset =
+        38 + style.scale(context, 20) + style.scale(context, 12);
+    var labelWidth = 0.0;
+    var labelHeight = 0.0;
+    for (final action in actions) {
+      final painter = TextPainter(
+        text: TextSpan(text: action.label, style: labelStyle),
+        textScaler: MediaQuery.textScalerOf(context),
+        textDirection: Directionality.of(context),
+        locale: Localizations.localeOf(context),
+      );
+      try {
+        painter.layout(maxWidth: math.max(0.0, maximumWidth - contentInset));
+        labelWidth = math.max(labelWidth, painter.width);
+        labelHeight = math.max(labelHeight, painter.height);
+      } finally {
+        painter.dispose();
+      }
+    }
+    final width = math.min(
+      maximumWidth,
+      math.max(_width, (contentInset + labelWidth).ceilToDouble()),
+    );
+    // 正常行高仍为40基准像素；大字只补足文字空间，不裁切菜单文案。
+    final rowHeight = math.max(
+      style.scale(context, 40),
+      labelHeight.ceilToDouble() + style.scale(context, 8),
+    );
+    final rawLeft = anchorCenterX - width + 24;
+    final left = rawLeft.clamp(_edgeGap, screenWidth - width - _edgeGap);
     final caretCenter = (anchorCenterX - left).clamp(
       _panelRadius + _caretWidth / 2,
-      _width - _panelRadius - _caretWidth / 2,
+      width - _panelRadius - _caretWidth / 2,
     );
     return Stack(
       children: [
@@ -510,7 +544,7 @@ class _ChatEntryMenu<T> extends StatelessWidget {
                 borderRadius: BorderRadius.circular(style.scale(context, 12)),
                 clipBehavior: Clip.antiAlias,
                 child: SizedBox(
-                  width: _width,
+                  width: width,
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -520,7 +554,7 @@ class _ChatEntryMenu<T> extends StatelessWidget {
                           onTap: () =>
                               Navigator.of(context).pop<T>(action.value),
                           child: SizedBox(
-                            height: style.scale(context, 40),
+                            height: rowHeight,
                             child: Padding(
                               padding: const EdgeInsets.fromLTRB(16, 0, 22, 0),
                               child: Row(
@@ -531,11 +565,10 @@ class _ChatEntryMenu<T> extends StatelessWidget {
                                     child: Center(child: action.icon),
                                   ),
                                   SizedBox(width: style.scale(context, 12)),
-                                  Text(
-                                    action.label,
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: style.scale(context, 15),
+                                  Flexible(
+                                    child: Text(
+                                      action.label,
+                                      style: labelStyle,
                                     ),
                                   ),
                                 ],

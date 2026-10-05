@@ -5,6 +5,68 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tatachat_sdk/tatachat_sdk.dart';
 
 void main() {
+  // 基准、宽屏视觉倍率和系统大字都须完整显示文案并保留真实菜单动作。
+  for (final scenario in [
+    (name: '基准', width: 411.0, scale: 1.0, textScale: 1.0),
+    (name: '宽屏', width: 480.0, scale: 1.1, textScale: 1.0),
+    (name: '大字', width: 300.0, scale: 1.0, textScale: 2.0),
+  ]) {
+    testWidgets('聊天菜单不溢出并保留动作：${scenario.name}', (tester) async {
+      tester.view.physicalSize = Size(scenario.width, 914);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      const labels = ['扫一扫', '收付款', '发私信', '发群聊', '加好友'];
+      int? selected;
+      await tester.pumpWidget(
+        MaterialApp(
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context)
+                .copyWith(textScaler: TextScaler.linear(scenario.textScale)),
+            child: child!,
+          ),
+          home: Scaffold(
+            body: ChatSectionHeader<int>(
+              style: ChatViewStyle(
+                scaler: (_, value) => value * scenario.scale,
+              ),
+              onAction: (value) => selected = value,
+              actions: [
+                for (var i = 0; i < labels.length; i++)
+                  ChatHeaderAction(
+                    value: i,
+                    label: labels[i],
+                    icon: const Icon(Icons.chat),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.byKey(const ValueKey('chat-add-button')));
+      await tester.pumpAndSettle();
+      for (final label in labels) {
+        final text = find.text(label);
+        final row = find.ancestor(of: text, matching: find.byType(InkWell));
+        expect(row, findsOneWidget);
+        final textRect = tester.getRect(text), rowRect = tester.getRect(row);
+        expect(textRect.right, lessThanOrEqualTo(rowRect.right - 22 + 0.01));
+        expect(textRect.top, greaterThanOrEqualTo(rowRect.top));
+        expect(textRect.bottom, lessThanOrEqualTo(rowRect.bottom));
+        expect(rowRect.left, greaterThanOrEqualTo(8));
+        expect(rowRect.right, lessThanOrEqualTo(scenario.width - 8));
+        expect(rowRect.height, greaterThanOrEqualTo(40 * scenario.scale));
+        if (scenario.name == '基准') expect(rowRect.height, closeTo(40, 0.01));
+      }
+      expect(tester.takeException(), isNull);
+      await tester.tap(find.text(labels.last));
+      await tester.pumpAndSettle();
+      expect(selected, 4);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  }
+
   testWidgets(
     'conversation controller keeps one optimistic message until send completes',
     (tester) async {

@@ -63,6 +63,8 @@ const PLATFORM_ARTIFACTS = [
       'Info.plist',
       'ios-arm64/TataChatSDK.framework/TataChatSDK',
       'ios-arm64/TataChatSDK.framework/Info.plist',
+      'ios-arm64-simulator/TataChatSDK.framework/TataChatSDK',
+      'ios-arm64-simulator/TataChatSDK.framework/Info.plist',
     ],
   },
   {

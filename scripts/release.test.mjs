@@ -127,6 +127,12 @@ async function fixture() {
   await writeFile(join(iosFramework, 'Info.plist'), 'framework\n');
   await writeFile(join(iosFramework, 'TataChatSDK'), 'ios-dynamic-binary');
   await chmod(join(iosFramework, 'TataChatSDK'), 0o755);
+  // 同一夹具必须包含Simulator切片。
+  const simulator = join(native, 'ios', 'TataChatSDK.xcframework', 'ios-arm64-simulator', 'TataChatSDK.framework');
+  await mkdir(simulator, { recursive: true });
+  await writeFile(join(simulator, 'Info.plist'), 'simulator-framework\n');
+  await writeFile(join(simulator, 'TataChatSDK'), 'simulator-dynamic-binary');
+  await chmod(join(simulator, 'TataChatSDK'), 0o755);
   const build = () => buildRelease({
     source,
     native,
@@ -251,6 +257,21 @@ test('rejects a missing native artifact', async () => {
     await rm(item.root, { recursive: true, force: true });
   }
 });
+
+// 任一切片必需文件缺失都必须拒绝打包。
+for (const variant of ['ios-arm64', 'ios-arm64-simulator']) {
+  for (const file of ['TataChatSDK', 'Info.plist']) {
+    test('rejects missing iOS slice file: ' + variant + '/' + file, async () => {
+      const item = await fixture();
+      try {
+        await rm(join(item.native, 'ios', 'TataChatSDK.xcframework', variant, 'TataChatSDK.framework', file));
+        await assert.rejects(item.build(), /原生资产/);
+      } finally {
+        await rm(item.root, { recursive: true, force: true });
+      }
+    });
+  }
+}
 
 test('rejects source symlinks', async () => {
   const item = await fixture();

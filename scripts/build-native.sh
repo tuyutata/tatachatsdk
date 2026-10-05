@@ -142,22 +142,21 @@ build_android() {
   assert_symbols "$destination/libtatachat_sdk.so" "$toolchain/bin/llvm-nm"
 }
 
-build_ios() {
-  ensure_target aarch64-apple-ios
-  export IPHONEOS_DEPLOYMENT_TARGET=16.0
-  # Write the final framework install name during the Rust link. Rust 1.97's
-  # Mach-O strip path can leave LC_SYMTAB.stroff only 4-byte aligned, which
-  # current Xcode rejects; keep Rust output unstripped and let Xcode process the
-  # final signed app instead.
-  local ios_rustflags="${CARGO_TARGET_AARCH64_APPLE_IOS_RUSTFLAGS:-}"
-  ios_rustflags="${ios_rustflags:+$ios_rustflags }-C strip=none -C link-arg=-Wl,-install_name,@rpath/TataChatSDK.framework/TataChatSDK"
-  CARGO_TARGET_AARCH64_APPLE_IOS_RUSTFLAGS="$ios_rustflags" \
-    cargo build --manifest-path "$MANIFEST" --release --target aarch64-apple-ios --locked
-
-  local library="$TARGET_DIR/aarch64-apple-ios/release/libtatachat_sdk.dylib"
-  local framework_root="$TARGET_DIR/ios-framework"
+build_ios_slice() {
+  local target="$1" sdk="$2" flag_name="$3"
+  local sdk_path host_sdk target_flags="${!flag_name:-}"
+  sdk_path="$(xcrun --sdk "$sdk" --show-sdk-path)"
+  host_sdk="$(xcrun --sdk macosx --show-sdk-path)"
+  [[ -d "$sdk_path" && -d "$host_sdk" && "$sdk_path" != *[[:space:]]* ]] || {
+    printf 'TataChatSDK Apple SDK path is invalid\n' >&2; exit 1;
+  }
+  # 宿主宏只链接macOS SDK；目标专属参数选择真机或Simulator SDK，保留未裁剪Mach-O。
+  target_flags="${target_flags:+$target_flags }-C strip=none -C link-arg=-isysroot -C link-arg=$sdk_path -C link-arg=-Wl,-install_name,@rpath/TataChatSDK.framework/TataChatSDK"
+  env SDKROOT="$host_sdk" "$flag_name=$target_flags" \
+    cargo build --manifest-path "$MANIFEST" --release --target "$target" --locked
+  local library="$TARGET_DIR/$target/release/libtatachat_sdk.dylib"
+  local framework_root="$TARGET_DIR/$target-framework"
   local framework="$framework_root/TataChatSDK.framework"
-  local xcframework="$TATACHATSDK_NATIVE_IOS_DIR/TataChatSDK.xcframework"
   local nm_bin
   nm_bin="$(xcrun --find llvm-nm)"
   assert_symbols "$library" "$nm_bin"
@@ -202,27 +201,48 @@ MODULEMAP
 PLIST
   assert_symbols "$framework/TataChatSDK" "$nm_bin"
 
+}
+
+build_ios() {
+  # 同一个iOS产物必须同时具备真机和Apple Silicon Simulator切片；缺目标先失败。
+  ensure_target aarch64-apple-ios
+  ensure_target aarch64-apple-ios-sim
+  export IPHONEOS_DEPLOYMENT_TARGET=16.0
+  build_ios_slice aarch64-apple-ios iphoneos CARGO_TARGET_AARCH64_APPLE_IOS_RUSTFLAGS
+  build_ios_slice aarch64-apple-ios-sim iphonesimulator CARGO_TARGET_AARCH64_APPLE_IOS_SIM_RUSTFLAGS
+  local xcframework="$TATACHATSDK_NATIVE_IOS_DIR/TataChatSDK.xcframework"
   mkdir -p "$TATACHATSDK_NATIVE_IOS_DIR"
   if [[ -e "$xcframework" ]]; then
     find "$xcframework" -depth -delete
   fi
-  xcodebuild -create-xcframework -framework "$framework" -output "$xcframework"
-
-  local packaged
-  packaged="$(find "$xcframework" -type f -path '*/TataChatSDK.framework/TataChatSDK' -print -quit)"
-  [[ -n "$packaged" ]] || {
-    printf 'TataChatSDK XCFramework missing dynamic binary\n' >&2
-    exit 1
-  }
-  [[ "$(lipo -archs "$packaged")" == arm64 ]] || {
-    printf 'TataChatSDK iOS framework must contain only arm64\n' >&2
-    exit 1
-  }
-  assert_symbols "$packaged" "$nm_bin"
-  otool -D "$packaged" | tail -n +2 | grep -qx '@rpath/TataChatSDK.framework/TataChatSDK' || {
-    printf 'TataChatSDK iOS framework install name is invalid\n' >&2
-    exit 1
-  }
+  xcodebuild -create-xcframework \
+    -framework "$TARGET_DIR/aarch64-apple-ios-framework/TataChatSDK.framework" \
+    -framework "$TARGET_DIR/aarch64-apple-ios-sim-framework/TataChatSDK.framework" \
+    -output "$xcframework"
+  local packaged variant nm_bin
+  nm_bin="$(xcrun --find llvm-nm)"
+  for variant in ios-arm64 ios-arm64-simulator; do
+    packaged="$xcframework/$variant/TataChatSDK.framework/TataChatSDK"
+    [[ -f "$packaged" && "$(lipo -archs "$packaged")" == arm64 ]] || {
+      printf 'TataChatSDK iOS slice missing or architecture invalid: %s\n' "$variant" >&2; exit 1;
+    }
+    assert_symbols "$packaged" "$nm_bin"
+    otool -D "$packaged" | tail -n +2 | grep -qx '@rpath/TataChatSDK.framework/TataChatSDK' || {
+      printf 'TataChatSDK iOS framework install name is invalid\n' >&2; exit 1;
+    }
+  done
+  # 回读Xcode实际平台元数据，不能用两个真机库冒充Simulator切片。
+  python3 - "$xcframework/Info.plist" <<'CHECK_IOS_SLICES'
+import plistlib, sys
+with open(sys.argv[1], 'rb') as file:
+    libraries = plistlib.load(file).get('AvailableLibraries', [])
+actual = {(item.get('LibraryIdentifier'), item.get('SupportedPlatform'),
+           item.get('SupportedPlatformVariant', ''), tuple(item.get('SupportedArchitectures', [])))
+          for item in libraries}
+expected = {('ios-arm64', 'ios', '', ('arm64',)), ('ios-arm64-simulator', 'ios', 'simulator', ('arm64',))}
+if len(libraries) != 2 or actual != expected:
+    raise SystemExit('TataChatSDK XCFramework必须包含准确真机与Simulator ARM64切片')
+CHECK_IOS_SLICES
 }
 
 build_macos() {
