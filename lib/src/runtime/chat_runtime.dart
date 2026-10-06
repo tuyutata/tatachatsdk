@@ -14,6 +14,7 @@ import '../core/chat_scope.dart';
 import '../group/model.dart';
 import '../mls/mls_attachment.dart';
 import '../mls/mls_boundary.dart';
+import '../mls/mls_contact_sync.dart';
 import '../mls/mls_group_boundary.dart';
 import '../mls/mls_native.dart';
 import '../mls/mls_state_store.dart';
@@ -4939,6 +4940,79 @@ class ChatRuntimeCore {
       },
     );
   }
+
+  /// 通讯录复用同一已存在MLS身份，不启动聊天网络或请求会员权益。
+  /// 仅协议与业务落库持当前绑定短屏障，网络交换不持文件锁；晚回结果不得跨绑定。
+  Future<List<List<int>>> synchronizeContacts({
+    required ContactMlsExchange exchange,
+    required Future<List<List<int>>> Function() snapshots,
+    required ContactMlsApply apply,
+  }) => _runRuntimeOperation(() async {
+    final account = await _readAccountInternal();
+    final generation = _accountGenerations[account.accountId] ?? 0;
+    final token = await _convergeBindingFence(account);
+    Future<void> requireCurrent() async {
+      final current = await _readAccountInternal(
+        expectedAccountId: account.accountId,
+      );
+      _ensureActive();
+      if (_blockedAccountIds.contains(account.accountId) ||
+          (_accountGenerations[account.accountId] ?? 0) != generation ||
+          current.userId != account.userId ||
+          current.accountId != account.accountId ||
+          current.bindingRevision != account.bindingRevision ||
+          current.bindingScope != account.bindingScope ||
+          current.hostIndex != account.hostIndex) {
+        throw StateError('通讯录同步期间宿主账户已失效');
+      }
+      await _runBindingFileMutation(token, () async {});
+    }
+
+    await requireCurrent();
+    final store = await _stateStore(account.userId);
+    _ChatBindingFencedMlsCrypto? fenced;
+    try {
+      if (store.ownerUserId != account.userId) {
+        throw StateError('通讯录MLS存储所有者不一致');
+      }
+      final identity = await _runBindingFileMutation(token, () async {
+        await requireCurrent();
+        return store.readIdentity();
+      });
+      await requireCurrent();
+      fenced = _ChatBindingFencedMlsCrypto(
+        runtime: this,
+        bindingToken: token,
+        delegate:
+            _cryptoFactory?.call(identity, store) ??
+            NativeMlsCrypto(identity: identity, stateStore: store),
+      );
+      final result =
+          await MlsContactSync(
+            identity: identity,
+            crypto: fenced,
+            exchange: exchange,
+            requireCurrent: requireCurrent,
+          ).synchronize(
+            snapshots: () => _runBindingFileMutation(token, () async {
+              await requireCurrent();
+              final payloads = await snapshots();
+              await requireCurrent();
+              return payloads;
+            }),
+            apply: (payload) => _runBindingFileMutation(token, () async {
+              await requireCurrent();
+              await apply(payload);
+              await requireCurrent();
+            }),
+          );
+      await requireCurrent();
+      return result;
+    } finally {
+      fenced?.dispose();
+      store.dispose();
+    }
+  });
 
   /// 认证账户事实只来自宿主；不请求钱包、权益或聊天连接。
   ///
