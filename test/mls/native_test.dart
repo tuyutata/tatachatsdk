@@ -62,35 +62,55 @@ void main() {
     final snapshot = File('${directory.path}/state.bin');
     final before = await snapshot.readAsBytes();
     final proof = await store.signAuthentication(
-      accountId: account, bindingRevision: 1, request: request,
+      accountId: account,
+      bindingRevision: 1,
+      request: request,
     );
     store.dispose();
     final restarted = MlsStateStore(directory, ownerUserId: 'user-a');
     final again = await restarted.signAuthentication(
-      accountId: account, bindingRevision: 1, request: request,
+      accountId: account,
+      bindingRevision: 1,
+      request: request,
     );
     expect(again.toJson(), proof.toJson());
     expect(proof.userId, identity.userId);
     expect(proof.deviceId, identity.deviceId);
     expect(proof.publicKey, identity.publicKey);
-    expect(proof.toJson().keys, unorderedEquals([
-      'user_id', 'device_id', 'public_key', 'account_id', 'binding_revision',
-      'service_origin', 'challenge', 'expires_at_millis', 'method',
-      'request_target', 'body_sha256', 'signature',
-    ]));
+    expect(
+      proof.toJson().keys,
+      unorderedEquals([
+        'user_id',
+        'device_id',
+        'public_key',
+        'account_id',
+        'binding_revision',
+        'service_origin',
+        'challenge',
+        'expires_at_millis',
+        'method',
+        'request_target',
+        'body_sha256',
+        'signature',
+      ]),
+    );
     expect(proof.signature, matches(RegExp(r'^0x[0-9a-f]{128}$')));
     expect(await snapshot.readAsBytes(), before);
     final wrongOwner = MlsStateStore(directory, ownerUserId: 'other');
     await expectLater(
       wrongOwner.signAuthentication(
-        accountId: account, bindingRevision: 1, request: request,
+        accountId: account,
+        bindingRevision: 1,
+        request: request,
       ),
       throwsA(isA<MlsNativeException>()),
     );
   }, skip: skip);
 
   test('认证缺状态或损坏时失败，禁止补身份或清空恢复', () async {
-    final root = await Directory.systemTemp.createTemp('tatachat_native_auth_bad_');
+    final root = await Directory.systemTemp.createTemp(
+      'tatachat_native_auth_bad_',
+    );
     addTearDown(() => root.delete(recursive: true));
     final directory = Directory(await root.resolveSymbolicLinks());
     final store = MlsStateStore(directory, ownerUserId: 'user-a');
@@ -99,7 +119,8 @@ void main() {
     final request = _authenticationRequest();
     Future<MlsAuthenticationProof> sign() => store.signAuthentication(
       accountId: '0x${List.filled(32, '11').join()}',
-      bindingRevision: 1, request: request,
+      bindingRevision: 1,
+      request: request,
     );
     await snapshot.writeAsString('synthetic corrupt state');
     await expectLater(sign(), throwsA(isA<MlsNativeException>()));
@@ -114,38 +135,84 @@ void main() {
     addTearDown(() => root.delete(recursive: true));
     final devices = <ChatDevice>[], cryptos = <NativeMlsCrypto>[];
     for (var index = 0; index < 3; index++) {
-      final directory = await Directory(root.path + '/' + index.toString()).create();
+      final directory = await Directory('${root.path}/$index').create();
       final store = MlsStateStore(directory, ownerUserId: 'CID-A');
       final identity = await store.initializeIdentity();
-      devices.add(identity); cryptos.add(NativeMlsCrypto(identity: identity, stateStore: store));
+      devices.add(identity);
+      cryptos.add(NativeMlsCrypto(identity: identity, stateStore: store));
     }
     final b = await cryptos[1].createKeyPackage(devices[1], lastResort: true);
     final c = await cryptos[2].createKeyPackage(devices[2], lastResort: true);
-    await cryptos[0].withMessage('create', () => cryptos[0].createGroup('exact-leaves'));
-    final forged = MlsKeyPackage(userId: 'CID-A', deviceId: devices[1].deviceId,
-      keyPackageRef: c.keyPackageRef, keyPackageBytes: c.keyPackageBytes,
-      cipherSuite: c.cipherSuite, notBeforeMillis: c.notBeforeMillis,
-      notAfterMillis: c.notAfterMillis, lastResort: true);
-    await expectLater(cryptos[0].withMessage('forged', () => cryptos[0].addMembers('exact-leaves', [forged])),
-      throwsA(isA<MlsNativeException>()));
+    await cryptos[0].withMessage(
+      'create',
+      () => cryptos[0].createGroup('exact-leaves'),
+    );
+    final forged = MlsKeyPackage(
+      userId: 'CID-A',
+      deviceId: devices[1].deviceId,
+      keyPackageRef: c.keyPackageRef,
+      keyPackageBytes: c.keyPackageBytes,
+      cipherSuite: c.cipherSuite,
+      notBeforeMillis: c.notBeforeMillis,
+      notAfterMillis: c.notAfterMillis,
+      lastResort: true,
+    );
+    await expectLater(
+      cryptos[0].withMessage(
+        'forged',
+        () => cryptos[0].addMembers('exact-leaves', [forged]),
+      ),
+      throwsA(isA<MlsNativeException>()),
+    );
     expect((await cryptos[0].groupState('exact-leaves')).memberCount, 1);
-    final added = await cryptos[0].withMessage('add', () => cryptos[0].addMembers('exact-leaves', [b,c]));
+    final added = await cryptos[0].withMessage(
+      'add',
+      () => cryptos[0].addMembers('exact-leaves', [b, c]),
+    );
     for (var index = 1; index < 3; index++) {
-      await cryptos[index].withMessage('welcome', () => cryptos[index].groupProcess(added.welcome!));
+      await cryptos[index].withMessage(
+        'welcome',
+        () => cryptos[index].groupProcess(added.welcome!),
+      );
     }
-    final target = 'CID-A:' + devices[1].deviceId;
-    await expectLater(cryptos[0].withMessage('duplicate-remove', () => cryptos[0].removeMembers('exact-leaves', [target,target])),
-      throwsA(isA<MlsNativeException>()));
-    await expectLater(cryptos[0].withMessage('unknown-remove', () => cryptos[0].removeMembers('exact-leaves', [target, 'CID-A:' + '00' * 32])),
-      throwsA(isA<MlsNativeException>()));
+    final target = 'CID-A:${devices[1].deviceId}';
+    await expectLater(
+      cryptos[0].withMessage(
+        'duplicate-remove',
+        () => cryptos[0].removeMembers('exact-leaves', [target, target]),
+      ),
+      throwsA(isA<MlsNativeException>()),
+    );
+    await expectLater(
+      cryptos[0].withMessage(
+        'unknown-remove',
+        () => cryptos[0].removeMembers('exact-leaves', [
+          target,
+          'CID-A:${'00' * 32}',
+        ]),
+      ),
+      throwsA(isA<MlsNativeException>()),
+    );
     expect((await cryptos[0].groupState('exact-leaves')).memberCount, 3);
-    final removed = await cryptos[0].withMessage('remove', () => cryptos[0].removeMembers('exact-leaves', [target]));
+    final removed = await cryptos[0].withMessage(
+      'remove',
+      () => cryptos[0].removeMembers('exact-leaves', [target]),
+    );
     expect(removed.removedMemberIdentities, [target]);
-    final accepted = await cryptos[2].withMessage('commit', () => cryptos[2].groupProcess(removed.commit));
+    final accepted = await cryptos[2].withMessage(
+      'commit',
+      () => cryptos[2].groupProcess(removed.commit),
+    );
     expect(accepted.selfRemoved, false);
-    expect(accepted.senderMemberIdentity, 'CID-A:' + devices[0].deviceId);
-    expect((await cryptos[2].groupState('exact-leaves')).memberIdentities,
-      unorderedEquals([devices[0],devices[2]].map((identity) => 'CID-A:' + identity.deviceId)));
+    expect(accepted.senderMemberIdentity, 'CID-A:${devices[0].deviceId}');
+    expect(
+      (await cryptos[2].groupState('exact-leaves')).memberIdentities,
+      unorderedEquals(
+        [
+          devices[0],
+          devices[2],
+        ].map((identity) => 'CID-A:${identity.deviceId}'),
+      ),
+    );
   }, skip: skip);
-
 }

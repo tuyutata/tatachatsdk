@@ -256,8 +256,10 @@ class ChatFlow<TBindingToken> {
 
   /// 附件创建前固定私聊实际设备叶子；首次会话只保存真实Welcome，不造占位消息。
   Future<GroupState> prepareAttachmentAudience({
-    required String conversationId, required String recipientUserId,
-    required String senderDeviceId, required List<MlsKeyPackage> keyPackages,
+    required String conversationId,
+    required String recipientUserId,
+    required String senderDeviceId,
+    required List<MlsKeyPackage> keyPackages,
     required String messageId,
   }) async {
     GroupState state;
@@ -266,37 +268,58 @@ class ChatFlow<TBindingToken> {
       state = await _crypto.groupState(conversationId);
     } catch (error) {
       if (!_needsDirectWelcome(error)) rethrow;
-      await _crypto.withMessage(transaction, () => _crypto.createGroup(conversationId));
+      await _crypto.withMessage(
+        transaction,
+        () => _crypto.createGroup(conversationId),
+      );
       state = await _crypto.groupState(conversationId);
     }
-    if (state.memberIdentities.length == 1 && state.memberIdentities.single == '$_ownerUserId:$senderDeviceId') {
-      if (keyPackages.isEmpty || keyPackages.any((p) => p.userId != recipientUserId || !p.lastResort)) {
+    if (state.memberIdentities.length == 1 &&
+        state.memberIdentities.single == '$_ownerUserId:$senderDeviceId') {
+      if (keyPackages.isEmpty ||
+          keyPackages.any(
+            (p) => p.userId != recipientUserId || !p.lastResort,
+          )) {
         throw StateError('附件首次私聊KeyPackage无效');
       }
-      await _crypto.withMessage(transaction, () => _crypto.addMembers(conversationId,keyPackages));
+      await _crypto.withMessage(
+        transaction,
+        () => _crypto.addMembers(conversationId, keyPackages),
+      );
       state = await _crypto.groupState(conversationId);
     }
     final queued = <EncryptedMessage>[];
     for (final record in await _crypto.pendingMessageResults(transaction)) {
-      final saved = (record['result'] as Map).cast<String,dynamic>();
+      final saved = (record['result'] as Map).cast<String, dynamic>();
       if (saved['welcome_wire_hex'] is! String) continue;
       final now = saved['created_at_millis'] as int;
       final hex = saved['welcome_wire_hex'] as String;
       final welcome = MlsWireMessage(
-        conversationId:conversationId, messageKind:MlsMessageKind.welcome,
-        wireBytes:[for(var i=0;i<hex.length;i+=2)int.parse(hex.substring(i,i+2),radix:16)],
+        conversationId: conversationId,
+        messageKind: MlsMessageKind.welcome,
+        wireBytes: [
+          for (var i = 0; i < hex.length; i += 2)
+            int.parse(hex.substring(i, i + 2), radix: 16),
+        ],
       );
-      for (final value in (saved['welcome_member_identities'] as List).cast<String>()) {
+      for (final value
+          in (saved['welcome_member_identities'] as List).cast<String>()) {
         final member = MlsMemberIdentity.parse(value);
         final message = welcome.toEncryptedMessage(
-          messageId:_newMessageId('$transaction:${member.wireValue}',now,0),senderUserId:_ownerUserId,
-          senderDeviceId:senderDeviceId,recipientUserId:member.userId,
-          recipientDeviceId:member.deviceId,createdAtMillis:now,
+          messageId: _newMessageId('$transaction:${member.wireValue}', now, 0),
+          senderUserId: _ownerUserId,
+          senderDeviceId: senderDeviceId,
+          recipientUserId: member.userId,
+          recipientDeviceId: member.deviceId,
+          createdAtMillis: now,
         );
         await _store.queueOutgoingMessage(
-          bindingToken:_bindingToken,ownerUserId:_ownerUserId,message:message,
-          messageBytes:message.writeToBuffer(),recipientUserId:member.userId,
-          deliveryState:ChatMessageDeliveryState.queued,
+          bindingToken: _bindingToken,
+          ownerUserId: _ownerUserId,
+          message: message,
+          messageBytes: message.writeToBuffer(),
+          recipientUserId: member.userId,
+          deliveryState: ChatMessageDeliveryState.queued,
         );
         queued.add(message);
       }
@@ -305,12 +328,28 @@ class ChatFlow<TBindingToken> {
     if (queued.isNotEmpty) {
       final scheduler = deliveryScheduler;
       Future<void> deliver() async {
-        for(final message in queued) {
-          final result = await _deliverer(message,message.writeToBuffer(),message.recipientUserId,message.recipientDeviceId);
-          await _store.markOutgoingDelivery(bindingToken:_bindingToken,ownerUserId:_ownerUserId,messageId:message.messageId,state:result.state,errorMessage:result.errorMessage);
+        for (final message in queued) {
+          final result = await _deliverer(
+            message,
+            message.writeToBuffer(),
+            message.recipientUserId,
+            message.recipientDeviceId,
+          );
+          await _store.markOutgoingDelivery(
+            bindingToken: _bindingToken,
+            ownerUserId: _ownerUserId,
+            messageId: message.messageId,
+            state: result.state,
+            errorMessage: result.errorMessage,
+          );
         }
       }
-      if(scheduler!=null) { scheduler(conversationId,deliver); } else { await deliver(); }
+
+      if (scheduler != null) {
+        scheduler(conversationId, deliver);
+      } else {
+        await deliver();
+      }
     }
     return state;
   }
@@ -392,7 +431,10 @@ class ChatFlow<TBindingToken> {
             };
       // 附件控制按精确设备区分可靠队列键，防止同CID其他设备的条目被覆盖。
       final isMedia = const {
-        ChatMessageKind.image, ChatMessageKind.video, ChatMessageKind.file, ChatMessageKind.audio,
+        ChatMessageKind.image,
+        ChatMessageKind.video,
+        ChatMessageKind.file,
+        ChatMessageKind.audio,
       }.contains(messageKind);
       final seed = isMedia
           ? '${pendingLocalMessageId ?? conversationId}:${target.recipient.wireValue}'
@@ -400,11 +442,7 @@ class ChatFlow<TBindingToken> {
       final message = wireMessage.toEncryptedMessage(
         // 本地待发送行用稳定 ID 与语义序号做 seed；初始化或网络失败后重试
         // 仍得到同一 Message ID，Store/收端幂等去重。
-        messageId: _newMessageId(
-          seed,
-          nowMillis,
-          messageIndex,
-        ),
+        messageId: _newMessageId(seed, nowMillis, messageIndex),
         senderUserId: senderUserId,
         recipientUserId: target.recipient.userId,
         senderDeviceId: senderDeviceId,
@@ -574,9 +612,11 @@ class ChatFlow<TBindingToken> {
       }
       final plaintext = utf8.decode(inbound.plaintext ?? const []);
       final content = ChatPayloadCodec.decode(plaintext);
-      if (content.isMedia && (
-          inbound.senderMemberIdentity != '${message.senderUserId}:${message.senderDeviceId}' ||
-          content.attachmentSenderMemberIdentity != inbound.senderMemberIdentity)) {
+      if (content.isMedia &&
+          (inbound.senderMemberIdentity !=
+                  '${message.senderUserId}:${message.senderDeviceId}' ||
+              content.attachmentSenderMemberIdentity !=
+                  inbound.senderMemberIdentity)) {
         throw StateError('附件控制实际MLS发送者不一致');
       }
       await _store.saveIncomingMessage(
@@ -653,21 +693,30 @@ class ChatFlow<TBindingToken> {
   /// 私聊是仅含双方活跃设备的 MLS 群；新设备通过标准 Welcome 加入。
   /// 文件控制只使用已固定的聊天组，不能为附件补新人或重新创建会话。
   Future<List<_DirectWireTarget>> _createMediaOutbound({
-    required String conversationId,required ChatContent media,
-    required String senderDeviceId,required List<int> plaintext,required String messageId,
+    required String conversationId,
+    required ChatContent media,
+    required String senderDeviceId,
+    required List<int> plaintext,
+    required String messageId,
   }) async {
-    final saved=await _crypto.pendingMessageResults(messageId);
-    if(!saved.any((r)=>(r['result'] as Map)['application_wire_hex'] is String)) {
-      final state=await _crypto.groupState(conversationId);
-      if(state.epoch!=media.attachmentChatEpoch ||
-          jsonEncode([...state.memberIdentities]..sort())!=jsonEncode(media.attachmentMemberIdentities)) {
+    final saved = await _crypto.pendingMessageResults(messageId);
+    if (!saved.any(
+      (r) => (r['result'] as Map)['application_wire_hex'] is String,
+    )) {
+      final state = await _crypto.groupState(conversationId);
+      if (state.epoch != media.attachmentChatEpoch ||
+          jsonEncode([...state.memberIdentities]..sort()) !=
+              jsonEncode(media.attachmentMemberIdentities)) {
         throw StateError('附件控制的聊天设备名册已失效');
       }
     }
-    final wire=await _crypto.groupCreateMessage(conversationId,plaintext);
-    return membersFromMemberIdentities(await _crypto.messageMemberIdentities(conversationId,messageId))
-        .where((m)=>m.wireValue!='$_ownerUserId:$senderDeviceId')
-        .map((m)=>_DirectWireTarget(wire:wire,recipient:m)).toList();
+    final wire = await _crypto.groupCreateMessage(conversationId, plaintext);
+    return membersFromMemberIdentities(
+          await _crypto.messageMemberIdentities(conversationId, messageId),
+        )
+        .where((m) => m.wireValue != '$_ownerUserId:$senderDeviceId')
+        .map((m) => _DirectWireTarget(wire: wire, recipient: m))
+        .toList();
   }
 
   Future<List<_DirectWireTarget>> _createDirectOutbound({
@@ -869,11 +918,17 @@ class ChatFlow<TBindingToken> {
     // 已核验的明文流式写入系统保护缓存，不存在应用钥或再次加解密。
     final source = File(sourcePath);
     if (await source.length() != byteSize) throw StateError('附件缓存大小不一致');
-    final cached = await AttachmentVault.cache(source:source,cachePath:cachePath);
+    final cached = await AttachmentVault.cache(
+      source: source,
+      cachePath: cachePath,
+    );
     if (moveSource && source.path != cached.path) await source.delete();
     return ChatDownloadedAttachment(
-      attachmentId:attachmentId,fileName:fileName,contentType:contentType,
-      clearByteSize:byteSize,filePath:cached.path,
+      attachmentId: attachmentId,
+      fileName: fileName,
+      contentType: contentType,
+      clearByteSize: byteSize,
+      filePath: cached.path,
     );
   }
 

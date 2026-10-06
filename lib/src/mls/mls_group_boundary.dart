@@ -237,7 +237,8 @@ extension MlsPersistentOperations on MlsGroupCrypto {
   Future<T> withMessage<T>(String messageId, Future<T> Function() operation) {
     final current = this;
     if (current is MlsPersistentCrypto) {
-      return current.withMessage(messageId, operation);
+      // 显式接口调用避免交叉类型解析再次进入同名extension。
+      return (current as MlsPersistentCrypto).withMessage(messageId, operation);
     }
     if (!Platform.environment.containsKey('FLUTTER_TEST')) {
       throw StateError('MLS实现缺少持久化事务');
@@ -248,7 +249,7 @@ extension MlsPersistentOperations on MlsGroupCrypto {
   Future<void> acknowledgeMessage(String messageId) async {
     final current = this;
     if (current is MlsPersistentCrypto) {
-      await current.acknowledgeMessage(messageId);
+      await (current as MlsPersistentCrypto).acknowledgeMessage(messageId);
       return;
     }
     if (!Platform.environment.containsKey('FLUTTER_TEST')) {
@@ -261,7 +262,7 @@ extension MlsPersistentOperations on MlsGroupCrypto {
   ) async {
     final current = this;
     if (current is MlsPersistentCrypto) {
-      return current.pendingMessageResults(messageId);
+      return (current as MlsPersistentCrypto).pendingMessageResults(messageId);
     }
     if (!Platform.environment.containsKey('FLUTTER_TEST')) {
       throw StateError('MLS实现缺少恢复接口');

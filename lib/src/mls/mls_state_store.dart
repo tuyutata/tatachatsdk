@@ -202,12 +202,15 @@ class MlsStateStore {
 
   /// 附件协议动作使用现有store FFI，只有公开组合同与持久游标可越过边界。
   Future<Map<String, dynamic>> attachmentAction(
-    String action, Map<String, Object?> attachment,
+    String action,
+    Map<String, Object?> attachment,
   ) async {
     await ensureReady();
     return _call(false, {
-      'state_store_dir': path, 'user_id': ownerUserId,
-      'action': action, 'attachment': attachment,
+      'state_store_dir': path,
+      'user_id': ownerUserId,
+      'action': action,
+      'attachment': attachment,
     });
   }
 

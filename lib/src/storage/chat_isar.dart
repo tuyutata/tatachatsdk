@@ -1,9 +1,9 @@
-import 'system_protected_storage.dart';
 import 'dart:async';
 
 import 'package:isar_community/isar.dart';
 
 import 'isar_core_bootstrap.dart';
+import 'system_protected_storage.dart';
 
 part 'chat_isar.g.dart';
 
@@ -292,8 +292,6 @@ class ChatBindingFenceEntity {
 
   /// `active` 或 `cleared`。普通写入只接受 active。
   late String fenceState;
-
-
 }
 
 enum _ChatIsarLifecycle { active, closing, closed }

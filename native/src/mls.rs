@@ -69,8 +69,14 @@ struct TwoPartySmokeRequest {
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 enum IdentityRequest {
-    Initialize { state_store_dir: String, user_id: String },
-    Read { state_store_dir: String, user_id: String },
+    Initialize {
+        state_store_dir: String,
+        user_id: String,
+    },
+    Read {
+        state_store_dir: String,
+        user_id: String,
+    },
     SignAuthentication {
         state_store_dir: String,
         user_id: String,
@@ -200,10 +206,19 @@ pub unsafe extern "C" fn tatachat_sdk_mls_identity_json(
 fn identity_json(input: *const c_char) -> Result<String, String> {
     let request: IdentityRequest = parse_request(input)?;
     let (state_store_dir, user_id) = match &request {
-        IdentityRequest::Initialize { state_store_dir, user_id }
-        | IdentityRequest::Read { state_store_dir, user_id }
-        | IdentityRequest::SignAuthentication { state_store_dir, user_id, .. } =>
-            (state_store_dir, user_id),
+        IdentityRequest::Initialize {
+            state_store_dir,
+            user_id,
+        }
+        | IdentityRequest::Read {
+            state_store_dir,
+            user_id,
+        }
+        | IdentityRequest::SignAuthentication {
+            state_store_dir,
+            user_id,
+            ..
+        } => (state_store_dir, user_id),
     };
     require_identity_component(user_id)?;
     let dir = Path::new(state_store_dir);
@@ -235,17 +250,22 @@ fn identity_json(input: *const c_char) -> Result<String, String> {
             save_provider(dir, &provider)?;
             provider
         }
-        IdentityRequest::Read { .. } | IdentityRequest::SignAuthentication { .. } =>
-            load_provider(dir)?,
+        IdentityRequest::Read { .. } | IdentityRequest::SignAuthentication { .. } => {
+            load_provider(dir)?
+        }
     };
     let (_, signer) = read_device_signer(&provider, user_id, &provider.device.device_id)?;
-    if let IdentityRequest::SignAuthentication { account_id, binding_revision, request, .. } =
-        &request
+    if let IdentityRequest::SignAuthentication {
+        account_id,
+        binding_revision,
+        request,
+        ..
+    } = &request
     {
         // 同一锁下只读已有身份，不写快照、不建立群、不推进epoch或ratchet。
-        let proof = authentication_proof(&provider, &signer, account_id, *binding_revision, request)?;
-        return serde_json::to_string(&proof)
-            .map_err(|_| authentication_error());
+        let proof =
+            authentication_proof(&provider, &signer, account_id, *binding_revision, request)?;
+        return serde_json::to_string(&proof).map_err(|_| authentication_error());
     }
     serde_json::to_string(&provider.device)
         .map_err(|_| state_error(ERROR_STATE_INVALID, "公开身份序列化失败"))
@@ -257,8 +277,11 @@ fn authentication_error() -> String {
 
 /// 规范32字节公开值；禁止大小写、无前缀和宽松解码别名。
 fn authentication_hex(value: &str) -> Result<Vec<u8>, String> {
-    if value.len() != 66 || !value.starts_with("0x")
-        || !value[2..].bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    if value.len() != 66
+        || !value.starts_with("0x")
+        || !value[2..]
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
     {
         return Err(authentication_error());
     }
@@ -267,8 +290,11 @@ fn authentication_hex(value: &str) -> Result<Vec<u8>, String> {
 
 /// 目标是规范HTTPS源，不接受凭据/路径/查询/片段或默认端口别名。
 fn validate_authentication_origin(origin: &str) -> Result<(), String> {
-    let authority = origin.strip_prefix("https://").ok_or_else(authentication_error)?;
-    if authority.is_empty() || authority.len() > 260
+    let authority = origin
+        .strip_prefix("https://")
+        .ok_or_else(authentication_error)?;
+    if authority.is_empty()
+        || authority.len() > 260
         || !authority.bytes().all(|b| b.is_ascii_graphic())
         || authority.contains(['/', '\\', '@', '?', '#'])
     {
@@ -277,12 +303,16 @@ fn validate_authentication_origin(origin: &str) -> Result<(), String> {
     let (host, port) = if authority.starts_with('[') {
         let end = authority.find(']').ok_or_else(authentication_error)?;
         let address = &authority[1..end];
-        let parsed = address.parse::<std::net::Ipv6Addr>().map_err(|_| authentication_error())?;
+        let parsed = address
+            .parse::<std::net::Ipv6Addr>()
+            .map_err(|_| authentication_error())?;
         if address != parsed.to_string() {
             return Err(authentication_error());
         }
         let suffix = &authority[end + 1..];
-        let port = if suffix.is_empty() { None } else {
+        let port = if suffix.is_empty() {
+            None
+        } else {
             Some(suffix.strip_prefix(':').ok_or_else(authentication_error)?)
         };
         (&authority[..=end], port)
@@ -291,10 +321,17 @@ fn validate_authentication_origin(origin: &str) -> Result<(), String> {
             Some((host, port)) => (host, Some(port)),
             None => (authority, None),
         };
-        if host.len() > 253 || host.split('.').any(|label| {
-            label.is_empty() || label.len() > 63 || label.starts_with('-') || label.ends_with('-')
-                || !label.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
-        }) {
+        if host.len() > 253
+            || host.split('.').any(|label| {
+                label.is_empty()
+                    || label.len() > 63
+                    || label.starts_with('-')
+                    || label.ends_with('-')
+                    || !label
+                        .bytes()
+                        .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+            })
+        {
             return Err(authentication_error());
         }
         (host, port)
@@ -312,7 +349,9 @@ fn validate_authentication_origin(origin: &str) -> Result<(), String> {
 }
 
 fn validate_authentication_target(target: &str) -> Result<(), String> {
-    if target.len() > 8192 || !target.starts_with('/') || target.starts_with("//")
+    if target.len() > 8192
+        || !target.starts_with('/')
+        || target.starts_with("//")
         || !target.bytes().all(|b| b.is_ascii_graphic())
         || target.contains(['#', '\\'])
     {
@@ -320,9 +359,10 @@ fn validate_authentication_target(target: &str) -> Result<(), String> {
     }
     let bytes = target.as_bytes();
     for (index, byte) in bytes.iter().enumerate() {
-        if *byte == b'%' && (index + 2 >= bytes.len()
-            || !bytes[index + 1].is_ascii_hexdigit()
-            || !bytes[index + 2].is_ascii_hexdigit())
+        if *byte == b'%'
+            && (index + 2 >= bytes.len()
+                || !bytes[index + 1].is_ascii_hexdigit()
+                || !bytes[index + 2].is_ascii_hexdigit())
         {
             return Err(authentication_error());
         }
@@ -346,18 +386,27 @@ fn authentication_proof(
     validate_authentication_origin(&request.service_origin)?;
     validate_authentication_target(&request.request_target)?;
     let now = now_millis()?;
-    if binding_revision > MAX_JSON_INTEGER || request.expires_at_millis > MAX_JSON_INTEGER
+    if binding_revision > MAX_JSON_INTEGER
+        || request.expires_at_millis > MAX_JSON_INTEGER
         || request.expires_at_millis <= now
         || request.expires_at_millis - now > AUTHENTICATION_LIFETIME_MILLIS
-        || !matches!(request.method.as_str(), "GET" | "HEAD" | "POST" | "PUT" | "PATCH" | "DELETE" | "OPTIONS")
+        || !matches!(
+            request.method.as_str(),
+            "GET" | "HEAD" | "POST" | "PUT" | "PATCH" | "DELETE" | "OPTIONS"
+        )
         || request.body_hex.len() > MAX_AUTHENTICATION_BODY_BYTES * 2
         || request.body_hex.len() % 2 != 0
-        || !request.body_hex.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        || !request
+            .body_hex
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
     {
         return Err(authentication_error());
     }
     let body = hex::decode(&request.body_hex).map_err(|_| authentication_error())?;
-    let hash = provider.crypto().hash(HashType::Sha2_256, &body)
+    let hash = provider
+        .crypto()
+        .hash(HashType::Sha2_256, &body)
         .map_err(|_| authentication_error())?;
     let mut proof = AuthenticationProof {
         user_id: provider.device.user_id.clone(),
@@ -376,12 +425,19 @@ fn authentication_proof(
     // 固定结构content由原生构造，外层SignContent使用OpenMLS的标准TLS编码。
     let content = authentication_content(&proof)?;
     let encoded = SignContent::new(AUTHENTICATION_LABEL, content.into())
-        .tls_serialize_detached().map_err(|_| authentication_error())?;
+        .tls_serialize_detached()
+        .map_err(|_| authentication_error())?;
     let signature = signer.sign(&encoded).map_err(|_| authentication_error())?;
     // 可解析的私有材料也可能损坏；本机先验签，禁止交付与登记公钥不匹配的证明。
-    provider.crypto().verify_signature(
-        GMB_MLS_CIPHERSUITE.signature_algorithm(), &encoded, &public, &signature,
-    ).map_err(|_| state_error(ERROR_STATE_INVALID, "MLS签名身份与公钥不匹配"))?;
+    provider
+        .crypto()
+        .verify_signature(
+            GMB_MLS_CIPHERSUITE.signature_algorithm(),
+            &encoded,
+            &public,
+            &signature,
+        )
+        .map_err(|_| state_error(ERROR_STATE_INVALID, "MLS签名身份与公钥不匹配"))?;
     proof.signature = format!("0x{}", hex::encode(signature));
     // 签名完成后再次检查有效期，不能返回处理期间已经过期的证明。
     if proof.expires_at_millis <= now_millis()? {
@@ -393,8 +449,10 @@ fn authentication_proof(
 fn authentication_content(proof: &AuthenticationProof) -> Result<Vec<u8>, String> {
     let mut content = Vec::new();
     fn text(content: &mut Vec<u8>, value: &str) -> Result<(), String> {
-        VLBytes::from(value.as_bytes().to_vec()).tls_serialize(content)
-            .map(|_| ()).map_err(|_| authentication_error())
+        VLBytes::from(value.as_bytes().to_vec())
+            .tls_serialize(content)
+            .map(|_| ())
+            .map_err(|_| authentication_error())
     }
     text(&mut content, &proof.user_id)?;
     content.extend(authentication_hex(&format!("0x{}", proof.device_id))?);
@@ -440,18 +498,34 @@ fn store_json(input: *const c_char) -> Result<String, String> {
     let _lock = lock_store(dir)?;
     let provider = load_provider(dir)?;
     let _ = read_device_signer(&provider, &request.user_id, &provider.device.device_id)?;
-    if !matches!(request.action.as_str(), "begin_attachment" | "attachment_progress" | "confirm_attachment_chunk" |
-        "finish_attachment" | "abort_attachment") && request.attachment.is_some() {
+    if !matches!(
+        request.action.as_str(),
+        "begin_attachment"
+            | "attachment_progress"
+            | "confirm_attachment_chunk"
+            | "finish_attachment"
+            | "abort_attachment"
+    ) && request.attachment.is_some()
+    {
         return Err("非附件动作禁止附件字段".into());
     }
     let response = match request.action.as_str() {
-        "begin_attachment" | "attachment_progress" | "confirm_attachment_chunk" |
-        "finish_attachment" | "abort_attachment" => {
+        "begin_attachment"
+        | "attachment_progress"
+        | "confirm_attachment_chunk"
+        | "finish_attachment"
+        | "abort_attachment" => {
             if request.message_id.is_some() || request.pending_inbound.is_some() {
                 return Err("MLS附件存储禁止其他动作字段".into());
             }
-            let response = attachment_store(&provider, &request.action, request.attachment.ok_or("缺少attachment")?)?;
-            if request.action != "attachment_progress" { save_provider(dir, &provider)?; }
+            let response = attachment_store(
+                &provider,
+                &request.action,
+                request.attachment.ok_or("缺少attachment")?,
+            )?;
+            if request.action != "attachment_progress" {
+                save_provider(dir, &provider)?;
+            }
             response
         }
         "pending_results" => {
@@ -816,7 +890,8 @@ fn save_provider(dir: &Path, provider: &MlsProvider) -> Result<(), String> {
                 <= RECEIPT_LIFETIME_MILLIS
     });
     provider.attachments.borrow_mut().retain(|_, p| {
-        !p.terminal || now.saturating_sub(p.finished_at_millis.unwrap_or(now)) <= RECEIPT_LIFETIME_MILLIS
+        !p.terminal
+            || now.saturating_sub(p.finished_at_millis.unwrap_or(now)) <= RECEIPT_LIFETIME_MILLIS
     });
     let values = provider
         .storage
@@ -929,7 +1004,6 @@ struct AttachmentGroup {
     group_id: String,
 }
 
-
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct AttachmentChunkHeader {
@@ -941,25 +1015,47 @@ struct AttachmentChunkHeader {
     byte_size: u64,
 }
 /// 块头是严格业务绑定，不是自定义密码学；真正验密和发送者均来自OpenMLS。
-fn validate_attachment_plaintext(provider: &MlsProvider, group: &str, plaintext: &[u8]) -> Result<(), String> {
+fn validate_attachment_plaintext(
+    provider: &MlsProvider,
+    group: &str,
+    plaintext: &[u8],
+) -> Result<(), String> {
     let records = provider.attachments.borrow();
-    let Some(p) = records.get(group) else { return Ok(()) };
-    if plaintext.len() < 4 { return Err("MLS附件块头截断".into()); }
-    let size = u32::from_be_bytes(plaintext[..4].try_into().map_err(|_| "MLS附件块头异常")?) as usize;
-    if size == 0 || size > 2044 || plaintext.len() <= 4 + size { return Err("MLS附件块头长度非法".into()); }
-    let h: AttachmentChunkHeader = serde_json::from_slice(&plaintext[4..4+size]).map_err(|_| "MLS附件块头字段非法")?;
-    let attachment_id = group.strip_prefix(format!("attachment:{}:",p.sender_member_identity).as_str()).ok_or("MLS附件组格式异常")?;
-    let expected = std::cmp::min(1024 * 1024,p.byte_size-p.next_chunk*(1024*1024)) as usize;
-    if h.group_id != group || h.attachment_id != attachment_id || h.sender_member_identity != p.sender_member_identity ||
-        h.chunk_index != p.next_chunk || h.chunk_count != p.chunk_count || h.byte_size != p.byte_size ||
-        plaintext.len()-4-size != expected {
+    let Some(p) = records.get(group) else {
+        return Ok(());
+    };
+    if plaintext.len() < 4 {
+        return Err("MLS附件块头截断".into());
+    }
+    let size =
+        u32::from_be_bytes(plaintext[..4].try_into().map_err(|_| "MLS附件块头异常")?) as usize;
+    if size == 0 || size > 2044 || plaintext.len() <= 4 + size {
+        return Err("MLS附件块头长度非法".into());
+    }
+    let h: AttachmentChunkHeader =
+        serde_json::from_slice(&plaintext[4..4 + size]).map_err(|_| "MLS附件块头字段非法")?;
+    let attachment_id = group
+        .strip_prefix(format!("attachment:{}:", p.sender_member_identity).as_str())
+        .ok_or("MLS附件组格式异常")?;
+    let expected = std::cmp::min(1024 * 1024, p.byte_size - p.next_chunk * (1024 * 1024)) as usize;
+    if h.group_id != group
+        || h.attachment_id != attachment_id
+        || h.sender_member_identity != p.sender_member_identity
+        || h.chunk_index != p.next_chunk
+        || h.chunk_count != p.chunk_count
+        || h.byte_size != p.byte_size
+        || plaintext.len() - 4 - size != expected
+    {
         return Err("MLS附件块头绑定或顺序无效".into());
     }
     Ok(())
 }
 
 fn attachment_hex(value: &str) -> bool {
-    value.len() == 64 && value.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
 /// 只能清除已登记的准确附件组；OpenMLS官方delete不删除共享签名身份。
@@ -969,61 +1065,125 @@ fn delete_attachment_group(provider: &MlsProvider, group_id: &str) -> Result<(),
     }
     let id = group_id_from_conversation(group_id)?;
     if let Some(mut group) = MlsGroup::load(provider.storage(), &id)
-        .map_err(|_| state_error(ERROR_STATE_INVALID, "附件组无法读取"))? {
-        group.delete(provider.storage())
+        .map_err(|_| state_error(ERROR_STATE_INVALID, "附件组无法读取"))?
+    {
+        group
+            .delete(provider.storage())
             .map_err(|_| state_error(ERROR_STATE_INVALID, "附件组清理失败"))?;
     }
-    provider.results.borrow_mut().retain(|_, r| r.request["group_id"] != group_id);
+    provider
+        .results
+        .borrow_mut()
+        .retain(|_, r| r.request["group_id"] != group_id);
     Ok(())
 }
 
 /// 字节落盘flush后确认一次，删除该块完整请求与结果，避免整文件随快照重复复制。
-fn attachment_store(provider: &MlsProvider, action: &str, value: serde_json::Value) -> Result<serde_json::Value, String> {
+fn attachment_store(
+    provider: &MlsProvider,
+    action: &str,
+    value: serde_json::Value,
+) -> Result<serde_json::Value, String> {
     let now = now_millis()?;
     match action {
         "begin_attachment" => {
-            let r: AttachmentBegin = serde_json::from_value(value).map_err(|_| "附件登记字段非法")?;
+            let r: AttachmentBegin =
+                serde_json::from_value(value).map_err(|_| "附件登记字段非法")?;
             let owner = format!("{}:{}", provider.device.user_id, provider.device.device_id);
-            let expected_count = r.byte_size / (1024 * 1024) + u64::from(r.byte_size % (1024 * 1024) != 0);
+            let expected_count =
+                r.byte_size / (1024 * 1024) + u64::from(r.byte_size % (1024 * 1024) != 0);
             let member_set: HashSet<_> = r.member_identities.iter().collect();
-            let member_bytes = serde_json::to_vec(&r.member_identities).map_err(|_| "附件名册序列化失败")?;
-            if member_bytes.len() > 64 * 1024 { return Err("附件名册体积越界".into()); }
+            let member_bytes =
+                serde_json::to_vec(&r.member_identities).map_err(|_| "附件名册序列化失败")?;
+            if member_bytes.len() > 64 * 1024 {
+                return Err("附件名册体积越界".into());
+            }
             let prefix = format!("attachment:{}:", r.sender_member_identity);
             let attachment_id = r.group_id.strip_prefix(&prefix).ok_or("附件组标识非法")?;
             // 原生入口独立复核Dart边界，异常直接输入不能写入另一种合同。
-            if attachment_id.is_empty() || attachment_id.len() > 128 ||
-                !attachment_id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-') {
+            if attachment_id.is_empty()
+                || attachment_id.len() > 128
+                || !attachment_id
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+            {
                 return Err("附件id非法".into());
             }
-            if (r.direction == "send" && (r.cipher_byte_size.is_some() || r.cipher_sha256.is_some() || r.welcome_sha256.is_some())) ||
-                (r.direction == "receive" && (r.cipher_byte_size.map_or(true, |n| n <= r.byte_size || n > r.byte_size.saturating_add(expected_count.saturating_mul(4096))) ||
-                    r.cipher_sha256.as_deref().map_or(true, |h| !attachment_hex(h)) ||
-                    r.welcome_sha256.as_deref().map_or(true, |h| !attachment_hex(h)))) ||
-                !attachment_hex(&r.plain_sha256) || r.byte_size == 0 || r.byte_size > MAX_JSON_INTEGER || r.chunk_count != expected_count || r.chunk_count > u32::MAX as u64 ||
-                !matches!(r.direction.as_str(), "send" | "receive") ||
-                r.group_id.len() > 320 || !r.group_id.starts_with(&format!("attachment:{}:", r.sender_member_identity)) ||
-                r.member_identities.len() < 2 || r.member_identities.len() > MAX_GROUP_MEMBERS ||
-                member_set.len() != r.member_identities.len() ||
-                r.member_identities.windows(2).any(|m| m[0] >= m[1]) ||
-                !r.member_identities.contains(&owner) || !r.member_identities.contains(&r.sender_member_identity) ||
-                (r.direction == "send" && r.sender_member_identity != owner) ||
-                r.member_identities.iter().any(|m| m.rsplit_once(':').map_or(true, |(u,d)| u.is_empty() || u.chars().count() > 256 || u.contains(':') || u.chars().any(|c| c <= '\u{20}') || !attachment_hex(d))) {
+            if (r.direction == "send"
+                && (r.cipher_byte_size.is_some()
+                    || r.cipher_sha256.is_some()
+                    || r.welcome_sha256.is_some()))
+                || (r.direction == "receive"
+                    && (r.cipher_byte_size.map_or(true, |n| {
+                        n <= r.byte_size
+                            || n > r
+                                .byte_size
+                                .saturating_add(expected_count.saturating_mul(4096))
+                    }) || r
+                        .cipher_sha256
+                        .as_deref()
+                        .map_or(true, |h| !attachment_hex(h))
+                        || r.welcome_sha256
+                            .as_deref()
+                            .map_or(true, |h| !attachment_hex(h))))
+                || !attachment_hex(&r.plain_sha256)
+                || r.byte_size == 0
+                || r.byte_size > MAX_JSON_INTEGER
+                || r.chunk_count != expected_count
+                || r.chunk_count > u32::MAX as u64
+                || !matches!(r.direction.as_str(), "send" | "receive")
+                || r.group_id.len() > 320
+                || !r
+                    .group_id
+                    .starts_with(&format!("attachment:{}:", r.sender_member_identity))
+                || r.member_identities.len() < 2
+                || r.member_identities.len() > MAX_GROUP_MEMBERS
+                || member_set.len() != r.member_identities.len()
+                || r.member_identities.windows(2).any(|m| m[0] >= m[1])
+                || !r.member_identities.contains(&owner)
+                || !r.member_identities.contains(&r.sender_member_identity)
+                || (r.direction == "send" && r.sender_member_identity != owner)
+                || r.member_identities.iter().any(|m| {
+                    m.rsplit_once(':').map_or(true, |(u, d)| {
+                        u.is_empty()
+                            || u.chars().count() > 256
+                            || u.contains(':')
+                            || u.chars().any(|c| c <= '\u{20}')
+                            || !attachment_hex(d)
+                    })
+                })
+            {
                 return Err("MLS附件登记合同无效".into());
             }
             if let Some(saved) = provider.attachments.borrow().get(&r.group_id) {
                 // 终态不再保留整份名册；返回终态仅用于明确拒绝任何继续消费。
-                if saved.terminal { return Ok(json!(saved)); }
-                if saved.cipher_byte_size != r.cipher_byte_size || saved.cipher_sha256 != r.cipher_sha256 ||
-                    saved.welcome_sha256 != r.welcome_sha256 || saved.plain_sha256 != r.plain_sha256 || saved.direction != r.direction || saved.chunk_count != r.chunk_count || saved.byte_size != r.byte_size ||
-                    saved.sender_member_identity != r.sender_member_identity || saved.member_identities != r.member_identities {
+                if saved.terminal {
+                    return Ok(json!(saved));
+                }
+                if saved.cipher_byte_size != r.cipher_byte_size
+                    || saved.cipher_sha256 != r.cipher_sha256
+                    || saved.welcome_sha256 != r.welcome_sha256
+                    || saved.plain_sha256 != r.plain_sha256
+                    || saved.direction != r.direction
+                    || saved.chunk_count != r.chunk_count
+                    || saved.byte_size != r.byte_size
+                    || saved.sender_member_identity != r.sender_member_identity
+                    || saved.member_identities != r.member_identities
+                {
                     return Err("MLS附件登记发生变化".into());
                 }
                 return Ok(json!(saved));
             }
             // 过期附件仅清理其准确协议组并留七天公开终态，不能占住活跃窗口。
-            let expired: Vec<_> = provider.attachments.borrow().values()
-                .filter(|p| !p.terminal && now.saturating_sub(p.created_at_millis) > RECEIPT_LIFETIME_MILLIS)
-                .map(|p| p.group_id.clone()).collect();
+            let expired: Vec<_> = provider
+                .attachments
+                .borrow()
+                .values()
+                .filter(|p| {
+                    !p.terminal && now.saturating_sub(p.created_at_millis) > RECEIPT_LIFETIME_MILLIS
+                })
+                .map(|p| p.group_id.clone())
+                .collect();
             for id in expired {
                 delete_attachment_group(provider, &id)?;
                 let mut records = provider.attachments.borrow_mut();
@@ -1032,62 +1192,111 @@ fn attachment_store(provider: &MlsProvider, action: &str, value: serde_json::Val
                 p.member_identities.clear();
                 p.finished_at_millis = Some(now);
             }
-            provider.attachments.borrow_mut().retain(|_, p| !p.terminal ||
-                now.saturating_sub(p.finished_at_millis.unwrap_or(now)) <= RECEIPT_LIFETIME_MILLIS);
-            if provider.attachments.borrow().values().filter(|p| !p.terminal).count() >= 64 ||
-                provider.attachments.borrow().len() >= 1024 {
+            provider.attachments.borrow_mut().retain(|_, p| {
+                !p.terminal
+                    || now.saturating_sub(p.finished_at_millis.unwrap_or(now))
+                        <= RECEIPT_LIFETIME_MILLIS
+            });
+            if provider
+                .attachments
+                .borrow()
+                .values()
+                .filter(|p| !p.terminal)
+                .count()
+                >= 64
+                || provider.attachments.borrow().len() >= 1024
+            {
                 return Err("MLS附件协议记录已满".into());
             }
-            if MlsGroup::load(provider.storage(), &group_id_from_conversation(&r.group_id)?)
-                .map_err(|_| "附件状态异常")?.is_some() {
+            if MlsGroup::load(
+                provider.storage(),
+                &group_id_from_conversation(&r.group_id)?,
+            )
+            .map_err(|_| "附件状态异常")?
+            .is_some()
+            {
                 return Err("MLS附件组已存在但没有归属收据".into());
             }
             let p = AttachmentProgress {
-                cipher_byte_size:r.cipher_byte_size, cipher_sha256:r.cipher_sha256, welcome_sha256:r.welcome_sha256,
-                plain_sha256: r.plain_sha256, group_id: r.group_id.clone(), direction: r.direction, chunk_count: r.chunk_count,
-                byte_size: r.byte_size, sender_member_identity: r.sender_member_identity,
-                member_identities: r.member_identities, next_chunk: 0, durable_bytes: 0,
-                durable_sha256: String::new(), terminal: false, created_at_millis: now, finished_at_millis: None,
+                cipher_byte_size: r.cipher_byte_size,
+                cipher_sha256: r.cipher_sha256,
+                welcome_sha256: r.welcome_sha256,
+                plain_sha256: r.plain_sha256,
+                group_id: r.group_id.clone(),
+                direction: r.direction,
+                chunk_count: r.chunk_count,
+                byte_size: r.byte_size,
+                sender_member_identity: r.sender_member_identity,
+                member_identities: r.member_identities,
+                next_chunk: 0,
+                durable_bytes: 0,
+                durable_sha256: String::new(),
+                terminal: false,
+                created_at_millis: now,
+                finished_at_millis: None,
             };
-            provider.attachments.borrow_mut().insert(r.group_id, p.clone());
+            provider
+                .attachments
+                .borrow_mut()
+                .insert(r.group_id, p.clone());
             Ok(json!(p))
         }
         "attachment_progress" => {
-            let r: AttachmentGroup = serde_json::from_value(value).map_err(|_| "附件查询字段非法")?;
+            let r: AttachmentGroup =
+                serde_json::from_value(value).map_err(|_| "附件查询字段非法")?;
             let records = provider.attachments.borrow();
             let p = records.get(&r.group_id).ok_or("MLS附件进度不存在")?;
             Ok(json!(p))
         }
         "confirm_attachment_chunk" => {
-            let r: AttachmentConfirm = serde_json::from_value(value).map_err(|_| "附件确认字段非法")?;
+            let r: AttachmentConfirm =
+                serde_json::from_value(value).map_err(|_| "附件确认字段非法")?;
             let mut records = provider.attachments.borrow_mut();
             let p = records.get_mut(&r.group_id).ok_or("MLS附件进度不存在")?;
-            if p.terminal || now.saturating_sub(p.created_at_millis) > RECEIPT_LIFETIME_MILLIS ||
-                !attachment_hex(&r.durable_sha256) {
+            if p.terminal
+                || now.saturating_sub(p.created_at_millis) > RECEIPT_LIFETIME_MILLIS
+                || !attachment_hex(&r.durable_sha256)
+            {
                 return Err("MLS附件确认无效或过期".into());
             }
-            if r.chunk_index.checked_add(1) == Some(p.next_chunk) && p.durable_bytes == r.durable_bytes && p.durable_sha256 == r.durable_sha256 {
+            if r.chunk_index.checked_add(1) == Some(p.next_chunk)
+                && p.durable_bytes == r.durable_bytes
+                && p.durable_sha256 == r.durable_sha256
+            {
                 return Ok(json!(p));
             }
             if p.next_chunk != r.chunk_index || p.next_chunk >= p.chunk_count {
                 return Err("MLS附件块确认错序".into());
             }
-            let kind = if p.direction == "send" { "send" } else { "process" };
+            let kind = if p.direction == "send" {
+                "send"
+            } else {
+                "process"
+            };
             let key = format!("{kind}:{}:chunk:{}", p.group_id, p.next_chunk);
             let results = provider.results.borrow();
             let result = results.get(&key).ok_or("MLS附件原块结果缺失")?;
-            if result.request["group_id"] != p.group_id || (kind == "process" &&
-                (result.result["message_kind"] != "application" || result.result["status"] != "applied" ||
-                result.result["sender_member_identity"] != p.sender_member_identity)) {
+            if result.request["group_id"] != p.group_id
+                || (kind == "process"
+                    && (result.result["message_kind"] != "application"
+                        || result.result["status"] != "applied"
+                        || result.result["sender_member_identity"] != p.sender_member_identity))
+            {
                 return Err("MLS附件原块结果不一致".into());
             }
             let plain_len = std::cmp::min(1024 * 1024, p.byte_size - p.next_chunk * (1024 * 1024));
             let increment = if kind == "send" {
-                let wire = result.result["application_wire_hex"].as_str().ok_or("MLS附件原密文缺失")?;
+                let wire = result.result["application_wire_hex"]
+                    .as_str()
+                    .ok_or("MLS附件原密文缺失")?;
                 let bytes = wire.len() as u64 / 2 + 4;
-                if bytes <= plain_len || bytes > plain_len + 4096 { return Err("MLS附件帧开销超限".into()); }
+                if bytes <= plain_len || bytes > plain_len + 4096 {
+                    return Err("MLS附件帧开销超限".into());
+                }
                 bytes
-            } else { plain_len };
+            } else {
+                plain_len
+            };
             if p.durable_bytes.checked_add(increment) != Some(r.durable_bytes) {
                 return Err("MLS附件持久字节数不一致".into());
             }
@@ -1099,9 +1308,17 @@ fn attachment_store(provider: &MlsProvider, action: &str, value: serde_json::Val
             Ok(json!(p))
         }
         "finish_attachment" | "abort_attachment" => {
-            let r: AttachmentGroup = serde_json::from_value(value).map_err(|_| "附件终态字段非法")?;
-            let saved = provider.attachments.borrow().get(&r.group_id).cloned().ok_or("MLS附件进度不存在")?;
-            if saved.terminal { return Ok(json!(saved)); }
+            let r: AttachmentGroup =
+                serde_json::from_value(value).map_err(|_| "附件终态字段非法")?;
+            let saved = provider
+                .attachments
+                .borrow()
+                .get(&r.group_id)
+                .cloned()
+                .ok_or("MLS附件进度不存在")?;
+            if saved.terminal {
+                return Ok(json!(saved));
+            }
             if action == "finish_attachment" && saved.next_chunk != saved.chunk_count {
                 return Err("MLS附件尚未持久完成".into());
             }
@@ -1118,11 +1335,20 @@ fn attachment_store(provider: &MlsProvider, action: &str, value: serde_json::Val
 }
 
 /// 附件只能消费当前块；归档游标拒绝再次推进已经消费的发送/接收链。
-fn require_attachment_operation(provider: &MlsProvider, kind: &str, request: &serde_json::Value) -> Result<(), String> {
-    let group_id = match request["group_id"].as_str() { Some(g) => g, None => return Ok(()) };
+fn require_attachment_operation(
+    provider: &MlsProvider,
+    kind: &str,
+    request: &serde_json::Value,
+) -> Result<(), String> {
+    let group_id = match request["group_id"].as_str() {
+        Some(g) => g,
+        None => return Ok(()),
+    };
     let records = provider.attachments.borrow();
     let Some(p) = records.get(group_id) else {
-        if group_id.starts_with("attachment:") { return Err("MLS附件缺少协议归属".into()); }
+        if group_id.starts_with("attachment:") {
+            return Err("MLS附件缺少协议归属".into());
+        }
         return Ok(());
     };
     if p.terminal || now_millis()?.saturating_sub(p.created_at_millis) > RECEIPT_LIFETIME_MILLIS {
@@ -1132,14 +1358,31 @@ fn require_attachment_operation(provider: &MlsProvider, kind: &str, request: &se
     let expected = match kind {
         "create" if p.direction == "send" && p.next_chunk == 0 => format!("{group_id}:create"),
         "add" if p.direction == "send" && p.next_chunk == 0 => format!("{group_id}:add"),
-        "process" if p.direction == "receive" && p.next_chunk == 0 && id == format!("{group_id}:welcome") => id.to_owned(),
-        "send" if p.direction == "send" && p.next_chunk < p.chunk_count => format!("{group_id}:chunk:{}", p.next_chunk),
-        "process" if p.direction == "receive" && p.next_chunk < p.chunk_count => format!("{group_id}:chunk:{}", p.next_chunk),
+        "process"
+            if p.direction == "receive"
+                && p.next_chunk == 0
+                && id == format!("{group_id}:welcome") =>
+        {
+            id.to_owned()
+        }
+        "send" if p.direction == "send" && p.next_chunk < p.chunk_count => {
+            format!("{group_id}:chunk:{}", p.next_chunk)
+        }
+        "process" if p.direction == "receive" && p.next_chunk < p.chunk_count => {
+            format!("{group_id}:chunk:{}", p.next_chunk)
+        }
         _ => return Err("MLS附件操作不允许".into()),
     };
-    if id != expected { return Err("MLS附件操作错序".into()); }
-    if request["plaintext_hex"].as_str().is_some_and(|s| s.len() > (1024 * 1024 + 2048) * 2) ||
-        request["wire_message_hex"].as_str().is_some_and(|s| s.len() > (1024 * 1024 + 4096) * 2) {
+    if id != expected {
+        return Err("MLS附件操作错序".into());
+    }
+    if request["plaintext_hex"]
+        .as_str()
+        .is_some_and(|s| s.len() > (1024 * 1024 + 2048) * 2)
+        || request["wire_message_hex"]
+            .as_str()
+            .is_some_and(|s| s.len() > (1024 * 1024 + 4096) * 2)
+    {
         return Err("MLS附件块过大".into());
     }
     Ok(())
@@ -1550,7 +1793,6 @@ fn identity_of(credential: &Credential) -> String {
 
 /// 从成员标识取 用户身份 段（"user_id:device_id" → "user_id"）。
 
-
 fn group_create_json(request_json: *const c_char) -> Result<String, String> {
     let request: GroupCreateRequest = parse_request(request_json)?;
     // 消息标识在触碰持久状态之前校验，重放仍按完整原请求复核。
@@ -1600,7 +1842,9 @@ fn group_add_members_json(request_json: *const c_char) -> Result<String, String>
     require_non_empty("user_id", &request.user_id)?;
     require_non_empty("device_id", &request.device_id)?;
     require_non_empty("group_id", &request.group_id)?;
-    if request.key_packages_hex.is_empty() || request.key_packages_hex.len() != request.expected_member_identities.len() {
+    if request.key_packages_hex.is_empty()
+        || request.key_packages_hex.len() != request.expected_member_identities.len()
+    {
         return Err("group_add_members 至少需要一个 KeyPackage".to_string());
     }
 
@@ -1641,10 +1885,16 @@ fn group_add_members_json(request_json: *const c_char) -> Result<String, String>
         let leaf = key_package.leaf_node();
         let expected = &request.expected_member_identities[index];
         let device = expected.rsplit_once(':').ok_or("成员身份格式非法")?.1;
-        if identity_of(leaf.credential()) != *expected ||
-            hex::encode(leaf.signature_key().as_slice()) != device ||
-            prior_members.contains(expected) ||
-            request.expected_member_identities.iter().filter(|id| *id == expected).count() != 1 {
+        if identity_of(leaf.credential()) != *expected
+            || hex::encode(leaf.signature_key().as_slice()) != device
+            || prior_members.contains(expected)
+            || request
+                .expected_member_identities
+                .iter()
+                .filter(|id| *id == expected)
+                .count()
+                != 1
+        {
             return Err("KeyPackage 与登记 MLS 身份不一致".into());
         }
         key_packages.push(key_package);
@@ -1722,7 +1972,11 @@ fn group_remove_members_json(request_json: *const c_char) -> Result<String, Stri
         .members()
         .map(|m| identity_of(&m.credential))
         .collect();
-    if targets.iter().any(|target| !prior_members.iter().any(|member| member.as_str() == *target)) {
+    if targets.iter().any(|target| {
+        !prior_members
+            .iter()
+            .any(|member| member.as_str() == *target)
+    }) {
         return Err("移除列表含不在组内的设备身份".to_string());
     }
     let mut indices = Vec::new();
@@ -1737,7 +1991,8 @@ fn group_remove_members_json(request_json: *const c_char) -> Result<String, Stri
     if indices.is_empty() {
         return Err("未在群名册中找到要移除的成员".to_string());
     }
-    let mut removed_member_identities: Vec<String> = removed_member_identities.into_iter().collect();
+    let mut removed_member_identities: Vec<String> =
+        removed_member_identities.into_iter().collect();
     removed_member_identities.sort();
 
     let (commit, _welcome, _group_info) = group
@@ -1788,7 +2043,7 @@ fn group_create_message_json(request_json: *const c_char) -> Result<String, Stri
         .ok_or_else(|| "MLS 群不存在，无法发消息".to_string())?;
 
     let plaintext = decode_hex_field("plaintext_hex", &request.plaintext_hex)?;
-    validate_attachment_plaintext(&provider,&request.group_id,&plaintext)?;
+    validate_attachment_plaintext(&provider, &request.group_id, &plaintext)?;
     let message = group
         .create_message(&provider, &signer, &plaintext)
         .map_err(|error| format!("创建群 application message 失败: {error:?}"))?;
@@ -1832,7 +2087,10 @@ fn group_process_json(request_json: *const c_char) -> Result<String, String> {
 
     let response = match message_in.extract() {
         MlsMessageBodyIn::Welcome(welcome) => {
-            if MlsGroup::load(provider.storage(), &group_id).map_err(|_| "MLS组加载失败")?.is_some() {
+            if MlsGroup::load(provider.storage(), &group_id)
+                .map_err(|_| "MLS组加载失败")?
+                .is_some()
+            {
                 return Err("MLS Welcome不能覆盖已消费的组".into());
             }
             let staged = StagedWelcome::new_from_welcome(
@@ -1842,24 +2100,40 @@ fn group_process_json(request_json: *const c_char) -> Result<String, String> {
                 None,
             )
             .map_err(|error| format!("处理群 Welcome 失败: {error:?}"))?;
-            let sender_identity = identity_of(staged.welcome_sender().map_err(|_| "Welcome发送者无效")?.credential());
+            let sender_identity = identity_of(
+                staged
+                    .welcome_sender()
+                    .map_err(|_| "Welcome发送者无效")?
+                    .credential(),
+            );
             // BasicCredential不是设备认证；每个实际叶子的签名公钥必须等于设备标识。
             for member in staged.members() {
                 let identity = identity_of(&member.credential);
-                if identity.rsplit_once(':').map_or(true, |(u,d)| u.is_empty() || u.contains(':') ||
-                    !attachment_hex(d) || hex::encode(&member.signature_key) != d) {
+                if identity.rsplit_once(':').map_or(true, |(u, d)| {
+                    u.is_empty()
+                        || u.contains(':')
+                        || !attachment_hex(d)
+                        || hex::encode(&member.signature_key) != d
+                }) {
                     return Err("MLS Welcome成员签名公钥与设备身份不一致".into());
                 }
             }
             if let Some(p) = provider.attachments.borrow().get(&request.group_id) {
-                let mut actual: Vec<_> = staged.members().map(|m| identity_of(&m.credential)).collect();
+                let mut actual: Vec<_> = staged
+                    .members()
+                    .map(|m| identity_of(&m.credential))
+                    .collect();
                 actual.sort();
-                if p.direction != "receive" || sender_identity != p.sender_member_identity || actual != p.member_identities {
+                if p.direction != "receive"
+                    || sender_identity != p.sender_member_identity
+                    || actual != p.member_identities
+                {
                     return Err("MLS附件Welcome发送者或名册不一致".into());
                 }
             }
-            let group = staged.into_group(&provider)
-            .map_err(|error| format!("从 Welcome 创建群失败: {error:?}"))?;
+            let group = staged
+                .into_group(&provider)
+                .map_err(|error| format!("从 Welcome 创建群失败: {error:?}"))?;
             if group.group_id() != &group_id {
                 return Err("Welcome group_id 与 group_id 不一致".to_string());
             }
@@ -1918,9 +2192,13 @@ fn process_group_protocol(
         }));
     }
 
-    let processed = group
-        .process_message(provider, protocol_message)
-        .map_err(|_| "CHAT_MLS_MESSAGE_REJECTED:MLS验密失败，不能确认消息".to_string())?;
+    // 官方OpenMLS调试构建对损坏AEAD密文使用debug_assert；失败不得越过C ABI终止App。
+    // 未成功处理时丢弃本次内存provider，不提交协议状态、结果或确认。
+    let processed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        group.process_message(provider, protocol_message)
+    }))
+    .map_err(|_| "CHAT_MLS_MESSAGE_REJECTED:MLS验密失败，不能确认消息".to_string())?
+    .map_err(|_| "CHAT_MLS_MESSAGE_REJECTED:MLS验密失败，不能确认消息".to_string())?;
 
     let sender_identity = identity_of(processed.credential());
     match processed.into_content() {
@@ -1931,7 +2209,7 @@ fn process_group_protocol(
                 }
             }
             let plaintext = message.into_bytes();
-            validate_attachment_plaintext(provider,conversation_id,&plaintext)?;
+            validate_attachment_plaintext(provider, conversation_id, &plaintext)?;
             let epoch = group.epoch().as_u64();
             Ok(json!({
                 "group_id": conversation_id,
@@ -1946,7 +2224,9 @@ fn process_group_protocol(
             }))
         }
         ProcessedMessageContent::StagedCommitMessage(staged) => {
-            if provider.attachments.borrow().contains_key(conversation_id) { return Err("MLS附件禁止Commit".into()); }
+            if provider.attachments.borrow().contains_key(conversation_id) {
+                return Err("MLS附件禁止Commit".into());
+            }
             let self_removed = staged.self_removed();
             group
                 .merge_staged_commit(provider, *staged)
@@ -1954,8 +2234,12 @@ fn process_group_protocol(
             if group.is_active() {
                 for member in group.members() {
                     let identity = identity_of(&member.credential);
-                    if identity.rsplit_once(':').map_or(true, |(u,d)| u.is_empty() || u.contains(':') ||
-                        !attachment_hex(d) || hex::encode(&member.signature_key) != d) {
+                    if identity.rsplit_once(':').map_or(true, |(u, d)| {
+                        u.is_empty()
+                            || u.contains(':')
+                            || !attachment_hex(d)
+                            || hex::encode(&member.signature_key) != d
+                    }) {
                         return Err("MLS Commit成员签名公钥与设备身份不一致".into());
                     }
                 }
@@ -2088,6 +2372,30 @@ mod tests {
         invoke(group_process_json, welcome).unwrap();
         (a, b)
     }
+    /// 损坏密文失败时不提交快照，原合法密文仍可精确消费。
+    #[test]
+    fn corrupt_ciphertext_rejects_without_committing_or_aborting() {
+        let (a, b) = pair();
+        let mut send = a.group("send", "group");
+        send["plaintext_hex"] = json!(hex::encode(b"synthetic ciphertext regression"));
+        let sent = invoke(group_create_message_json, send).unwrap();
+        let mut wire = hex::decode(sent["application_wire_hex"].as_str().unwrap()).unwrap();
+        let last = wire.len() - 1;
+        wire[last] ^= 1;
+        let before = fs::read(storage_path(&b.dir)).unwrap();
+        let mut receive = b.group("receive", "group");
+        receive["wire_message_hex"] = json!(hex::encode(wire));
+        assert!(invoke(group_process_json, receive.clone())
+            .unwrap_err()
+            .contains("CHAT_MLS_MESSAGE_REJECTED"));
+        assert_eq!(before, fs::read(storage_path(&b.dir)).unwrap());
+        receive["wire_message_hex"] = sent["application_wire_hex"].clone();
+        assert_eq!(
+            invoke(group_process_json, receive).unwrap()["plaintext_hex"],
+            hex::encode(b"synthetic ciphertext regression")
+        );
+    }
+
     #[test]
     fn identity_is_persistent_and_owner_scoped() {
         let a = Fixture::new("same-user");
@@ -2152,20 +2460,35 @@ mod tests {
             return false;
         }
         let mut content = Vec::new();
-        VLBytes::from(text("user_id").as_bytes().to_vec()).tls_serialize(&mut content).unwrap();
+        VLBytes::from(text("user_id").as_bytes().to_vec())
+            .tls_serialize(&mut content)
+            .unwrap();
         content.extend(bytes("device_id"));
         content.extend(bytes("account_id"));
         content.extend(proof["binding_revision"].as_u64().unwrap().to_be_bytes());
-        VLBytes::from(text("service_origin").as_bytes().to_vec()).tls_serialize(&mut content).unwrap();
+        VLBytes::from(text("service_origin").as_bytes().to_vec())
+            .tls_serialize(&mut content)
+            .unwrap();
         content.extend(bytes("challenge"));
         content.extend(proof["expires_at_millis"].as_u64().unwrap().to_be_bytes());
-        VLBytes::from(text("method").as_bytes().to_vec()).tls_serialize(&mut content).unwrap();
-        VLBytes::from(text("request_target").as_bytes().to_vec()).tls_serialize(&mut content).unwrap();
+        VLBytes::from(text("method").as_bytes().to_vec())
+            .tls_serialize(&mut content)
+            .unwrap();
+        VLBytes::from(text("request_target").as_bytes().to_vec())
+            .tls_serialize(&mut content)
+            .unwrap();
         content.extend(bytes("body_sha256"));
-        let encoded = SignContent::new(label, content.into()).tls_serialize_detached().unwrap();
-        RustCrypto::default().verify_signature(
-            GMB_MLS_CIPHERSUITE.signature_algorithm(), &encoded, &public, &bytes("signature"),
-        ).is_ok()
+        let encoded = SignContent::new(label, content.into())
+            .tls_serialize_detached()
+            .unwrap();
+        RustCrypto::default()
+            .verify_signature(
+                GMB_MLS_CIPHERSUITE.signature_algorithm(),
+                &encoded,
+                &public,
+                &bytes("signature"),
+            )
+            .is_ok()
     }
 
     #[test]
@@ -2182,8 +2505,14 @@ mod tests {
         assert_eq!(proof, invoke(identity_json, request).unwrap());
         assert_eq!(before, fs::read(storage_path(&a.dir)).unwrap());
         let provider = load_provider(&a.dir).unwrap();
-        let body_hash = provider.crypto().hash(HashType::Sha2_256, b"synthetic request").unwrap();
-        assert_eq!(proof["body_sha256"], format!("0x{}", hex::encode(body_hash)));
+        let body_hash = provider
+            .crypto()
+            .hash(HashType::Sha2_256, b"synthetic request")
+            .unwrap();
+        assert_eq!(
+            proof["body_sha256"],
+            format!("0x{}", hex::encode(body_hash))
+        );
         assert!(proof.get("body_hex").is_none());
     }
 
@@ -2199,7 +2528,10 @@ mod tests {
             ("binding_revision", json!(2)),
             ("service_origin", json!("https://other.example.test")),
             ("challenge", json!(format!("0x{}", "33".repeat(32)))),
-            ("expires_at_millis", json!(proof["expires_at_millis"].as_u64().unwrap() + 1)),
+            (
+                "expires_at_millis",
+                json!(proof["expires_at_millis"].as_u64().unwrap() + 1),
+            ),
             ("method", json!("GET")),
             ("request_target", json!("/auth/other")),
             ("body_sha256", json!(format!("0x{}", "33".repeat(32)))),
@@ -2207,9 +2539,17 @@ mod tests {
         ] {
             let mut changed = proof.clone();
             changed[field] = value;
-            assert!(!verify_authentication(&changed, AUTHENTICATION_LABEL), "{field}");
+            assert!(
+                !verify_authentication(&changed, AUTHENTICATION_LABEL),
+                "{field}"
+            );
         }
-        for label in ["KeyPackageTBS", "LeafNodeTBS", "FramedContentTBS", "GroupInfoTBS"] {
+        for label in [
+            "KeyPackageTBS",
+            "LeafNodeTBS",
+            "FramedContentTBS",
+            "GroupInfoTBS",
+        ] {
             assert!(!verify_authentication(&proof, label), "{label}");
         }
     }
@@ -2220,8 +2560,14 @@ mod tests {
         let request = authentication_request(&a);
         let before = fs::read(storage_path(&a.dir)).unwrap();
         for (field, value) in [
-            ("service_origin", json!(format!("{}://api.example.test", "http"))),
-            ("service_origin", json!(format!("{}://api.example.test", "ws"))),
+            (
+                "service_origin",
+                json!(format!("{}://api.example.test", "http")),
+            ),
+            (
+                "service_origin",
+                json!(format!("{}://api.example.test", "ws")),
+            ),
             ("service_origin", json!("wss://api.example.test")),
             ("service_origin", json!("https://api.example.test:443")),
             ("service_origin", json!("https://user@api.example.test")),
@@ -2239,7 +2585,10 @@ mod tests {
             ("expires_at_millis", json!(now_millis().unwrap() + 600_000)),
             ("body_hex", json!("0")),
             ("body_hex", json!("AB")),
-            ("body_hex", json!("11".repeat(MAX_AUTHENTICATION_BODY_BYTES + 1))),
+            (
+                "body_hex",
+                json!("11".repeat(MAX_AUTHENTICATION_BODY_BYTES + 1)),
+            ),
             ("label", json!("FramedContentTBS")),
             ("payload_hex", json!("11")),
             ("device_id", json!("33".repeat(32))),
@@ -2271,7 +2620,8 @@ mod tests {
         let request = authentication_request(&a);
         let mut other = request.clone();
         other["user_id"] = json!("other");
-        assert!(invoke(identity_json, other).unwrap_err()
+        assert!(invoke(identity_json, other)
+            .unwrap_err()
             .starts_with("CHAT_MLS_STATE_OWNER_MISMATCH"));
         let provider = load_provider(&a.dir).unwrap();
         let public = hex::decode(&a.device).unwrap();
@@ -2283,21 +2633,29 @@ mod tests {
         damaged.store(provider.storage()).unwrap();
         save_provider(&a.dir, &provider).unwrap();
         let damaged_signer = fs::read(storage_path(&a.dir)).unwrap();
-        assert!(invoke(identity_json, request.clone()).unwrap_err()
+        assert!(invoke(identity_json, request.clone())
+            .unwrap_err()
             .starts_with(ERROR_STATE_INVALID));
         assert_eq!(damaged_signer, fs::read(storage_path(&a.dir)).unwrap());
         signer.store(provider.storage()).unwrap();
         SignatureKeyPair::delete(
-            provider.storage(), &public, GMB_MLS_CIPHERSUITE.signature_algorithm(),
-        ).unwrap();
+            provider.storage(),
+            &public,
+            GMB_MLS_CIPHERSUITE.signature_algorithm(),
+        )
+        .unwrap();
         save_provider(&a.dir, &provider).unwrap();
         let missing_signer = fs::read(storage_path(&a.dir)).unwrap();
-        assert!(invoke(identity_json, request.clone()).unwrap_err()
+        assert!(invoke(identity_json, request.clone())
+            .unwrap_err()
             .starts_with(ERROR_SIGNER_MISSING));
         assert_eq!(missing_signer, fs::read(storage_path(&a.dir)).unwrap());
         fs::write(storage_path(&a.dir), b"synthetic corrupt state").unwrap();
         assert!(invoke(identity_json, request.clone()).is_err());
-        assert_eq!(fs::read(storage_path(&a.dir)).unwrap(), b"synthetic corrupt state");
+        assert_eq!(
+            fs::read(storage_path(&a.dir)).unwrap(),
+            b"synthetic corrupt state"
+        );
         fs::remove_file(storage_path(&a.dir)).unwrap();
         assert!(invoke(identity_json, request).is_err());
         assert!(!storage_path(&a.dir).exists());
@@ -2434,142 +2792,189 @@ mod tests {
         .is_err());
     }
 
-
     #[test]
     fn attachment_cursor_archives_chunks_and_deletes_only_owned_protocol_group() {
         let a = Fixture::new("CID-A");
         let b = Fixture::new("CID-A");
-        let sender = format!("{}:{}", a.user,a.device);
+        let sender = format!("{}:{}", a.user, a.device);
         let group = format!("attachment:{sender}:file");
-        let mut members = vec![sender.clone(),format!("{}:{}",b.user,b.device)];
+        let mut members = vec![sender.clone(), format!("{}:{}", b.user, b.device)];
         members.sort();
         let config = json!({"group_id":group,"direction":"send","chunk_count":1,"byte_size":3,
             "plain_sha256":"11".repeat(32),"sender_member_identity":sender,"member_identities":members});
         let begin = json!({"state_store_dir":a.dir,"user_id":a.user,"action":"begin_attachment","attachment":config});
-        invoke(store_json,begin.clone()).unwrap();
-        invoke(group_create_json,a.group(&format!("{group}:create"),&group)).unwrap();
+        invoke(store_json, begin.clone()).unwrap();
+        invoke(
+            group_create_json,
+            a.group(&format!("{group}:create"), &group),
+        )
+        .unwrap();
         let mut kp = b.request("package");
         kp["last_resort"] = json!(true);
-        let published = invoke(create_key_package_json,kp).unwrap();
-        let mut add = a.group(&format!("{group}:add"),&group);
+        let published = invoke(create_key_package_json, kp).unwrap();
+        let mut add = a.group(&format!("{group}:add"), &group);
         add["key_packages_hex"] = json!([published["key_package_hex"]]);
-        add["expected_member_identities"] = json!([format!("{}:{}",b.user,b.device)]);
-        invoke(group_add_members_json,add).unwrap();
-        let header = serde_json::to_vec(&json!({"group_id":group,"attachment_id":"file","sender_member_identity":sender,
-            "chunk_index":0,"chunk_count":1,"byte_size":3})).unwrap();
+        add["expected_member_identities"] = json!([format!("{}:{}", b.user, b.device)]);
+        invoke(group_add_members_json, add).unwrap();
+        let header = serde_json::to_vec(
+            &json!({"group_id":group,"attachment_id":"file","sender_member_identity":sender,
+            "chunk_index":0,"chunk_count":1,"byte_size":3}),
+        )
+        .unwrap();
         let mut plaintext = (header.len() as u32).to_be_bytes().to_vec();
-        plaintext.extend(header); plaintext.extend([1,2,3]);
-        let mut request = a.group(&format!("{group}:chunk:0"),&group);
+        plaintext.extend(header);
+        plaintext.extend([1, 2, 3]);
+        let mut request = a.group(&format!("{group}:chunk:0"), &group);
         request["plaintext_hex"] = json!(hex::encode(&plaintext));
-        let first = invoke(group_create_message_json,request.clone()).unwrap();
-        assert_eq!(invoke(group_create_message_json,request.clone()).unwrap(),first);
-        let bytes = first["application_wire_hex"].as_str().unwrap().len()/2+4;
+        let first = invoke(group_create_message_json, request.clone()).unwrap();
+        assert_eq!(
+            invoke(group_create_message_json, request.clone()).unwrap(),
+            first
+        );
+        let bytes = first["application_wire_hex"].as_str().unwrap().len() / 2 + 4;
         let confirm = json!({"state_store_dir":a.dir,"user_id":a.user,"action":"confirm_attachment_chunk",
             "attachment":{"group_id":group,"chunk_index":0,"durable_bytes":bytes,"durable_sha256":"22".repeat(32)}});
-        assert_eq!(invoke(store_json,confirm.clone()).unwrap()["next_chunk"],1);
-        assert_eq!(invoke(store_json,confirm).unwrap()["next_chunk"],1);
-        assert!(invoke(group_create_message_json,request).is_err());
-        let pending = invoke(store_json,json!({"state_store_dir":a.dir,"user_id":a.user,"action":"pending_results",
-            "message_id":format!("{group}:chunk:0")})).unwrap();
+        assert_eq!(
+            invoke(store_json, confirm.clone()).unwrap()["next_chunk"],
+            1
+        );
+        assert_eq!(invoke(store_json, confirm).unwrap()["next_chunk"], 1);
+        assert!(invoke(group_create_message_json, request).is_err());
+        let pending = invoke(
+            store_json,
+            json!({"state_store_dir":a.dir,"user_id":a.user,"action":"pending_results",
+            "message_id":format!("{group}:chunk:0")}),
+        )
+        .unwrap();
         assert!(pending["results"].as_array().unwrap().is_empty());
-        invoke(group_create_json,a.group("ordinary-create","ordinary")).unwrap();
-        let terminal=invoke(store_json,json!({"state_store_dir":a.dir,"user_id":a.user,"action":"finish_attachment",
-            "attachment":{"group_id":group}})).unwrap();
+        invoke(group_create_json, a.group("ordinary-create", "ordinary")).unwrap();
+        let terminal = invoke(
+            store_json,
+            json!({"state_store_dir":a.dir,"user_id":a.user,"action":"finish_attachment",
+            "attachment":{"group_id":group}}),
+        )
+        .unwrap();
         assert!(terminal["member_identities"].as_array().unwrap().is_empty());
-        let mut read = a.group("unused",&group);
+        let mut read = a.group("unused", &group);
         read.as_object_mut().unwrap().remove("message_id");
-        assert!(invoke(group_state_json,read).is_err());
-        let identity = invoke(identity_json,json!({"state_store_dir":a.dir,"user_id":a.user,"action":"read"})).unwrap();
-        assert_eq!(identity["device_id"],a.device);
-        let mut ordinary = a.group("unused","ordinary");
+        assert!(invoke(group_state_json, read).is_err());
+        let identity = invoke(
+            identity_json,
+            json!({"state_store_dir":a.dir,"user_id":a.user,"action":"read"}),
+        )
+        .unwrap();
+        assert_eq!(identity["device_id"], a.device);
+        let mut ordinary = a.group("unused", "ordinary");
         ordinary.as_object_mut().unwrap().remove("message_id");
-        assert_eq!(invoke(group_state_json,ordinary).unwrap()["member_count"],1);
-        assert!(invoke(store_json,json!({"state_store_dir":a.dir,"user_id":a.user,"action":"abort_attachment",
-            "attachment":{"group_id":"ordinary"}})).is_err());
-        assert!(invoke(store_json,begin).unwrap()["terminal"].as_bool().unwrap());
+        assert_eq!(
+            invoke(group_state_json, ordinary).unwrap()["member_count"],
+            1
+        );
+        assert!(invoke(
+            store_json,
+            json!({"state_store_dir":a.dir,"user_id":a.user,"action":"abort_attachment",
+            "attachment":{"group_id":"ordinary"}})
+        )
+        .is_err());
+        assert!(invoke(store_json, begin).unwrap()["terminal"]
+            .as_bool()
+            .unwrap());
     }
 
     #[test]
     fn attachment_registration_is_closed_scoped_and_bounded() {
         let a = Fixture::new("CID-A");
-        let sender = format!("{}:{}",a.user,a.device);
-        let mut members = vec![sender.clone(),format!("CID-B:{}","22".repeat(32))];
+        let sender = format!("{}:{}", a.user, a.device);
+        let mut members = vec![sender.clone(), format!("CID-B:{}", "22".repeat(32))];
         members.sort();
         for index in 0..64 {
-            let config=json!({"group_id":format!("attachment:{sender}:file-{index}"),"direction":"send",
+            let config = json!({"group_id":format!("attachment:{sender}:file-{index}"),"direction":"send",
                 "chunk_count":1,"byte_size":1,"plain_sha256":"11".repeat(32),
                 "sender_member_identity":sender,"member_identities":members});
             invoke(store_json,json!({"state_store_dir":a.dir,"user_id":a.user,"action":"begin_attachment","attachment":config})).unwrap();
         }
-        let config=json!({"group_id":format!("attachment:{sender}:overflow"),"direction":"send",
+        let config = json!({"group_id":format!("attachment:{sender}:overflow"),"direction":"send",
             "chunk_count":1,"byte_size":1,"plain_sha256":"11".repeat(32),
             "sender_member_identity":sender,"member_identities":members});
         assert!(invoke(store_json,json!({"state_store_dir":a.dir,"user_id":a.user,"action":"begin_attachment","attachment":config})).is_err());
-        let provider=load_provider(&a.dir).unwrap();
-        assert_eq!(provider.attachments.borrow().len(),64);
-        assert_eq!(provider.device.device_id,a.device);
+        let provider = load_provider(&a.dir).unwrap();
+        assert_eq!(provider.attachments.borrow().len(), 64);
+        assert_eq!(provider.device.device_id, a.device);
     }
-
 
     /// 直接FFI输入也须拒绝另一种附件身份、排序和整数边界，失败不能改状态。
     #[test]
     fn attachment_rejects_noncanonical_registration_and_confirmation_overflow() {
-        let a=Fixture::new("CID-A");
-        let sender=format!("{}:{}",a.user,a.device);
-        let group=format!("attachment:{sender}:file");
-        let mut members=vec![sender.clone(),format!("CID-B:{}","22".repeat(32))];
+        let a = Fixture::new("CID-A");
+        let sender = format!("{}:{}", a.user, a.device);
+        let group = format!("attachment:{sender}:file");
+        let mut members = vec![sender.clone(), format!("CID-B:{}", "22".repeat(32))];
         members.sort();
-        let config=json!({"group_id":group,"direction":"send","chunk_count":1,"byte_size":1,
+        let config = json!({"group_id":group,"direction":"send","chunk_count":1,"byte_size":1,
             "plain_sha256":"11".repeat(32),"sender_member_identity":sender,"member_identities":members});
-        let begin=|c| json!({"state_store_dir":a.dir,"user_id":a.user,"action":"begin_attachment","attachment":c});
-        let before=fs::read(storage_path(&a.dir)).unwrap();
-        for field in ["invalid-id","reverse-members","unknown","empty-welcome-digest","large-members"] {
-            let mut bad=config.clone();
+        let begin = |c| json!({"state_store_dir":a.dir,"user_id":a.user,"action":"begin_attachment","attachment":c});
+        let before = fs::read(storage_path(&a.dir)).unwrap();
+        for field in [
+            "invalid-id",
+            "reverse-members",
+            "unknown",
+            "empty-welcome-digest",
+            "large-members",
+        ] {
+            let mut bad = config.clone();
             match field {
-                "invalid-id"=>bad["group_id"]=json!(format!("attachment:{sender}:bad.id")),
-                "reverse-members"=>bad["member_identities"]=json!(members.iter().rev().collect::<Vec<_>>()),
-                "unknown"=>bad["extra"]=json!(true),
-                "large-members"=>{
-                    let mut large=members.clone();
-                    large.extend((0..1400).map(|i| format!("CID-C{i:04}:{}","33".repeat(32))));
+                "invalid-id" => bad["group_id"] = json!(format!("attachment:{sender}:bad.id")),
+                "reverse-members" => {
+                    bad["member_identities"] = json!(members.iter().rev().collect::<Vec<_>>())
+                }
+                "unknown" => bad["extra"] = json!(true),
+                "large-members" => {
+                    let mut large = members.clone();
+                    large.extend((0..1400).map(|i| format!("CID-C{i:04}:{}", "33".repeat(32))));
                     large.sort();
-                    bad["member_identities"]=json!(large);
-                },
-                _=>bad["welcome_sha256"]=json!(""),
+                    bad["member_identities"] = json!(large);
+                }
+                _ => bad["welcome_sha256"] = json!(""),
             }
-            assert!(invoke(store_json,begin(bad)).is_err());
-            assert_eq!(fs::read(storage_path(&a.dir)).unwrap(),before);
+            assert!(invoke(store_json, begin(bad)).is_err());
+            assert_eq!(fs::read(storage_path(&a.dir)).unwrap(), before);
         }
-        invoke(store_json,begin(config)).unwrap();
-        let committed=fs::read(storage_path(&a.dir)).unwrap();
+        invoke(store_json, begin(config)).unwrap();
+        let committed = fs::read(storage_path(&a.dir)).unwrap();
         assert!(invoke(store_json,json!({"state_store_dir":a.dir,"user_id":a.user,"action":"confirm_attachment_chunk",
             "attachment":{"group_id":group,"chunk_index":u64::MAX,"durable_bytes":1,"durable_sha256":"22".repeat(32)}})).is_err());
-        assert_eq!(fs::read(storage_path(&a.dir)).unwrap(),committed);
+        assert_eq!(fs::read(storage_path(&a.dir)).unwrap(), committed);
     }
 
     #[test]
     fn welcome_rejects_a_valid_mls_signature_with_a_forged_device_credential() {
-        let a=Fixture::new("CID-A");
-        let b=Fixture::new("CID-B");
-        let mut request=b.request("package");
-        request["last_resort"]=json!(true);
-        let package=invoke(create_key_package_json,request).unwrap();
-        let provider=load_provider(&a.dir).unwrap();
-        let (_,signer)=read_device_signer(&provider,&a.user,&a.device).unwrap();
-        let credential=CredentialWithKey {
-            credential:BasicCredential::new(format!("CID-A:{}","00".repeat(32)).into_bytes()).into(),
-            signature_key:signer.to_public_vec().into(),
+        let a = Fixture::new("CID-A");
+        let b = Fixture::new("CID-B");
+        let mut request = b.request("package");
+        request["last_resort"] = json!(true);
+        let package = invoke(create_key_package_json, request).unwrap();
+        let provider = load_provider(&a.dir).unwrap();
+        let (_, signer) = read_device_signer(&provider, &a.user, &a.device).unwrap();
+        let credential = CredentialWithKey {
+            credential: BasicCredential::new(format!("CID-A:{}", "00".repeat(32)).into_bytes())
+                .into(),
+            signature_key: signer.to_public_vec().into(),
         };
-        let id=group_id_from_conversation("forged-credential").unwrap();
-        let mut group=MlsGroup::new_with_group_id(&provider,&signer,&mls_group_config(),id,credential).unwrap();
-        let key=KeyPackageIn::tls_deserialize_exact(hex::decode(package["key_package_hex"].as_str().unwrap()).unwrap())
-            .unwrap().validate(provider.crypto(),ProtocolVersion::default()).unwrap();
-        let (_,welcome,_)=group.add_members(&provider,&signer,&[key]).unwrap();
-        let mut inbound=b.group("forged-welcome","forged-credential");
-        inbound["wire_message_hex"]=json!(hex::encode(welcome.tls_serialize_detached().unwrap()));
-        let before=fs::read(storage_path(&b.dir)).unwrap();
-        assert!(invoke(group_process_json,inbound).is_err());
-        assert_eq!(fs::read(storage_path(&b.dir)).unwrap(),before);
+        let id = group_id_from_conversation("forged-credential").unwrap();
+        let mut group =
+            MlsGroup::new_with_group_id(&provider, &signer, &mls_group_config(), id, credential)
+                .unwrap();
+        let key = KeyPackageIn::tls_deserialize_exact(
+            hex::decode(package["key_package_hex"].as_str().unwrap()).unwrap(),
+        )
+        .unwrap()
+        .validate(provider.crypto(), ProtocolVersion::default())
+        .unwrap();
+        let (_, welcome, _) = group.add_members(&provider, &signer, &[key]).unwrap();
+        let mut inbound = b.group("forged-welcome", "forged-credential");
+        inbound["wire_message_hex"] = json!(hex::encode(welcome.tls_serialize_detached().unwrap()));
+        let before = fs::read(storage_path(&b.dir)).unwrap();
+        assert!(invoke(group_process_json, inbound).is_err());
+        assert_eq!(fs::read(storage_path(&b.dir)).unwrap(), before);
     }
-
 }

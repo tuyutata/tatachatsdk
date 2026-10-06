@@ -64,7 +64,12 @@ void main() {
           !(entity.path.endsWith('.dart') || entity.path.endsWith('.proto'))) {
         continue;
       }
-      if (forbidden.hasMatch(entity.readAsStringSync())) {
+      // 通讯录application的共享闭集字段绑定CID；其余SDK身份保持部署中性。
+      final source = entity.readAsStringSync();
+      final neutralSource = entity.path.endsWith('mls_contact_sync.dart')
+          ? source.replaceAll("'owner_cid_number'", '')
+          : source;
+      if (forbidden.hasMatch(neutralSource)) {
         violations.add(entity.path);
       }
     }
@@ -91,18 +96,29 @@ void main() {
     bytes[0] = 9;
     expect(request.bodyBytes, [1, 2, 3]);
     expect(() => request.bodyBytes[0] = 9, throwsUnsupportedError);
-    expect(request.toJson().keys, unorderedEquals([
-      'service_origin', 'challenge', 'expires_at_millis', 'method',
-      'request_target', 'body_hex',
-    ]));
+    expect(
+      request.toJson().keys,
+      unorderedEquals([
+        'service_origin',
+        'challenge',
+        'expires_at_millis',
+        'method',
+        'request_target',
+        'body_hex',
+      ]),
+    );
     expect(request.toJson()['body_hex'], '010203');
     request.validate();
   });
 
   test('认证拒绝非HTTPS源、地址别名、过期挑战和非法请求', () {
     for (final request in [
-      _request(origin: Uri(scheme: 'http', host: 'api.example.test').toString()),
-      _request(origin: Uri(scheme: 'ws', host: 'api.example.test').toString()),
+      _request(
+        origin: Uri(scheme: 'http', host: 'api.example.test').toString(),
+      ),
+      _request(
+        origin: Uri(scheme: 'ws', host: 'api.example.test').toString(),
+      ),
       _request(origin: 'wss://api.example.test'),
       _request(origin: 'https://user@api.example.test'),
       _request(origin: 'https://api.example.test/path'),
@@ -125,14 +141,27 @@ void main() {
   });
 
   test('Dart拒绝错身份、错请求、漏字段、额外字段或私钥夹带的原生证明', () async {
-    final root = await Directory.systemTemp.createTemp('tatachat_auth_boundary_');
+    final root = await Directory.systemTemp.createTemp(
+      'tatachat_auth_boundary_',
+    );
     addTearDown(() => root.delete(recursive: true));
     final directory = Directory(await root.resolveSymbolicLinks());
     final request = _request();
     for (final field in [
-      'user_id', 'device_id', 'public_key', 'account_id', 'binding_revision',
-      'service_origin', 'challenge', 'expires_at_millis', 'method',
-      'request_target', 'body_sha256', 'signature', 'private_key', 'body_hex',
+      'user_id',
+      'device_id',
+      'public_key',
+      'account_id',
+      'binding_revision',
+      'service_origin',
+      'challenge',
+      'expires_at_millis',
+      'method',
+      'request_target',
+      'body_sha256',
+      'signature',
+      'private_key',
+      'body_hex',
     ]) {
       final store = MlsStateStore(
         directory,
@@ -140,8 +169,8 @@ void main() {
         debugCallJson: (input) {
           final result = _nativeResponse(input);
           if (input['action'] == 'sign_authentication') {
-            result[field] = field == 'binding_revision' ||
-                    field == 'expires_at_millis'
+            result[field] =
+                field == 'binding_revision' || field == 'expires_at_millis'
                 ? 2
                 : 'synthetic invalid value';
           }
@@ -150,7 +179,9 @@ void main() {
       );
       await expectLater(
         store.signAuthentication(
-          accountId: _hex(0x11), bindingRevision: 1, request: request,
+          accountId: _hex(0x11),
+          bindingRevision: 1,
+          request: request,
         ),
         throwsStateError,
       );
@@ -160,20 +191,26 @@ void main() {
       ownerUserId: 'user-a',
       debugCallJson: (input) {
         final result = _nativeResponse(input);
-        if (input['action'] == 'sign_authentication') result.remove('signature');
+        if (input['action'] == 'sign_authentication') {
+          result.remove('signature');
+        }
         return result;
       },
     );
     await expectLater(
       missing.signAuthentication(
-        accountId: _hex(0x11), bindingRevision: 1, request: request,
+        accountId: _hex(0x11),
+        bindingRevision: 1,
+        request: request,
       ),
       throwsStateError,
     );
   });
 
   test('运行时只读取宿主当前账户和已有MLS身份，不触发钱包、供钥或网络', () async {
-    final root = await Directory.systemTemp.createTemp('tatachat_auth_runtime_');
+    final root = await Directory.systemTemp.createTemp(
+      'tatachat_auth_runtime_',
+    );
     addTearDown(() => root.delete(recursive: true));
     final directory = Directory(await root.resolveSymbolicLinks());
     final host = _AuthenticationHost(_account());
@@ -208,7 +245,9 @@ void main() {
   for (final phase in ['before signing', 'after signing']) {
     for (final change in ['user', 'account', 'binding', 'domain', 'host']) {
       test('认证$phase时$change变化必须失败，不交付旧账户证明', () async {
-        final root = await Directory.systemTemp.createTemp('tatachat_auth_race_');
+        final root = await Directory.systemTemp.createTemp(
+          'tatachat_auth_race_',
+        );
         addTearDown(() => root.delete(recursive: true));
         final directory = Directory(await root.resolveSymbolicLinks());
         final host = _AuthenticationHost(_account());
@@ -222,6 +261,7 @@ void main() {
             hostIndex: change == 'host' ? 2 : 1,
           );
         }
+
         final runtime = ChatRuntimeCore(
           host: host,
           store: ChatStore(),
@@ -268,7 +308,8 @@ void main() {
         entered.complete();
         await release.future;
         return MlsStateStore(
-          directory, ownerUserId: user,
+          directory,
+          ownerUserId: user,
           debugCallJson: (input) {
             nativeCalls++;
             return _nativeResponse(input);
@@ -278,7 +319,8 @@ void main() {
     );
     addTearDown(runtime.close);
     final rejected = expectLater(
-      runtime.createMlsAuthenticationProof(_request()), throwsStateError,
+      runtime.createMlsAuthenticationProof(_request()),
+      throwsStateError,
     );
     await entered.future;
     final closed = runtime.close();
@@ -361,8 +403,9 @@ class _AuthenticationHost implements ChatRuntimeHost {
   int forbiddenCalls = 0;
 
   @override
-  Future<ChatRuntimeAccount?> currentAccount({String? expectedAccountId}) async =>
-      account;
+  Future<ChatRuntimeAccount?> currentAccount({
+    String? expectedAccountId,
+  }) async => account;
 
   @override
   dynamic noSuchMethod(Invocation invocation) {

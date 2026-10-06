@@ -1,5 +1,6 @@
-import '../storage/system_protected_storage.dart';
 import 'dart:io';
+
+import '../storage/system_protected_storage.dart';
 
 /// 系统保护目录内的附件缓存；传输层由独立 MLS 附件协议负责。
 class AttachmentVault {
@@ -7,7 +8,10 @@ class AttachmentVault {
   static const String plainDirName = '.plain';
 
   static File _cacheTarget(String path) {
-    if (!File(path).isAbsolute || path.split(Platform.pathSeparator).any((part) => part == '.' || part == '..')) {
+    if (!File(path).isAbsolute ||
+        path
+            .split(Platform.pathSeparator)
+            .any((part) => part == '.' || part == '..')) {
       throw StateError('附件缓存拒绝相对路径');
     }
     return File(path).absolute;
@@ -25,12 +29,15 @@ class AttachmentVault {
     while (true) {
       final type = await FileSystemEntity.type(parent.path, followLinks: false);
       if (type == FileSystemEntityType.directory) break;
-      if (type != FileSystemEntityType.notFound || parent.parent.path == parent.path) {
+      if (type != FileSystemEntityType.notFound ||
+          parent.parent.path == parent.path) {
         throw StateError('附件缓存父路径异常');
       }
       parent = parent.parent;
     }
-    if (await parent.resolveSymbolicLinks() != parent.path) throw StateError('附件缓存父路径异常');
+    if (await parent.resolveSymbolicLinks() != parent.path) {
+      throw StateError('附件缓存父路径异常');
+    }
   }
 
   static Future<bool> hasCache(String cachePath) async {
@@ -41,31 +48,43 @@ class AttachmentVault {
     return type == FileSystemEntityType.file;
   }
 
-  static Future<File> cache({required File source, required String cachePath}) async {
+  static Future<File> cache({
+    required File source,
+    required String cachePath,
+  }) async {
     final target = _cacheTarget(cachePath);
     final production = !Platform.environment.containsKey('FLUTTER_TEST');
     await _requireCachePath(target);
     await target.parent.create(recursive: true);
-    if (await FileSystemEntity.type(target.path, followLinks: false) == FileSystemEntityType.link ||
+    if (await FileSystemEntity.type(target.path, followLinks: false) ==
+            FileSystemEntityType.link ||
         await target.parent.resolveSymbolicLinks() != target.parent.path) {
       throw StateError('附件缓存路径异常');
     }
-    final partial = File(cachePath + '.part');
-    if (await FileSystemEntity.type(partial.path, followLinks: false) == FileSystemEntityType.link) {
+    final partial = File('$cachePath.part');
+    if (await FileSystemEntity.type(partial.path, followLinks: false) ==
+        FileSystemEntityType.link) {
       throw StateError('附件临时路径异常');
     }
     try {
-    final output = await partial.open(mode: FileMode.write);
-    try {
-      await for (final chunk in source.openRead()) { await output.writeFrom(chunk); }
-      await output.flush();
-    } finally { await output.close(); }
-    if (production) await ChatSystemProtectedStorage.verify(target.parent);
-    await partial.rename(target.path);
-    if (production) await ChatSystemProtectedStorage.verify(target.parent);
-    return target;
+      final output = await partial.open(mode: FileMode.write);
+      try {
+        await for (final chunk in source.openRead()) {
+          await output.writeFrom(chunk);
+        }
+        await output.flush();
+      } finally {
+        await output.close();
+      }
+      if (production) await ChatSystemProtectedStorage.verify(target.parent);
+      await partial.rename(target.path);
+      if (production) await ChatSystemProtectedStorage.verify(target.parent);
+      return target;
     } catch (_) {
-      if (await FileSystemEntity.type(partial.path, followLinks:false) == FileSystemEntityType.file) await partial.delete();
+      if (await FileSystemEntity.type(partial.path, followLinks: false) ==
+          FileSystemEntityType.file) {
+        await partial.delete();
+      }
       rethrow;
     }
   }
@@ -99,7 +118,4 @@ class AttachmentVault {
       }
     }
   }
-
-
 }
-

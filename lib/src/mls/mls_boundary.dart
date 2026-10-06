@@ -89,7 +89,13 @@ class MlsAuthenticationRequest {
   static const maxJsonInteger = 9007199254740991;
   static final _hex32 = RegExp(r'^0x[0-9a-f]{64}$');
   static const _methods = {
-    'GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS',
+    'GET',
+    'HEAD',
+    'POST',
+    'PUT',
+    'PATCH',
+    'DELETE',
+    'OPTIONS',
   };
 
   /// Dart提前拒绝无效结构；原生重复校验，FFI直接调用也不能绕过。

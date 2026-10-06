@@ -72,7 +72,6 @@ class ChatBinding {
   }
 }
 
-
 /// Chat 路由缓存记录。
 class ChatRouteRecord {
   const ChatRouteRecord({
@@ -168,9 +167,7 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
   /// 在同一 Flutter 测试 isolate 内模拟另一 isolate 的独立静态 gate。
   /// 两个 Store 仍共享 ChatIsar，底层事务顺序与生产环境保持一致。
   @visibleForTesting
-  factory ChatStore.withIndependentBindingGateForTest({
-    ChatIsar? chatIsar,
-  }) {
+  factory ChatStore.withIndependentBindingGateForTest({ChatIsar? chatIsar}) {
     return ChatStore._(
       chatIsar: chatIsar ?? ChatIsar.instance,
       bindingMutationGate: _ChatBindingMutationGate(),
@@ -263,16 +260,24 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
           throw StateError('finalized Chat binding 版本不得回退或同版本换账户');
         }
         await _clearTransientChatStateInTxn(isar, current.userId);
-        final conversations = await isar.chatConversationEntitys.filter()
-            .ownerUserIdEqualTo(current.userId).findAll();
+        final conversations = await isar.chatConversationEntitys
+            .filter()
+            .ownerUserIdEqualTo(current.userId)
+            .findAll();
         for (final item in conversations) {
-          item..bindingRevision = current.bindingRevision..accountId = current.accountId;
+          item
+            ..bindingRevision = current.bindingRevision
+            ..accountId = current.accountId;
           await isar.chatConversationEntitys.put(item);
         }
-        final messages = await isar.chatMessageEntitys.filter()
-            .ownerUserIdEqualTo(current.userId).findAll();
+        final messages = await isar.chatMessageEntitys
+            .filter()
+            .ownerUserIdEqualTo(current.userId)
+            .findAll();
         for (final item in messages) {
-          item..bindingRevision = current.bindingRevision..accountId = current.accountId;
+          item
+            ..bindingRevision = current.bindingRevision
+            ..accountId = current.accountId;
           await isar.chatMessageEntitys.put(item);
         }
         row
@@ -347,26 +352,38 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
   ) => row.fenceState == _fenceActive && _isCurrentFenceBinding(row, binding);
 
   static void _validateFence(ChatBindingFenceEntity row) {
-    final present = <Object?>[row.bindingRevision, row.accountId, row.bindingScope]
-        .where((value) => value != null).length;
-    if (row.ownerUserId.isEmpty || row.generation <= 0 ||
-        row.generation > _maxFenceGeneration || (present != 0 && present != 3) ||
+    final present = <Object?>[
+      row.bindingRevision,
+      row.accountId,
+      row.bindingScope,
+    ].where((value) => value != null).length;
+    if (row.ownerUserId.isEmpty ||
+        row.generation <= 0 ||
+        row.generation > _maxFenceGeneration ||
+        (present != 0 && present != 3) ||
         (row.fenceState != _fenceActive && row.fenceState != _fenceCleared) ||
         (row.fenceState == _fenceActive && present != 3) ||
-        (present == 3 && (row.bindingRevision! <= 0 || row.accountId!.isEmpty ||
-            !_bindingScopePattern.hasMatch(row.bindingScope!)))) {
+        (present == 3 &&
+            (row.bindingRevision! <= 0 ||
+                row.accountId!.isEmpty ||
+                !_bindingScopePattern.hasMatch(row.bindingScope!)))) {
       throw const FormatException('Chat 持久绑定门闩结构损坏');
     }
   }
 
   static Future<ChatBindingFenceEntity> _requireBindingTokenInTxn(
-    Isar isar, ChatBindingFenceToken token,
+    Isar isar,
+    ChatBindingFenceToken token,
   ) async {
-    final row = await isar.chatBindingFenceEntitys.getByOwnerUserId(token.ownerUserId);
+    final row = await isar.chatBindingFenceEntitys.getByOwnerUserId(
+      token.ownerUserId,
+    );
     if (row == null) throw StateError('Chat 持久绑定门闩缺失');
     _validateFence(row);
-    if (row.fenceState != _fenceActive || row.generation != token.generation ||
-        row.bindingRevision != token.bindingRevision || row.accountId != token.accountId ||
+    if (row.fenceState != _fenceActive ||
+        row.generation != token.generation ||
+        row.bindingRevision != token.bindingRevision ||
+        row.accountId != token.accountId ||
         row.bindingScope != token.bindingScope) {
       throw StateError('Chat 绑定 token 已过期');
     }
@@ -374,18 +391,27 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
   }
 
   Future<ChatBinding> _resolveBinding({
-    required String ownerUserId, required String currentAccountId,
+    required String ownerUserId,
+    required String currentAccountId,
     String? expectedBindingScope,
   }) => _chatIsar.read((isar) async {
-    final row = await isar.chatBindingFenceEntitys.getByOwnerUserId(ownerUserId);
+    final row = await isar.chatBindingFenceEntitys.getByOwnerUserId(
+      ownerUserId,
+    );
     if (row == null) throw StateError('Chat 公开绑定尚未激活');
     _validateFence(row);
-    if (row.fenceState != _fenceActive || row.accountId != currentAccountId ||
-        (expectedBindingScope != null && row.bindingScope != expectedBindingScope)) {
+    if (row.fenceState != _fenceActive ||
+        row.accountId != currentAccountId ||
+        (expectedBindingScope != null &&
+            row.bindingScope != expectedBindingScope)) {
       throw StateError('Chat 公开绑定已变化');
     }
-    return ChatBinding(bindingScope: row.bindingScope!, userId: ownerUserId,
-        bindingRevision: row.bindingRevision!, accountId: row.accountId!);
+    return ChatBinding(
+      bindingScope: row.bindingScope!,
+      userId: ownerUserId,
+      bindingRevision: row.bindingRevision!,
+      accountId: row.accountId!,
+    );
   });
 
   static void _requireWriterContext({
@@ -413,18 +439,27 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
 
   /// 正文按唯一目标载荷保存于系统保护数据库，搜索索引只保存去重 bigram。
   Future<_StoredMessageContent> _prepareMessage({
-    required String ownerUserId, required String currentAccountId,
-    required String messageId, required String? plaintext, required ChatBinding binding,
+    required String ownerUserId,
+    required String currentAccountId,
+    required String messageId,
+    required String? plaintext,
+    required ChatBinding binding,
   }) async {
     if (plaintext == null || plaintext.isEmpty) {
       return const _StoredMessageContent(payload: null, tokens: <String>[]);
     }
-    return _StoredMessageContent(payload: plaintext, tokens: _searchTokens(_messageSummary(plaintext)));
+    return _StoredMessageContent(
+      payload: plaintext,
+      tokens: _searchTokens(_messageSummary(plaintext)),
+    );
   }
 
   Future<String> _prepareSummary({
-    required String ownerUserId, required String currentAccountId,
-    required String conversationId, required String? plaintext, required ChatBinding binding,
+    required String ownerUserId,
+    required String currentAccountId,
+    required String conversationId,
+    required String? plaintext,
+    required ChatBinding binding,
   }) async => _messageSummary(plaintext);
 
   Future<List<ChatConversationPreview>> readConversationPreviews({
@@ -462,14 +497,12 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
     }
     rows.sort((a, b) => b.lastUpdatedAtMillis.compareTo(a.lastUpdatedAtMillis));
 
-      final out = <ChatConversationPreview>[];
-      for (final row in rows) {
-        out.add(
-          _conversationPreviewFromEntity(row, row.lastMessageSummary),
-        );
-      }
-      await validateBindingFenceToken(readToken);
-      return List<ChatConversationPreview>.unmodifiable(out);
+    final out = <ChatConversationPreview>[];
+    for (final row in rows) {
+      out.add(_conversationPreviewFromEntity(row, row.lastMessageSummary));
+    }
+    await validateBindingFenceToken(readToken);
+    return List<ChatConversationPreview>.unmodifiable(out);
   }
 
   Future<List<ChatRouteRecord>> readRouteRecords(String ownerUserId) {
@@ -561,13 +594,12 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
           ..sort((a, b) => a.createdAtMillis.compareTo(b.createdAtMillis));
     if (rows.isEmpty) return const <ChatStoredMessage>[];
 
-
-      final out = <ChatStoredMessage>[];
-      for (final row in rows) {
-        out.add(_messageFromEntity(row, row.payloadJson));
-      }
-      await validateBindingFenceToken(readToken);
-      return List<ChatStoredMessage>.unmodifiable(out);
+    final out = <ChatStoredMessage>[];
+    for (final row in rows) {
+      out.add(_messageFromEntity(row, row.payloadJson));
+    }
+    await validateBindingFenceToken(readToken);
+    return List<ChatStoredMessage>.unmodifiable(out);
   }
 
   /// 展示读取逐行校验本地载荷，损坏行只隔离显示并计数，不伪造正文或删除记录。
@@ -615,28 +647,26 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
       );
     }
 
-      final storedMessages = <ChatStoredMessage>[];
-      var integrityFailureCount = 0;
-      for (final row in rows) {
-        try {
-          storedMessages.add(
-            _messageFromEntity(row, row.payloadJson),
-          );
-        } on FormatException catch (error) {
-          // UTF-8、消息类型与投递状态都属于本机记录完整性边界；只隔离该行，
-          // 禁止把未知枚举或畸形正文降级成普通文本。
-          integrityFailureCount += 1;
-          debugPrint(
-            '[ChatStore] display_row_rejected message_id=${row.messageId} '
-            'stage=stored_metadata error=${error.runtimeType}',
-          );
-        }
+    final storedMessages = <ChatStoredMessage>[];
+    var integrityFailureCount = 0;
+    for (final row in rows) {
+      try {
+        storedMessages.add(_messageFromEntity(row, row.payloadJson));
+      } on FormatException catch (error) {
+        // UTF-8、消息类型与投递状态都属于本机记录完整性边界；只隔离该行，
+        // 禁止把未知枚举或畸形正文降级成普通文本。
+        integrityFailureCount += 1;
+        debugPrint(
+          '[ChatStore] display_row_rejected message_id=${row.messageId} '
+          'stage=stored_metadata error=${error.runtimeType}',
+        );
       }
-      await validateBindingFenceToken(readToken);
-      return filterChatMessagesForDisplay(
-        storedMessages,
-        initialIntegrityFailureCount: integrityFailureCount,
-      );
+    }
+    await validateBindingFenceToken(readToken);
+    return filterChatMessagesForDisplay(
+      storedMessages,
+      initialIntegrityFailureCount: integrityFailureCount,
+    );
   }
 
   /// 判断入站应用消息是否已经在当前绑定下落库。实时链路可能因设备确认丢失而
@@ -708,17 +738,17 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
           .toList(growable: false);
     });
 
-      final hits = <ChatStoredMessage>[];
-      for (final row in candidates) {
-        if (hits.length >= limit) break;
-        final plaintext = row.payloadJson;
-        if (!_messageSummary(plaintext).toLowerCase().contains(needle)) {
-          continue; // 索引假阳性，复验滤掉
-        }
-        hits.add(_messageFromEntity(row, plaintext));
+    final hits = <ChatStoredMessage>[];
+    for (final row in candidates) {
+      if (hits.length >= limit) break;
+      final plaintext = row.payloadJson;
+      if (!_messageSummary(plaintext).toLowerCase().contains(needle)) {
+        continue; // 索引假阳性，复验滤掉
       }
-      await validateBindingFenceToken(readToken);
-      return List<ChatStoredMessage>.unmodifiable(hits);
+      hits.add(_messageFromEntity(row, plaintext));
+    }
+    await validateBindingFenceToken(readToken);
+    return List<ChatStoredMessage>.unmodifiable(hits);
   }
 
   /// 当前页面成功展示到 [readThroughMillis] 后原子清零该会话未读数。
@@ -1029,26 +1059,26 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
     );
     _requireResolvedBinding(bindingToken: bindingToken, binding: binding);
 
-      final pending = <ChatPendingOutgoingMessage>[];
-      for (final row in rows) {
-        final payload = row.payloadJson;
-        if (payload == null || payload.isEmpty) {
-          throw StateError('Chat 本地待发送消息正文缺失');
-        }
-        ChatPayloadCodec.decode(payload);
-        pending.add(
-          ChatPendingOutgoingMessage(
-            localMessageId: row.messageId,
-            conversationId: row.conversationId,
-            recipientUserId: row.recipientUserId,
-            messageKind: _messageKindFromName(row.messageKind),
-            createdAtMillis: row.createdAtMillis,
-            payload: payload,
-          ),
-        );
+    final pending = <ChatPendingOutgoingMessage>[];
+    for (final row in rows) {
+      final payload = row.payloadJson;
+      if (payload == null || payload.isEmpty) {
+        throw StateError('Chat 本地待发送消息正文缺失');
       }
-      await validateBindingFenceToken(bindingToken);
-      return List<ChatPendingOutgoingMessage>.unmodifiable(pending);
+      ChatPayloadCodec.decode(payload);
+      pending.add(
+        ChatPendingOutgoingMessage(
+          localMessageId: row.messageId,
+          conversationId: row.conversationId,
+          recipientUserId: row.recipientUserId,
+          messageKind: _messageKindFromName(row.messageKind),
+          createdAtMillis: row.createdAtMillis,
+          payload: payload,
+        ),
+      );
+    }
+    await validateBindingFenceToken(bindingToken);
+    return List<ChatPendingOutgoingMessage>.unmodifiable(pending);
   }
 
   /// 本机待发消息超过云端统一 7 天存活期后保留为失败历史，但不再进入补发队列。

@@ -266,8 +266,6 @@ class _Runtime extends ChatSdk {
 }
 
 class _Host implements ChatRuntimeHost {
-
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
-

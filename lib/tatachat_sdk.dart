@@ -13,6 +13,7 @@ export 'src/core/chat_scope.dart';
 export 'src/core/message_id.dart';
 export 'src/core/serial_executor.dart';
 export 'src/mls/mls_boundary.dart';
+export 'src/mls/mls_contact_sync.dart';
 export 'src/mls/mls_group_boundary.dart';
 export 'src/mls/mls_native.dart';
 export 'src/mls/mls_session.dart';
@@ -26,9 +27,7 @@ export 'src/storage/chat_store.dart';
 export 'src/storage/flow_store.dart';
 export 'src/storage/models.dart';
 export 'src/storage/records.dart';
+export 'src/storage/system_protected_storage.dart';
 export 'src/transport/chat_service_transport.dart';
 export 'src/transport/chat_transport.dart';
 export 'ui.dart';
-
-export 'src/storage/system_protected_storage.dart';
-export 'src/mls/mls_contact_sync.dart';

@@ -69,7 +69,7 @@ void main() {
       () => b.groupProcess(first),
     );
     expect(utf8.decode(result.plaintext!), '合成消息');
-    expect(result.senderMemberIdentity, 'alice:' + aId.deviceId);
+    expect(result.senderMemberIdentity, 'alice:${aId.deviceId}');
     final restartedReceiver = NativeMlsCrypto(
       identity: await bStore.readIdentity(),
       stateStore: bStore,

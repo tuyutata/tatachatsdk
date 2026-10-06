@@ -12,17 +12,16 @@ import '../core/chat_content.dart';
 import '../core/chat_message.dart';
 import '../core/chat_scope.dart';
 import '../group/model.dart';
-import '../mls/mls_boundary.dart';
 import '../mls/mls_attachment.dart';
+import '../mls/mls_boundary.dart';
 import '../mls/mls_group_boundary.dart';
-import '../mls/mls_contact_sync.dart';
 import '../mls/mls_native.dart';
 import '../mls/mls_state_store.dart';
 import '../protocol/message.dart';
-import '../storage/system_protected_storage.dart';
 import '../storage/chat_store.dart';
 import '../storage/models.dart';
 import '../storage/records.dart';
+import '../storage/system_protected_storage.dart';
 import '../transport/chat_server_connection.dart';
 import '../transport/chat_service_transport.dart';
 import '../transport/chat_transport.dart';
@@ -1194,14 +1193,17 @@ class _ChatBindingFencedMlsCrypto
   final ChatRuntimeCore _runtime;
   final ChatBindingFenceToken _bindingToken;
   final MlsGroupCrypto _delegate;
-  static final Object _messageGuardZoneKey=Object();
+  static final Object _messageGuardZoneKey = Object();
 
   Future<T> _run<T>(Future<T> Function() operation) =>
       _runtime._runBindingFileMutation(_bindingToken, operation);
 
   @override
   Future<T> withMessage<T>(String messageId, Future<T> Function() operation) =>
-      runZoned(()=>_delegate.withMessage(messageId,operation),zoneValues:{_messageGuardZoneKey:messageId});
+      runZoned(
+        () => _delegate.withMessage(messageId, operation),
+        zoneValues: {_messageGuardZoneKey: messageId},
+      );
   @override
   Future<void> acknowledgeMessage(String messageId) =>
       _run(() => _delegate.acknowledgeMessage(messageId));
@@ -1244,24 +1246,31 @@ class _ChatBindingFencedMlsCrypto
   ) => _run(() async {
     // 正常聊天媒体控制的名册复核与密文生成在同一当前绑定短屏障内。
     // 附件二进制块归独立组，不能把其头部当作普通聊天载荷解析。
-    if(!groupId.startsWith('attachment:')) {
+    if (!groupId.startsWith('attachment:')) {
       ChatContent? content;
-      try { content=ChatPayloadCodec.decode(utf8.decode(plaintext)); } on FormatException { }
-      if(content?.isMedia==true) {
-        final id=Zone.current[_messageGuardZoneKey] as String?;
-        if(id==null) throw StateError('附件控制缺少事务标识');
-        final saved=await _delegate.pendingMessageResults(id);
-        if(saved.any((r)=>(r['result'] as Map)['application_wire_hex'] is String)) {
-          return _delegate.groupCreateMessage(groupId,plaintext);
+      try {
+        content = ChatPayloadCodec.decode(utf8.decode(plaintext));
+      } on FormatException {
+        // 非聊天载荷不进入媒体控制名册检查，协议处理仍由OpenMLS负责。
+      }
+      if (content?.isMedia == true) {
+        final id = Zone.current[_messageGuardZoneKey] as String?;
+        if (id == null) throw StateError('附件控制缺少事务标识');
+        final saved = await _delegate.pendingMessageResults(id);
+        if (saved.any(
+          (r) => (r['result'] as Map)['application_wire_hex'] is String,
+        )) {
+          return _delegate.groupCreateMessage(groupId, plaintext);
         }
-        final state=await _delegate.groupState(groupId);
-        if(state.epoch!=content!.attachmentChatEpoch ||
-            jsonEncode([...state.memberIdentities]..sort())!=jsonEncode(content.attachmentMemberIdentities)) {
+        final state = await _delegate.groupState(groupId);
+        if (state.epoch != content!.attachmentChatEpoch ||
+            jsonEncode([...state.memberIdentities]..sort()) !=
+                jsonEncode(content.attachmentMemberIdentities)) {
           throw const _AttachmentAudienceChanged();
         }
       }
     }
-    return _delegate.groupCreateMessage(groupId,plaintext);
+    return _delegate.groupCreateMessage(groupId, plaintext);
   });
 
   @override
@@ -1659,7 +1668,8 @@ class ChatRuntimeCore {
       throw StateError('Chat 临时附件路径类型异常');
     }
     await plain.delete(recursive: true);
-    if (await FileSystemEntity.type(plain.path, followLinks: false) != FileSystemEntityType.notFound) {
+    if (await FileSystemEntity.type(plain.path, followLinks: false) !=
+        FileSystemEntityType.notFound) {
       throw StateError('Chat 临时附件目录清除失败');
     }
   }
@@ -2496,9 +2506,7 @@ class ChatRuntimeCore {
     _ensureActive();
     final root = await _documentsDirectoryProvider();
     _ensureActive();
-    return Directory(
-      '${root.path}/chat/by_user/${_ownerPath(userId)}',
-    );
+    return Directory('${root.path}/chat/by_user/${_ownerPath(userId)}');
   }
 
   /// 页面、轮询、WebSocket 和发送入口共享的唯一就绪入口。
@@ -2839,130 +2847,199 @@ class ChatRuntimeCore {
     required ChatMediaDraft media,
     String? peerUserId,
   }) => _runRuntimeOperation(() async {
-    final account = await _readAccount(expectedAccountId:bindingToken.accountId);
+    final account = await _readAccount(
+      expectedAccountId: bindingToken.accountId,
+    );
     final context = await _readyContext(account);
-    if(context.bindingToken != bindingToken) {
-      await _runBindingFileMutation(bindingToken,() async {});
+    if (context.bindingToken != bindingToken) {
+      await _runBindingFileMutation(bindingToken, () async {});
     }
     GroupState audience;
-    if(conversationId.startsWith('grp:')) {
+    if (conversationId.startsWith('grp:')) {
       audience = await context.crypto.groupState(conversationId);
     } else {
       final peer = peerUserId;
-      if(peer==null) throw StateError('附件私聊收件人缺失');
-      final packages = await _resolveKeyPackages(context,peer);
+      if (peer == null) throw StateError('附件私聊收件人缺失');
+      final packages = await _resolveKeyPackages(context, peer);
       audience = await _messageFlow(context).prepareAttachmentAudience(
-        conversationId:conversationId,recipientUserId:peer,
-        senderDeviceId:context.deviceId,keyPackages:packages,messageId:attachmentId,
+        conversationId: conversationId,
+        recipientUserId: peer,
+        senderDeviceId: context.deviceId,
+        keyPackages: packages,
+        messageId: attachmentId,
       );
     }
-    final roster=[...audience.memberIdentities]..sort();
-    final self='${context.account.userId}:${context.deviceId}';
-    final packages=<MlsKeyPackage>[];
-    for(final user in userIdsFromMemberIdentities(roster)) {
-      final available = await _resolveKeyPackages(context,user);
-      for(final member in roster.where((m)=>userIdFromMemberIdentity(m)==user && m!=self)) {
-        final matching=available.where((p)=>'${p.userId}:${p.deviceId}'==member).toList();
-        if(matching.length!=1 || !matching.single.lastResort) throw StateError('附件当前设备资格已失效');
+    final roster = [...audience.memberIdentities]..sort();
+    final self = '${context.account.userId}:${context.deviceId}';
+    final packages = <MlsKeyPackage>[];
+    for (final user in userIdsFromMemberIdentities(roster)) {
+      final available = await _resolveKeyPackages(context, user);
+      for (final member in roster.where(
+        (m) => userIdFromMemberIdentity(m) == user && m != self,
+      )) {
+        final matching = available
+            .where((p) => '${p.userId}:${p.deviceId}' == member)
+            .toList();
+        if (matching.length != 1 || !matching.single.lastResort) {
+          throw StateError('附件当前设备资格已失效');
+        }
         packages.add(matching.single);
       }
     }
-    final engine = await _attachmentEngine(context, requireAudience:() async {
-      final state=await context.crypto.groupState(conversationId);
-      if(state.epoch!=audience.epoch || jsonEncode([...state.memberIdentities]..sort())!=jsonEncode(roster)) {
-        throw StateError('附件创建期间聊天名册已变化');
-      }
-    });
-    final target=await _pendingAttachmentUploadFile(bindingToken,conversationId,attachmentId);
+    final engine = await _attachmentEngine(
+      context,
+      requireAudience: () async {
+        final state = await context.crypto.groupState(conversationId);
+        if (state.epoch != audience.epoch ||
+            jsonEncode([...state.memberIdentities]..sort()) !=
+                jsonEncode(roster)) {
+          throw StateError('附件创建期间聊天名册已变化');
+        }
+      },
+    );
+    final target = await _pendingAttachmentUploadFile(
+      bindingToken,
+      conversationId,
+      attachmentId,
+    );
     try {
       return await engine.seal(
-        attachmentId:attachmentId,byteSize:media.byteSize,source:File(media.sourcePath),
-        target:target,members:roster,keyPackages:packages,
-        contentBuilder:(d)=>ChatContent.media(
-          kind:media.kind,attachmentId:attachmentId,fileName:media.fileName,mime:media.contentType,
-          byteSize:media.byteSize,width:media.width,height:media.height,durationMs:media.durationMs,blurhash:media.blurhash,
-          attachmentChatEpoch:audience.epoch,attachmentGroupId:d.groupId,
-          attachmentWelcome:base64UrlEncode(d.welcome).replaceAll('=',''),
-          attachmentMemberIdentities:d.members,attachmentSenderMemberIdentity:d.sender,
-          attachmentChunkCount:d.chunkCount,plainSha256:d.plainSha256,
-          cipherByteSize:d.cipherByteSize,cipherSha256:d.cipherSha256,
+        attachmentId: attachmentId,
+        byteSize: media.byteSize,
+        source: File(media.sourcePath),
+        target: target,
+        members: roster,
+        keyPackages: packages,
+        contentBuilder: (d) => ChatContent.media(
+          kind: media.kind,
+          attachmentId: attachmentId,
+          fileName: media.fileName,
+          mime: media.contentType,
+          byteSize: media.byteSize,
+          width: media.width,
+          height: media.height,
+          durationMs: media.durationMs,
+          blurhash: media.blurhash,
+          attachmentChatEpoch: audience.epoch,
+          attachmentGroupId: d.groupId,
+          attachmentWelcome: base64UrlEncode(d.welcome).replaceAll('=', ''),
+          attachmentMemberIdentities: d.members,
+          attachmentSenderMemberIdentity: d.sender,
+          attachmentChunkCount: d.chunkCount,
+          plainSha256: d.plainSha256,
+          cipherByteSize: d.cipherByteSize,
+          cipherSha256: d.cipherSha256,
         ),
       );
-    } catch(error, stackTrace) {
+    } catch (error, stackTrace) {
       // 名册失效后的清理只复核当前绑定，不再要求已经失效的原聊天名册。
       // 身份失效则禁止旧令牌写入，准确协议状态仍受七天过期清理约束。
       try {
         final cleanup = await _attachmentEngine(context);
-        await cleanup.abort(MlsAttachment.groupId(self,attachmentId));
-      } catch(_) {
-        debugPrint('[ChatTrace] direction=attachment stage=cleanup code=attachment_cleanup_deferred');
+        await cleanup.abort(MlsAttachment.groupId(self, attachmentId));
+      } catch (_) {
+        debugPrint(
+          '[ChatTrace] direction=attachment stage=cleanup code=attachment_cleanup_deferred',
+        );
       }
       try {
-        await _runBindingFileMutation(bindingToken,() async {
-          if(await target.exists()) await target.delete();
+        await _runBindingFileMutation(bindingToken, () async {
+          if (await target.exists()) await target.delete();
         });
-      } catch(_) {
-        debugPrint('[ChatTrace] direction=attachment stage=cleanup code=attachment_cleanup_deferred');
+      } catch (_) {
+        debugPrint(
+          '[ChatTrace] direction=attachment stage=cleanup code=attachment_cleanup_deferred',
+        );
       }
       Error.throwWithStackTrace(error, stackTrace);
     }
   });
 
   Future<MlsAttachment> _attachmentEngine(
-    ChatRuntimeAccountContext context, {Future<void> Function()? requireAudience}
-  ) async => MlsAttachment(
-    crypto:context.crypto,store:context.stateStore ?? (throw StateError('附件MLS存储缺失')),
-    identity:context.identity,protectedRoot:await _attachmentDirectoryForToken(context.bindingToken),
-    mutate:<T>(operation)=>_runBindingFileMutation<T>(context.bindingToken,operation),
-    requireCurrent:() async {
+    ChatRuntimeAccountContext context, {
+    Future<void> Function()? requireAudience,
+  }) async => MlsAttachment(
+    crypto: context.crypto,
+    store: context.stateStore ?? (throw StateError('附件MLS存储缺失')),
+    identity: context.identity,
+    protectedRoot: await _attachmentDirectoryForToken(context.bindingToken),
+    mutate: <T>(operation) =>
+        _runBindingFileMutation<T>(context.bindingToken, operation),
+    requireCurrent: () async {
       _ensureActive();
-      await _runBindingFileMutation(context.bindingToken,() async {});
+      await _runBindingFileMutation(context.bindingToken, () async {});
       await requireAudience?.call();
     },
   );
 
   /// 上传后和发送控制前复核原聊天epoch/名册与当前设备资格，不扩大原附件收件集合。
-  Future<void> _requireAttachmentAudience(ChatRuntimeAccountContext context,String conversationId,ChatContent content) async {
-    await _runBindingFileMutation(context.bindingToken,() async {});
-    final state=await context.crypto.groupState(conversationId);
-    final members=[...state.memberIdentities]..sort();
-    if(state.epoch!=content.attachmentChatEpoch ||
-        jsonEncode(members)!=jsonEncode(content.attachmentMemberIdentities) ||
-        content.attachmentSenderMemberIdentity!='${context.account.userId}:${context.deviceId}') {
+  Future<void> _requireAttachmentAudience(
+    ChatRuntimeAccountContext context,
+    String conversationId,
+    ChatContent content,
+  ) async {
+    await _runBindingFileMutation(context.bindingToken, () async {});
+    final state = await context.crypto.groupState(conversationId);
+    final members = [...state.memberIdentities]..sort();
+    if (state.epoch != content.attachmentChatEpoch ||
+        jsonEncode(members) != jsonEncode(content.attachmentMemberIdentities) ||
+        content.attachmentSenderMemberIdentity !=
+            '${context.account.userId}:${context.deviceId}') {
       throw const _AttachmentAudienceChanged();
     }
-    final self='${context.account.userId}:${context.deviceId}';
-    for(final user in userIdsFromMemberIdentities(members)) {
-      final packages=await _resolveKeyPackages(context,user);
-      for(final member in members.where((m)=>m!=self && userIdFromMemberIdentity(m)==user)) {
-        if(packages.where((p)=>'${p.userId}:${p.deviceId}'==member && p.lastResort).length!=1) {
+    final self = '${context.account.userId}:${context.deviceId}';
+    for (final user in userIdsFromMemberIdentities(members)) {
+      final packages = await _resolveKeyPackages(context, user);
+      for (final member in members.where(
+        (m) => m != self && userIdFromMemberIdentity(m) == user,
+      )) {
+        if (packages
+                .where(
+                  (p) => '${p.userId}:${p.deviceId}' == member && p.lastResort,
+                )
+                .length !=
+            1) {
           throw const _AttachmentAudienceChanged();
         }
       }
     }
-    await _runBindingFileMutation(context.bindingToken,() async {});
+    await _runBindingFileMutation(context.bindingToken, () async {});
   }
 
   /// 当前绑定内只丢弃准确待发附件；远端清理不持有本机文件屏障。
   Future<void> _discardPendingAttachment(
-    ChatRuntimeAccountContext context,ChatPendingOutgoingMessage pending,
+    ChatRuntimeAccountContext context,
+    ChatPendingOutgoingMessage pending,
   ) async {
-    final content=ChatPayloadCodec.decode(pending.payload);
-    if(!content.isMedia) throw StateError('只能终结准确附件操作');
-    final id=content.attachmentId!;
+    final content = ChatPayloadCodec.decode(pending.payload);
+    if (!content.isMedia) throw StateError('只能终结准确附件操作');
+    final id = content.attachmentId!;
     await _store.markPendingOutgoingFailed(
-      bindingToken:context.bindingToken,ownerUserId:context.account.userId,
-      localMessageId:pending.localMessageId,
+      bindingToken: context.bindingToken,
+      ownerUserId: context.account.userId,
+      localMessageId: pending.localMessageId,
     );
-    await _runBindingFileMutation(context.bindingToken,() async {
-      final cipher=await _pendingAttachmentUploadFile(context.bindingToken,pending.conversationId,id);
-      final marker=await _pendingAttachmentUploadedMarker(context.bindingToken,pending.conversationId,id);
-      if(await cipher.exists()) await cipher.delete();
-      if(await marker.exists()) await marker.delete();
+    await _runBindingFileMutation(context.bindingToken, () async {
+      final cipher = await _pendingAttachmentUploadFile(
+        context.bindingToken,
+        pending.conversationId,
+        id,
+      );
+      final marker = await _pendingAttachmentUploadedMarker(
+        context.bindingToken,
+        pending.conversationId,
+        id,
+      );
+      if (await cipher.exists()) await cipher.delete();
+      if (await marker.exists()) await marker.delete();
     });
-    try { await context.transport.abortAttachment(id); } catch (_) {
+    try {
+      await context.transport.abortAttachment(id);
+    } catch (_) {
       // 本机已明确失败且不会重发；远端不透明对象继续受既有七天期限约束。
-      debugPrint('[ChatTrace] direction=attachment stage=cleanup code=attachment_cleanup_deferred');
+      debugPrint(
+        '[ChatTrace] direction=attachment stage=cleanup code=attachment_cleanup_deferred',
+      );
     }
   }
 
@@ -3244,29 +3321,28 @@ class ChatRuntimeCore {
         final cacheDirectory = await _attachmentDirectoryForToken(bindingToken);
         final plainDirectory = await _plainDirectoryForBinding(bindingToken);
 
-          final paths = <String, String>{};
-          // 每项只读系统保护缓存，复核当前公开绑定和明文大小。
-          for (final content in contents) {
-            final attachmentId = content.attachmentId ?? '';
-            if (!content.isMedia || attachmentId.isEmpty) continue;
-            try {
-              final cached = await ChatFlow.readCachedAttachment(
-                conversationId: conversationId,
-                attachmentId: attachmentId,
-                fileName: content.fileName ?? '',
-                contentType: content.mime ?? 'application/octet-stream',
-                clearByteSize: content.byteSize ?? 0,
-                cacheDirectory: cacheDirectory,
-                plainDirectory: plainDirectory,
-              );
-              final path = cached?.filePath;
-              if (path != null && path.isNotEmpty) paths[attachmentId] = path;
-            } catch (_) {
-              // 单个缓存损坏或仍未完整到达时跳过该项，不能拖累同批其它媒体。
-            }
+        final paths = <String, String>{};
+        // 每项只读系统保护缓存，复核当前公开绑定和明文大小。
+        for (final content in contents) {
+          final attachmentId = content.attachmentId ?? '';
+          if (!content.isMedia || attachmentId.isEmpty) continue;
+          try {
+            final cached = await ChatFlow.readCachedAttachment(
+              conversationId: conversationId,
+              attachmentId: attachmentId,
+              fileName: content.fileName ?? '',
+              contentType: content.mime ?? 'application/octet-stream',
+              clearByteSize: content.byteSize ?? 0,
+              cacheDirectory: cacheDirectory,
+              plainDirectory: plainDirectory,
+            );
+            final path = cached?.filePath;
+            if (path != null && path.isNotEmpty) paths[attachmentId] = path;
+          } catch (_) {
+            // 单个缓存损坏或仍未完整到达时跳过该项，不能拖累同批其它媒体。
           }
-          return Map<String, String>.unmodifiable(paths);
-
+        }
+        return Map<String, String>.unmodifiable(paths);
       });
       // 控制消息已经是本机真值；缓存缺失的附件在独立任务中补取，不能挡住本次文字首屏。
       for (final content in contents) {
@@ -3475,8 +3551,8 @@ class ChatRuntimeCore {
       try {
         await _sendPendingOutgoing(context, item);
       } on Object catch (error) {
-        if(error is _AttachmentAudienceChanged) {
-          await _discardPendingAttachment(context,item);
+        if (error is _AttachmentAudienceChanged) {
+          await _discardPendingAttachment(context, item);
           continue;
         }
         debugPrint(
@@ -3562,8 +3638,8 @@ class ChatRuntimeCore {
       }).catchError((Object error) async {
         _mediaBytesInFlight.remove(attachmentId);
         _mediaUploadBusy = false;
-        if(error is _AttachmentAudienceChanged) {
-          await _discardPendingAttachment(context,pending);
+        if (error is _AttachmentAudienceChanged) {
+          await _discardPendingAttachment(context, pending);
           return;
         }
         final failures = (_mediaUploadFailures[attachmentId] ?? 0) + 1;
@@ -3600,8 +3676,11 @@ class ChatRuntimeCore {
 
   /// 对象授权取原附件成员，排除本设备；同CID其他设备仍需下载权限。
   List<String> _attachmentRecipientUserIds(ChatContent content) =>
-      userIdsFromMemberIdentities(content.attachmentMemberIdentities!
-        .where((member) => member != content.attachmentSenderMemberIdentity));
+      userIdsFromMemberIdentities(
+        content.attachmentMemberIdentities!.where(
+          (member) => member != content.attachmentSenderMemberIdentity,
+        ),
+      );
 
   Future<void> _uploadPendingDirectAttachment(
     ChatRuntimeAccountContext context,
@@ -3625,7 +3704,11 @@ class ChatRuntimeCore {
       attachmentId,
     );
     if (await uploaded.exists()) {
-      await _requireAttachmentAudience(context,pending.conversationId,content);
+      await _requireAttachmentAudience(
+        context,
+        pending.conversationId,
+        content,
+      );
       return;
     }
     if (!await staged.exists() || await staged.length() != cipherByteSize) {
@@ -3639,16 +3722,25 @@ class ChatRuntimeCore {
         cipherByteSize: cipherByteSize,
         cipherSha256: cipherSha256,
       );
-      await _requireAttachmentAudience(context,pending.conversationId,content);
-      await _runBindingFileMutation(context.bindingToken,
-        () => uploaded.writeAsString('uploaded', flush: true));
+      await _requireAttachmentAudience(
+        context,
+        pending.conversationId,
+        content,
+      );
+      await _runBindingFileMutation(
+        context.bindingToken,
+        () => uploaded.writeAsString('uploaded', flush: true),
+      );
     } catch (_) {
       // transport 是上传事务唯一所有者，失败时已完成一次 abort；运行态禁止
       // 再次中止同一 attachmentId，避免重复 encrypted object storage/D1 写入。
       rethrow;
     }
     try {
-      await _runBindingFileMutation(context.bindingToken, () => staged.delete());
+      await _runBindingFileMutation(
+        context.bindingToken,
+        () => staged.delete(),
+      );
     } catch (_) {
       // 上传标记已持久成立；原帧文件残留由准确会话清理。
     }
@@ -3670,9 +3762,9 @@ class ChatRuntimeCore {
       return;
     }
     final flow = _messageFlow(context, scheduleDelivery: false);
-    final recipientKeyPackages = content.isMedia ? const <MlsKeyPackage>[] : await context.transport.resolveKeyPackages(
-      pending.recipientUserId,
-    );
+    final recipientKeyPackages = content.isMedia
+        ? const <MlsKeyPackage>[]
+        : await context.transport.resolveKeyPackages(pending.recipientUserId);
 
     Future<void> send() async {
       switch (content.kind) {
@@ -3733,8 +3825,14 @@ class ChatRuntimeCore {
     if (!await uploaded.exists()) {
       throw StateError('Chat 附件密文仍在后台上传');
     }
-    if(!(await context.crypto.pendingMessageResults(pending.localMessageId)).any((r)=>(r['result'] as Map)['application_wire_hex'] is String)) {
-      await _requireAttachmentAudience(context,pending.conversationId,content);
+    if (!(await context.crypto.pendingMessageResults(
+      pending.localMessageId,
+    )).any((r) => (r['result'] as Map)['application_wire_hex'] is String)) {
+      await _requireAttachmentAudience(
+        context,
+        pending.conversationId,
+        content,
+      );
     }
     await flow.sendMediaControl(
       conversationId: pending.conversationId,
@@ -3785,21 +3883,36 @@ class ChatRuntimeCore {
           cipherByteSize: cipherByteSize,
           cipherSha256: cipherSha256,
         );
-        await _requireAttachmentAudience(context,pending.conversationId,content);
-        await _runBindingFileMutation(context.bindingToken,
-          () => uploaded.writeAsString('uploaded', flush: true));
+        await _requireAttachmentAudience(
+          context,
+          pending.conversationId,
+          content,
+        );
+        await _runBindingFileMutation(
+          context.bindingToken,
+          () => uploaded.writeAsString('uploaded', flush: true),
+        );
       } catch (_) {
         // 上传事务负责网络失败中止；受众变化由准确待发动作终结入口清理。
         rethrow;
       }
       try {
-        await _runBindingFileMutation(context.bindingToken, () => staged.delete());
+        await _runBindingFileMutation(
+          context.bindingToken,
+          () => staged.delete(),
+        );
       } catch (_) {
         // 上传标记是远端成功真值，缓存清理留给会话删除统一收口。
       }
     }
-    if(!(await context.crypto.pendingMessageResults(pending.localMessageId)).any((r)=>(r['result'] as Map)['application_wire_hex'] is String)) {
-      await _requireAttachmentAudience(context,pending.conversationId,content);
+    if (!(await context.crypto.pendingMessageResults(
+      pending.localMessageId,
+    )).any((r) => (r['result'] as Map)['application_wire_hex'] is String)) {
+      await _requireAttachmentAudience(
+        context,
+        pending.conversationId,
+        content,
+      );
     }
     await flow.sendGroupAttachmentControl(
       groupId: pending.conversationId,
@@ -4043,7 +4156,9 @@ class ChatRuntimeCore {
     if (hub.stopPhysical == null && hub.connecting != null) {
       try {
         await hub.connecting;
-      } catch (_) {}
+      } catch (_) {
+        // 清理失败不覆盖原始异常；所属状态仍由既有失败路径保留。
+      }
     }
     final stop = hub.stopPhysical;
     hub.stopPhysical = null;
@@ -4675,19 +4790,24 @@ class ChatRuntimeCore {
 
   /// 下载的是不透明MLS帧文件；已消费块保留保护前缀，重试只能续用原结果。
   Future<void> _cacheIncomingCloudAttachment(
-    ChatRuntimeAccountContext context, String conversationId, ChatContent content,
+    ChatRuntimeAccountContext context,
+    String conversationId,
+    ChatContent content,
   ) async {
-    if(!content.isMedia) return;
-    final attachmentId=content.attachmentId!;
-    final directory=await _attachmentDirectoryForToken(context.bindingToken);
-    final cachePath=ChatFlow.attachmentCachePath(
-      cacheDirectory:directory,conversationId:conversationId,
-      attachmentId:attachmentId,fileName:content.fileName!,
+    if (!content.isMedia) return;
+    final attachmentId = content.attachmentId!;
+    final directory = await _attachmentDirectoryForToken(context.bindingToken);
+    final cachePath = ChatFlow.attachmentCachePath(
+      cacheDirectory: directory,
+      conversationId: conversationId,
+      attachmentId: attachmentId,
+      fileName: content.fileName!,
     );
-    final engine=await _attachmentEngine(context);
-    if(await AttachmentVault.hasCache(cachePath)) {
-      final file=File(cachePath);
-      if(await file.length()!=content.byteSize || await MlsAttachment.digest(file)!=content.plainSha256) {
+    final engine = await _attachmentEngine(context);
+    if (await AttachmentVault.hasCache(cachePath)) {
+      final file = File(cachePath);
+      if (await file.length() != content.byteSize ||
+          await MlsAttachment.digest(file) != content.plainSha256) {
         throw StateError('附件最终缓存损坏，不能重新推进接收链');
       }
       // 缓存提交后被中断时补终态；此动作幂等，不重新处理Welcome。
@@ -4695,28 +4815,39 @@ class ChatRuntimeCore {
       await context.transport.acknowledgeAttachment(attachmentId);
       return;
     }
-    final temp=Directory('${directory.path}/.tmp');
-    await _runBindingFileMutation(context.bindingToken,()=>temp.create(recursive:true));
-    final cipher=File('${temp.path}/${_safePath(attachmentId)}.download');
-    final plain=File('${temp.path}/${_safePath(attachmentId)}.plain');
-    if(!await cipher.exists()) {
+    final temp = Directory('${directory.path}/.tmp');
+    await _runBindingFileMutation(
+      context.bindingToken,
+      () => temp.create(recursive: true),
+    );
+    final cipher = File('${temp.path}/${_safePath(attachmentId)}.download');
+    final plain = File('${temp.path}/${_safePath(attachmentId)}.plain');
+    if (!await cipher.exists()) {
       await context.transport.downloadEncryptedAttachment(
-        attachmentId:attachmentId,target:cipher,
-        expectedByteSize:content.cipherByteSize!,expectedSha256:content.cipherSha256!,
+        attachmentId: attachmentId,
+        target: cipher,
+        expectedByteSize: content.cipherByteSize!,
+        expectedSha256: content.cipherSha256!,
       );
     }
-    await engine.open(content:content,cipher:cipher,target:plain);
-    await _runBindingFileMutation(context.bindingToken, () =>
-      _saveReceivedAttachmentToCacheMutation(
-        bindingToken:context.bindingToken,conversationId:conversationId,
-        attachmentId:attachmentId,fileName:content.fileName!,contentType:content.mime!,
-        filePath:plain.path,byteSize:content.byteSize!,
-      ));
+    await engine.open(content: content, cipher: cipher, target: plain);
+    await _runBindingFileMutation(
+      context.bindingToken,
+      () => _saveReceivedAttachmentToCacheMutation(
+        bindingToken: context.bindingToken,
+        conversationId: conversationId,
+        attachmentId: attachmentId,
+        fileName: content.fileName!,
+        contentType: content.mime!,
+        filePath: plain.path,
+        byteSize: content.byteSize!,
+      ),
+    );
 
     await engine.finish(content.attachmentGroupId!);
-    await _runBindingFileMutation(context.bindingToken,() async {
-      if(await cipher.exists()) await cipher.delete();
-      if(await plain.exists()) await plain.delete();
+    await _runBindingFileMutation(context.bindingToken, () async {
+      if (await cipher.exists()) await cipher.delete();
+      if (await plain.exists()) await plain.delete();
     });
     await context.transport.acknowledgeAttachment(attachmentId);
   }
@@ -4860,7 +4991,6 @@ class ChatRuntimeCore {
     MlsAuthenticationRequest.validateExpiry(proof.expiresAtMillis);
     return proof;
   });
-
 }
 
 class _ChatServiceContext {
@@ -4881,8 +5011,10 @@ String _newNonce() {
   return bytes.map((item) => item.toRadixString(16).padLeft(2, '0')).join();
 }
 
-String _ownerPath(String value) => utf8.encode(value)
-    .map((byte) => byte.toRadixString(16).padLeft(2, '0')).join();
+String _ownerPath(String value) => utf8
+    .encode(value)
+    .map((byte) => byte.toRadixString(16).padLeft(2, '0'))
+    .join();
 
 String _safePath(String value) {
   return value.replaceAll(RegExp(r'[^a-zA-Z0-9_.-]'), '_');

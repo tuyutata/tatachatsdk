@@ -686,10 +686,8 @@ void main() {
       messageBytes: message.writeToBuffer(),
     );
 
-    await store.isolateInaccessibleBinding(
-      previous: _testBinding,
-      current: _nextBinding,
-    );
+    // finalized公开绑定在同一事务清理旧队列并保留当前CID历史。
+    await store.convergeFinalizedBinding(_nextBinding);
     final nextBindingToken = await store.captureBindingFenceToken(_nextBinding);
 
     expect(await store.outboundQueueCount(_ownerUserId), 0);
@@ -825,7 +823,13 @@ void main() {
       ),
       isEmpty,
     );
-    await expectLater(store.searchMessages(
-      ownerUserId: 'CN220-CTZN2-999999999-2026', currentAccountId: peer, keyword: '开会'), throwsStateError);
+    await expectLater(
+      store.searchMessages(
+        ownerUserId: 'CN220-CTZN2-999999999-2026',
+        currentAccountId: peer,
+        keyword: '开会',
+      ),
+      throwsStateError,
+    );
   });
 }

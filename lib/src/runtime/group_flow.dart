@@ -137,7 +137,7 @@ class ChatGroupFlow<TBindingToken> {
       actorUserId: actorUserId,
       actorDeviceId: actorDeviceId,
       creatorUserId: group.creatorUserId,
-      existingUserIds: group.memberIdentities,
+      existingUserIds: group.memberUserIds,
       invitees: invitees,
     );
   }
@@ -233,9 +233,15 @@ class ChatGroupFlow<TBindingToken> {
     final nativeMessageId = '$groupId:remove:${group.epoch}';
     final bundle = await _crypto.withMessage(
       nativeMessageId,
-      () async => _crypto.removeMembers(groupId,
-          (await _crypto.groupState(groupId)).memberIdentities
-              .where((identity) => targetUserIds.contains(userIdFromMemberIdentity(identity))).toList()),
+      () async => _crypto.removeMembers(
+        groupId,
+        (await _crypto.groupState(groupId)).memberIdentities
+            .where(
+              (identity) =>
+                  targetUserIds.contains(userIdFromMemberIdentity(identity)),
+            )
+            .toList(),
+      ),
     );
     final nowMillis =
         bundle.createdAtMillis ?? DateTime.now().millisecondsSinceEpoch;
@@ -391,7 +397,7 @@ class ChatGroupFlow<TBindingToken> {
     if (group == null || group.leftLocally) {
       throw StateError('群聊不存在或已退出');
     }
-    return group.memberIdentities
+    return group.memberUserIds
         .where((userId) => userId != senderUserId)
         .toList(growable: false);
   }
@@ -658,9 +664,11 @@ class ChatGroupFlow<TBindingToken> {
           return replayedMessages;
         }
         final content = ChatPayloadCodec.decode(plaintext);
-        if (content.isMedia && (
-            result.senderMemberIdentity != '${message.senderUserId}:${message.senderDeviceId}' ||
-            content.attachmentSenderMemberIdentity != result.senderMemberIdentity)) {
+        if (content.isMedia &&
+            (result.senderMemberIdentity !=
+                    '${message.senderUserId}:${message.senderDeviceId}' ||
+                content.attachmentSenderMemberIdentity !=
+                    result.senderMemberIdentity)) {
           throw StateError('群附件控制实际MLS发送者不一致');
         }
         await _store.saveIncomingGroupMessage(

@@ -12,7 +12,8 @@ final class ChatSystemProtectedStorage {
       throw StateError('SDK 系统保护目录无效');
     }
     final directory = Directory(path);
-    if (await FileSystemEntity.type(path, followLinks: false) != FileSystemEntityType.directory ||
+    if (await FileSystemEntity.type(path, followLinks: false) !=
+            FileSystemEntityType.directory ||
         await directory.resolveSymbolicLinks() != path) {
       throw StateError('SDK 系统保护目录不可用');
     }

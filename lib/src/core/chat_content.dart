@@ -141,10 +141,16 @@ final class ChatPayloadCodec {
         attachmentChatEpoch: content.attachmentChatEpoch ?? -1,
         attachmentGroupId: content.attachmentGroupId ?? '',
         attachmentWelcome: _decodeWire(content.attachmentWelcome ?? ''),
-        attachmentMemberIdentities: content.attachmentMemberIdentities ?? const [],
-        attachmentSenderMemberIdentity: content.attachmentSenderMemberIdentity ?? '',
+        attachmentMemberIdentities:
+            content.attachmentMemberIdentities ?? const [],
+        attachmentSenderMemberIdentity:
+            content.attachmentSenderMemberIdentity ?? '',
         attachmentChunkCount: content.attachmentChunkCount ?? 0,
-        plainSha256: _decodeHex(content.plainSha256 ?? '', field: 'plain_sha256', expectedBytes: 32),
+        plainSha256: _decodeHex(
+          content.plainSha256 ?? '',
+          field: 'plain_sha256',
+          expectedBytes: 32,
+        ),
         cipherByteSize: content.cipherByteSize ?? 0,
         cipherSha256: _decodeHex(
           content.cipherSha256 ?? '',

@@ -22,11 +22,25 @@ void main() {
     expect(source, contains('await engine.seal('));
     expect(source, contains('await _requireAttachmentAudience('));
     expect(source, contains('context.crypto.groupState(conversationId)'));
-    expect(source, contains('recipientUserIds: _attachmentRecipientUserIds(content)'));
-    expect(source, contains('final recipients = _attachmentRecipientUserIds(content)'));
-    expect(source, contains('member != content.attachmentSenderMemberIdentity'));
-    final application = File('lib/src/mls/mls_attachment.dart').readAsStringSync();
-    expect(application, contains('crypto.groupCreateMessage(group,payload)'));
+    expect(
+      source,
+      contains('recipientUserIds: _attachmentRecipientUserIds(content)'),
+    );
+    expect(
+      source,
+      contains('final recipients = _attachmentRecipientUserIds(content)'),
+    );
+    expect(
+      source,
+      contains('member != content.attachmentSenderMemberIdentity'),
+    );
+    final application = File(
+      'lib/src/mls/mls_attachment.dart',
+    ).readAsStringSync();
+    expect(
+      application,
+      matches(RegExp(r'crypto\.groupCreateMessage\(\s*group,\s*payload\s*\)')),
+    );
     expect(application, contains("confirm_attachment_chunk"));
     expect(application, contains('Future<void>.delayed(Duration.zero)'));
   });

@@ -112,7 +112,9 @@ class NativeMlsCrypto implements MlsGroupCrypto, MlsPersistentCrypto {
       'user_id': identity.userId,
       'device_id': identity.deviceId,
       'group_id': groupId,
-      'expected_member_identities': keyPackages.map((package) => package.userId + ':' + package.deviceId).toList(),
+      'expected_member_identities': keyPackages
+          .map((package) => '${package.userId}:${package.deviceId}')
+          .toList(),
       'key_packages_hex': keyPackages
           .map((keyPackage) => keyPackage.keyPackageHex)
           .toList(),
@@ -212,7 +214,8 @@ class NativeMlsCrypto implements MlsGroupCrypto, MlsPersistentCrypto {
         ?.map((item) => item.toString())
         .toList();
     final sender = response['sender_member_identity'] as String?;
-    if (response['status'] == 'applied' && response['message_kind'] != 'unknown') {
+    if (response['status'] == 'applied' &&
+        response['message_kind'] != 'unknown') {
       if (sender == null || !RegExp(r'^[^:]+:[0-9a-f]{64}$').hasMatch(sender)) {
         throw StateError('OpenMLS实际发送者缺失或无效');
       }

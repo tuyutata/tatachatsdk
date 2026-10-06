@@ -159,4 +159,3 @@ class _Host implements ChatRuntimeHost {
   dynamic noSuchMethod(Invocation invocation) =>
       throw StateError('unexpected host operation');
 }
-

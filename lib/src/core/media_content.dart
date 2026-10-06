@@ -37,7 +37,9 @@ final class MediaContent {
     attachmentChatEpoch: attachmentChatEpoch,
     attachmentGroupId: attachmentGroupId,
     attachmentWelcome: List<int>.unmodifiable(attachmentWelcome),
-    attachmentMemberIdentities: List<String>.unmodifiable(attachmentMemberIdentities),
+    attachmentMemberIdentities: List<String>.unmodifiable(
+      attachmentMemberIdentities,
+    ),
     attachmentSenderMemberIdentity: attachmentSenderMemberIdentity,
     attachmentChunkCount: attachmentChunkCount,
     plainSha256: List<int>.unmodifiable(plainSha256),
@@ -95,9 +97,7 @@ final class MediaContentCodec {
 
   static const int maxWireBytes = 64 * 1024;
   static const int _maxUint32 = 0xffffffff;
-  static final RegExp _attachmentId = RegExp(
-    r'^[A-Za-z0-9_-]{1,128}$',
-  );
+  static final RegExp _attachmentId = RegExp(r'^[A-Za-z0-9_-]{1,128}$');
   static final RegExp _mime = RegExp(
     r'^[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]*/[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]*$',
   );
@@ -221,19 +221,34 @@ final class MediaContentCodec {
     }
     final members = content.attachmentMemberIdentities;
     final sorted = [...members]..sort();
-    if (content.attachmentChatEpoch < 0 || content.attachmentChatEpoch > 9007199254740991 || content.byteSize > 9007199254740991 ||
+    if (content.attachmentChatEpoch < 0 ||
+        content.attachmentChatEpoch > 9007199254740991 ||
+        content.byteSize > 9007199254740991 ||
         content.attachmentChunkCount > _maxUint32 ||
         utf8.encode(content.attachmentGroupId).length > 320 ||
-        [content.attachmentWelcome,content.plainSha256,content.cipherSha256].any((bytes)=>bytes.any((b)=>b<0||b>255)) ||
-        content.attachmentChunkCount != (content.byteSize + 1024 * 1024 - 1) ~/ (1024 * 1024) ||
-        content.cipherByteSize > content.byteSize + content.attachmentChunkCount * 4096 ||
-        content.plainSha256.length != 32 || content.cipherSha256.length != 32 ||
-        content.attachmentGroupId != 'attachment:${content.attachmentSenderMemberIdentity}:${content.attachmentId}' ||
-        content.attachmentWelcome.isEmpty || content.attachmentWelcome.length > 48 * 1024 ||
-        members.length < 2 || members.length > 1989 || members.toSet().length != members.length ||
+        [
+          content.attachmentWelcome,
+          content.plainSha256,
+          content.cipherSha256,
+        ].any((bytes) => bytes.any((b) => b < 0 || b > 255)) ||
+        content.attachmentChunkCount !=
+            (content.byteSize + 1024 * 1024 - 1) ~/ (1024 * 1024) ||
+        content.cipherByteSize >
+            content.byteSize + content.attachmentChunkCount * 4096 ||
+        content.plainSha256.length != 32 ||
+        content.cipherSha256.length != 32 ||
+        content.attachmentGroupId !=
+            'attachment:${content.attachmentSenderMemberIdentity}:${content.attachmentId}' ||
+        content.attachmentWelcome.isEmpty ||
+        content.attachmentWelcome.length > 48 * 1024 ||
+        members.length < 2 ||
+        members.length > 1989 ||
+        members.toSet().length != members.length ||
         !members.contains(content.attachmentSenderMemberIdentity) ||
         !_sameStrings(members, sorted) ||
-        members.any((m) => !RegExp(r'^[^:\x00-\x20]{1,256}:[0-9a-f]{64}$').hasMatch(m))) {
+        members.any(
+          (m) => !RegExp(r'^[^:\x00-\x20]{1,256}:[0-9a-f]{64}$').hasMatch(m),
+        )) {
       throw const FormatException('附件MLS合同无效');
     }
     if ((content.width == null) != (content.height == null) ||
@@ -272,7 +287,9 @@ final class MediaContentCodec {
     }
   }
 
-  static bool _sameStrings(List<String> a, List<String> b) => a.length == b.length && List.generate(a.length, (i) => a[i] == b[i]).every((v) => v);
+  static bool _sameStrings(List<String> a, List<String> b) =>
+      a.length == b.length &&
+      List.generate(a.length, (i) => a[i] == b[i]).every((v) => v);
 
   static bool _sameBytes(List<int> left, List<int> right) {
     if (left.length != right.length) return false;

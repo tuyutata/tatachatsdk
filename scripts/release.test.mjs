@@ -433,12 +433,12 @@ test('rejects a path-traversal tar entry', async () => {
 
 // 跨语言通道与方法从SDK实际调用端提取；测试不保存第二份通道合同。
 test('聊天存储iOS安全通道由SDK自有插件完整接入', async () => {
-  const dart = await readFile(new URL('../lib/src/storage/chat_isar.dart', import.meta.url), 'utf8');
+  const dart = await readFile(new URL('../lib/src/storage/system_protected_storage.dart', import.meta.url), 'utf8');
   const native = await readFile(new URL('../ios/TataChatSdkPlugin.swift', import.meta.url), 'utf8');
-  const channel = dart.match(/_securityChannel = MethodChannel\(\s*'([^']+)'/u)[1];
-  const method = dart.match(/_securityChannel.invokeMethod<void>\('([^']+)'/u)[1];
+  const channel = dart.match(/_channel = MethodChannel\(\s*'([^']+)'/u)[1];
+  const method = dart.match(/_channel.invokeMethod<String>\('([^']+)'/u)[1];
   assert.ok(native.includes(`name: "${channel}", binaryMessenger:`));
-  assert.ok(native.includes(`call.method == "${method}"`));
+  assert.ok(native.includes(`call.method == "${method}"`) || native.includes(`call.method == "${method}" else`));
   assert.ok(!native.includes('citizenapp/security'));
 });
 
