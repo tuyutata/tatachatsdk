@@ -56,7 +56,7 @@ class ImageViewerPage extends StatelessWidget {
             File(filePath),
             fit: BoxFit.contain,
             cacheWidth: cacheWidth,
-            errorBuilder: (_, __, ___) => Icon(
+            errorBuilder: (_, _, _) => Icon(
               Icons.broken_image_rounded,
               color: Colors.white54,
               size: ChatUiMetrics.scaled(context, 48),

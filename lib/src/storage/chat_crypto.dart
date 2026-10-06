@@ -65,8 +65,8 @@ class ChatDataBinding {
   }
 }
 
-/// TataChatSDK 请求宿主派生的四个相互隔离的本机用途钥。
-enum ChatStorageKeyPurpose { chat, chatIndex, mls, attachment }
+/// TataChatSDK 请求宿主派生的三个相互隔离的本机用途钥。
+enum ChatStorageKeyPurpose { chat, chatIndex, attachment }
 
 /// 宿主提供用途钥；TataChatSDK 永远不接触钱包、链或产品密钥实现。
 abstract interface class ChatStorageKeyProvider {

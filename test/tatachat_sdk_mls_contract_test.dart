@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:fixnum/fixnum.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -70,57 +69,15 @@ void main() {
     expect(violations, isEmpty);
   });
 
-  test(
-    'MLS state reset removes only SDK state and keeps the active key',
-    () async {
-      final root = await Directory.systemTemp.createTemp(
-        'chat-sdk-state-reset-',
-      );
-      addTearDown(() async {
-        if (await root.exists()) await root.delete(recursive: true);
-      });
-      final key = Uint8List.fromList(List<int>.generate(32, (index) => index));
-      final directory = Directory('${root.path}/device-a');
-      final store = MlsStateStore(
-        directory,
-        ownerUserId: 'user-a',
-        stateKey: key,
-      );
-      await directory.create(recursive: true);
-      await File(
-        '${directory.path}/openmls_storage.bin',
-      ).writeAsBytes(<int>[1]);
-      await File('${directory.path}/device.bin').writeAsBytes(<int>[2]);
-      await File(
-        '${directory.path}/pending_inbound.bin',
-      ).writeAsBytes(<int>[3]);
-
-      await store.reset();
-
-      expect(await directory.exists(), isTrue);
-      expect(await directory.list().toList(), isEmpty);
-      expect(
-        store.stateKey,
-        orderedEquals(List<int>.generate(32, (index) => index)),
-      );
-    },
-  );
-
-  test('native state failures expose stable redacted codes', () {
+  test('原生存储错误只有固定分类，不授权自动清理', () {
     final storage = MlsNativeException.fromTechnicalMessage(
-      'CHAT_MLS_STORAGE_AUTH_FAILED:detail',
-    );
-    final device = MlsNativeException.fromTechnicalMessage(
-      'CHAT_MLS_DEVICE_AUTH_FAILED:detail',
+      'CHAT_MLS_STORAGE_READ_FAILED:detail',
     );
     final invalid = MlsNativeException.fromTechnicalMessage(
       'CHAT_MLS_STATE_INVALID:detail',
     );
-
-    expect(storage.code, MlsNativeErrorCode.storageAuthFailed);
-    expect(storage.diagnosticCode, 'storage_auth_failed');
-    expect(storage.requiresStateReset, isTrue);
-    expect(device.code, MlsNativeErrorCode.deviceAuthFailed);
+    expect(storage.code, MlsNativeErrorCode.storageReadFailed);
+    expect(storage.diagnosticCode, 'storage_read_failed');
     expect(invalid.code, MlsNativeErrorCode.stateInvalid);
     expect(chatSdkDiagnosticCode(StateError('hidden')), 'operation_failed');
   });

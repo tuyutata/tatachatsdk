@@ -18,7 +18,7 @@ void main() {
         unavailableMessage: (_) => 'unavailable',
         errorMessage: (error) => error.toString(),
         headerBuilder: (_, header) => throw UnimplementedError(),
-        resolveUser: (userId, _, __) async => User(id: userId),
+        resolveUser: (userId, _, _) async => User(id: userId),
       ),
     );
 

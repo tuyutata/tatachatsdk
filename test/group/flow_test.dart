@@ -27,6 +27,8 @@ class _FakeGroupCrypto implements MlsGroupCrypto {
   final String localDeviceId;
   final Map<String, List<String>> _roster = {};
   final Map<String, int> _epoch = {};
+  GroupProcessStatus inboundStatus = GroupProcessStatus.applied;
+  bool committed = false;
 
   String get _localIdentity => '$userId:$localDeviceId';
 
@@ -98,11 +100,12 @@ class _FakeGroupCrypto implements MlsGroupCrypto {
     return GroupInbound(
       groupId: wire.conversationId,
       kind: GroupInboundKind.application,
-      status: GroupProcessStatus.applied,
+      status: inboundStatus,
       messageEpoch: epoch,
       groupEpoch: epoch,
       selfRemoved: false,
       plaintext: wire.wireBytes,
+      committed: committed,
     );
   }
 
@@ -152,6 +155,46 @@ MlsKeyPackage _keyPackage(String userId, String device) => MlsKeyPackage(
 
 void main() {
   useIsolatedChatIsar();
+
+  test('stale只有精确已提交收据才进入设备确认集合', () async {
+    final store = ChatStore();
+    final crypto = _FakeGroupCrypto(userId: _userA, localDeviceId: 'devA')
+      ..inboundStatus = GroupProcessStatus.stale;
+    final flow = ChatGroupFlow(
+      ownerUserId: _ownerUserId,
+      crypto: crypto,
+      store: store,
+      bindingToken: await _bindingToken(store),
+      deliverer: _okDeliverer,
+      userId: _userA,
+      currentAccountId: _accountA,
+      localDeviceId: 'devA',
+    );
+    final message =
+        MlsWireMessage(
+          conversationId: 'grp:receipt',
+          wireBytes: [1, 2, 3],
+          messageKind: MlsMessageKind.application,
+        ).toEncryptedMessage(
+          messageId: 'receipt-message',
+          senderUserId: _userB,
+          recipientUserId: _userA,
+          senderDeviceId: 'devB',
+          recipientDeviceId: 'devA',
+          createdAtMillis: 1,
+        );
+    expect(
+      await flow.processIncomingGroupMessage(message.writeToBuffer()),
+      isEmpty,
+    );
+    crypto.committed = true;
+    expect(
+      (await flow.processIncomingGroupMessage(
+        message.writeToBuffer(),
+      )).single.messageId,
+      message.messageId,
+    );
+  });
 
   test('建群→发文本→收文本→删人 全链路(fake 密码学 + 真 Isar)', () async {
     final store = ChatStore();
@@ -510,7 +553,7 @@ void main() {
       final events = <String>[];
       final flow = await buildGroup(
         store,
-        deliverer: (message, _, __, ___) async {
+        deliverer: (message, _, _, _) async {
           events.add('deliver');
           delivered.add(message);
           return ChatDeliveryResult(

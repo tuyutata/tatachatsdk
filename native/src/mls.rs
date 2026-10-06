@@ -1,5 +1,6 @@
 use std::{
-    collections::HashSet,
+    cell::RefCell,
+    collections::{HashMap, HashSet},
     ffi::CStr,
     fs,
     os::raw::c_char,
@@ -18,127 +19,87 @@ use openmls::{
 };
 use openmls_basic_credential::SignatureKeyPair;
 use openmls_memory_storage::MemoryStorage;
-use openmls_rust_crypto::{OpenMlsRustCrypto, RustCrypto};
-use openmls_traits::{
-    signatures::Signer, types::SignatureScheme, OpenMlsProvider as OpenMlsTraitsProvider,
-};
+#[cfg(test)]
+use openmls_rust_crypto::OpenMlsRustCrypto;
+use openmls_rust_crypto::RustCrypto;
+#[cfg(test)]
+use openmls_traits::types::SignatureScheme;
+use openmls_traits::{signatures::Signer, OpenMlsProvider as OpenMlsTraitsProvider};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 const GMB_MLS_CIPHERSUITE: Ciphersuite = Ciphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519;
-/// MLS 本地状态信封的 AAD 域,把密文钉死在用途上,防止两个文件互换。
-const STATE_AAD_STORAGE: &[u8] = b"tatachatsdk/mls|openmls_storage";
-const STATE_AAD_DEVICE: &[u8] = b"tatachatsdk/mls|device_record";
 const ERROR_STORAGE_READ: &str = "CHAT_MLS_STORAGE_READ_FAILED";
-const ERROR_STORAGE_AUTH: &str = "CHAT_MLS_STORAGE_AUTH_FAILED";
-const ERROR_DEVICE_READ: &str = "CHAT_MLS_DEVICE_READ_FAILED";
-const ERROR_DEVICE_AUTH: &str = "CHAT_MLS_DEVICE_AUTH_FAILED";
 const ERROR_STATE_INVALID: &str = "CHAT_MLS_STATE_INVALID";
 const ERROR_SIGNER_MISSING: &str = "CHAT_MLS_SIGNER_MISSING";
-/// GCM nonce 固定 12 字节;密文布局 = nonce || ciphertext || tag(16)。
-const STATE_NONCE_LEN: usize = 12;
-
-/// FFI 只依赖稳定阶段码分类，本地路径和底层错误只保留在技术信息中。
+const MAX_PENDING_RESULTS: usize = 256;
+const RECEIPT_LIFETIME_MILLIS: u64 = 7 * 24 * 60 * 60 * 1000;
+/// 错误只携带稳定阶段码，禁止包含状态中的秘密。
 fn state_error(code: &str, message: impl std::fmt::Display) -> String {
     format!("{code}:{message}")
 }
 
-/// 解析 Dart 侧下传的 32 字节 MLS 状态密钥(小写 hex)。
-///
-/// 密钥由 用户身份 当前绑定钱包账户按 `LocalKeyPurpose.mls` 用途域派生，
-/// Rust 侧只收密钥、不接触钱包种子。
-fn parse_state_key(state_key_hex: &str) -> Result<[u8; 32], String> {
-    let bytes = hex::decode(state_key_hex.trim_start_matches("0x"))
-        .map_err(|error| format!("MLS 状态密钥不是合法 hex: {error}"))?;
-    <[u8; 32]>::try_from(bytes.as_slice()).map_err(|_| "MLS 状态密钥必须为 32 字节".to_string())
-}
-
-/// AES-256-GCM 封装:随机 12 字节 nonce,输出 `nonce || ciphertext || tag`。
-fn seal_state(key: &[u8; 32], plaintext: &[u8], aad: &[u8]) -> Result<Vec<u8>, String> {
-    use aes_gcm::{
-        aead::{Aead, KeyInit, OsRng, Payload},
-        AeadCore, Aes256Gcm, Nonce,
-    };
-    let cipher = Aes256Gcm::new_from_slice(key)
-        .map_err(|error| format!("构造 MLS 状态加密器失败: {error}"))?;
-    let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
-    let ciphertext = cipher
-        .encrypt(
-            &nonce,
-            Payload {
-                msg: plaintext,
-                aad,
-            },
-        )
-        .map_err(|_| "MLS 状态加密失败".to_string())?;
-    let mut out = Vec::with_capacity(STATE_NONCE_LEN + ciphertext.len());
-    out.extend_from_slice(Nonce::<<Aes256Gcm as AeadCore>::NonceSize>::from_slice(
-        nonce.as_slice(),
-    ));
-    out.extend_from_slice(&ciphertext);
-    Ok(out)
-}
-
-/// AES-256-GCM 解封。密钥不符 / 密文被篡改一律报错,**绝不返回空状态**——
-/// 静默降级会让 App 误以为"没有 MLS 状态"而重建身份,等于丢掉全部会话。
-fn open_state(key: &[u8; 32], blob: &[u8], aad: &[u8]) -> Result<Vec<u8>, String> {
-    use aes_gcm::{
-        aead::{Aead, KeyInit, Payload},
-        Aes256Gcm, Nonce,
-    };
-    if blob.len() <= STATE_NONCE_LEN {
-        return Err("MLS 状态密文长度无效".to_string());
-    }
-    let cipher = Aes256Gcm::new_from_slice(key)
-        .map_err(|error| format!("构造 MLS 状态解密器失败: {error}"))?;
-    let nonce = Nonce::from_slice(&blob[..STATE_NONCE_LEN]);
-    cipher
-        .decrypt(
-            nonce,
-            Payload {
-                msg: &blob[STATE_NONCE_LEN..],
-                aad,
-            },
-        )
-        .map_err(|_| "MLS 状态解密失败:密钥不匹配或密文被篡改".to_string())
-}
-
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct CreateKeyPackageRequest {
     user_id: String,
     device_id: String,
-    state_store_dir: Option<String>,
-    /// MLS 本地状态信封密钥(32 字节 hex)。无 state_store_dir 时可省。
-    state_key_hex: Option<String>,
+    state_store_dir: String,
+    message_id: String,
     /// 生成 RFC 9420 last-resort KeyPackage；服务端只保留每个 用户身份/设备一枚。
     #[serde(default)]
     last_resort: bool,
 }
 
+#[cfg(test)]
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct TwoPartySmokeRequest {
     plaintext: String,
 }
 
 #[derive(Deserialize)]
-struct RekeyStateRequest {
+#[serde(deny_unknown_fields)]
+struct IdentityRequest {
     state_store_dir: String,
+    user_id: String,
     action: String,
-    current_state_key_hex: Option<String>,
-    new_state_key_hex: Option<String>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct DeviceRecord {
     user_id: String,
     device_id: String,
-    signature_public_key_hex: String,
-    signature_scheme: String,
+    public_key: String,
 }
 
+/// 请求结果与MLS状态同一提交，幂等标识复用现有message_id。
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CommittedResult {
+    request: serde_json::Value,
+    result: serde_json::Value,
+    acknowledged: bool,
+    committed_at_millis: u64,
+    acknowledged_at_millis: Option<u64>,
+}
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MlsSnapshot {
+    device: DeviceRecord,
+    values: HashMap<String, String>,
+    results: HashMap<String, CommittedResult>,
+    pending_inbound: Vec<serde_json::Value>,
+    receipts: HashMap<String, Vec<String>>,
+}
 struct MlsProvider {
     crypto: RustCrypto,
     storage: MemoryStorage,
+    device: DeviceRecord,
+    results: RefCell<HashMap<String, CommittedResult>>,
+    pending_inbound: RefCell<Vec<serde_json::Value>>,
+    receipts: RefCell<HashMap<String, Vec<String>>>,
 }
 
 impl OpenMlsTraitsProvider for MlsProvider {
@@ -178,17 +139,15 @@ pub unsafe extern "C" fn tatachat_sdk_mls_create_key_package_json(
     }
 }
 
-/// 执行真实 OpenMLS 双人组 round-trip smoke。
-///
+/// 显式初始化或读取MLS公开身份；读取路径永不生成密钥。
 /// # Safety
-/// - `request_json` 必须是合法 UTF-8 C 字符串。
-/// - 返回字符串必须由 `tatachat_sdk_free_string` 释放。
+/// 输入必须是UTF-8 C字符串，返回字符串由SDK释放。
 #[no_mangle]
-pub unsafe extern "C" fn tatachat_sdk_mls_two_party_smoke_json(
-    request_json: *const c_char,
+pub unsafe extern "C" fn tatachat_sdk_mls_identity_json(
+    input: *const c_char,
     error_out: *mut *mut c_char,
 ) -> *mut c_char {
-    match two_party_smoke_json(request_json) {
+    match identity_json(input) {
         Ok(value) => crate::string_into_raw(value, error_out),
         Err(message) => {
             crate::set_error(error_out, &message);
@@ -196,21 +155,65 @@ pub unsafe extern "C" fn tatachat_sdk_mls_two_party_smoke_json(
         }
     }
 }
-
-/// 为 用户身份 钱包换绑暂存、提交或丢弃 MLS 状态的新账户密文。
-///
-/// `stage` 只在内存解开此前密文并写旁路新账户密文；`commit` 在 finalized 后替换正式
-/// 文件；`discard` 删除旁路文件。任何动作都不会把 OpenMLS 状态明文写盘。
-///
+fn identity_json(input: *const c_char) -> Result<String, String> {
+    let request: IdentityRequest = parse_request(input)?;
+    require_identity_component(&request.user_id)?;
+    let dir = Path::new(&request.state_store_dir);
+    let _lock = lock_store(dir)?;
+    let provider = match request.action.as_str() {
+        "initialize" => {
+            if storage_path(dir).exists() {
+                return Err(state_error(ERROR_STATE_INVALID, "身份已存在，必须读取"));
+            }
+            let storage = MemoryStorage::default();
+            let signer = SignatureKeyPair::new(GMB_MLS_CIPHERSUITE.signature_algorithm())
+                .map_err(|_| state_error(ERROR_STATE_INVALID, "MLS签名身份生成失败"))?;
+            signer
+                .store(&storage)
+                .map_err(|_| state_error(ERROR_STATE_INVALID, "MLS签名身份保存失败"))?;
+            let public = hex::encode(signer.to_public_vec());
+            let provider = MlsProvider {
+                crypto: RustCrypto::default(),
+                storage,
+                device: DeviceRecord {
+                    user_id: request.user_id.clone(),
+                    device_id: public.clone(),
+                    public_key: format!("0x{public}"),
+                },
+                results: RefCell::new(HashMap::new()),
+                pending_inbound: RefCell::new(Vec::new()),
+                receipts: RefCell::new(HashMap::new()),
+            };
+            save_provider(dir, &provider)?;
+            provider
+        }
+        "read" => load_provider(dir)?,
+        _ => return Err("MLS身份action只允许initialize/read".to_string()),
+    };
+    let _ = read_device_signer(&provider, &request.user_id, &provider.device.device_id)?;
+    serde_json::to_string(&provider.device)
+        .map_err(|_| state_error(ERROR_STATE_INVALID, "公开身份序列化失败"))
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct StoreRequest {
+    state_store_dir: String,
+    user_id: String,
+    action: String,
+    message_id: Option<String>,
+    pending_inbound: Option<serde_json::Value>,
+    handover_id: Option<String>,
+    payload_json: Option<String>,
+}
+/// 处理结果确认和早到密文队列；不接收或返回私钥。
 /// # Safety
-/// - `request_json` 必须是合法 UTF-8 C 字符串。
-/// - 返回字符串必须由 `tatachat_sdk_free_string` 释放。
+/// 输入必须是UTF-8 C字符串，返回字符串由SDK释放。
 #[no_mangle]
-pub unsafe extern "C" fn tatachat_sdk_mls_rekey_state_json(
-    request_json: *const c_char,
+pub unsafe extern "C" fn tatachat_sdk_mls_store_json(
+    input: *const c_char,
     error_out: *mut *mut c_char,
 ) -> *mut c_char {
-    match rekey_state_json(request_json) {
+    match store_json(input) {
         Ok(value) => crate::string_into_raw(value, error_out),
         Err(message) => {
             crate::set_error(error_out, &message);
@@ -218,109 +221,118 @@ pub unsafe extern "C" fn tatachat_sdk_mls_rekey_state_json(
         }
     }
 }
-
-fn rekey_state_json(request_json: *const c_char) -> Result<String, String> {
-    let request: RekeyStateRequest = parse_request(request_json)?;
-    let state_dir = Path::new(&request.state_store_dir);
-    match request.action.as_str() {
-        "stage" => {
-            let current_key = parse_state_key(
-                request
-                    .current_state_key_hex
-                    .as_deref()
-                    .ok_or_else(|| "stage 缺少 current_state_key_hex".to_string())?,
-            )?;
-            let new_key = parse_state_key(
-                request
-                    .new_state_key_hex
-                    .as_deref()
-                    .ok_or_else(|| "stage 缺少 new_state_key_hex".to_string())?,
-            )?;
-            stage_rekey_state_file(
-                &storage_path(state_dir),
-                &current_key,
-                &new_key,
-                STATE_AAD_STORAGE,
-            )?;
-            stage_rekey_state_file(
-                &device_record_path(state_dir),
-                &current_key,
-                &new_key,
-                STATE_AAD_DEVICE,
-            )?;
+fn store_json(input: *const c_char) -> Result<String, String> {
+    let request: StoreRequest = parse_request(input)?;
+    let dir = Path::new(&request.state_store_dir);
+    let _lock = lock_store(dir)?;
+    let provider = load_provider(dir)?;
+    let _ = read_device_signer(&provider, &request.user_id, &provider.device.device_id)?;
+    let response = match request.action.as_str() {
+        "pending_results" => {
+            let mut results: Vec<_> = provider
+                .results
+                .borrow()
+                .values()
+                .filter(|r| {
+                    request.message_id.as_ref().map_or(!r.acknowledged, |id| {
+                        r.request["message_id"].as_str() == Some(id.as_str())
+                    })
+                })
+                .cloned()
+                .collect();
+            results.sort_by_key(|r| r.committed_at_millis);
+            json!({"results": results})
         }
-        "commit" => {
-            commit_rekey_state_file(&storage_path(state_dir))?;
-            commit_rekey_state_file(&device_record_path(state_dir))?;
+        "acknowledge" => {
+            let id = request.message_id.as_deref().ok_or("缺少message_id")?;
+            require_non_empty("message_id", id)?;
+            let now = now_millis()?;
+            for result in provider.results.borrow_mut().values_mut() {
+                if result.request["message_id"] == id {
+                    result.acknowledged = true;
+                    if result.acknowledged_at_millis.is_none() {
+                        result.acknowledged_at_millis = Some(now);
+                    }
+                    if result.request.get("wire_message_hex").is_some() {
+                        result.result["plaintext_hex"] = serde_json::Value::Null;
+                    }
+                }
+            }
+            save_provider(dir, &provider)?;
+            json!({"ok": true})
         }
-        "discard" => {
-            discard_rekey_state_file(&storage_path(state_dir))?;
-            discard_rekey_state_file(&device_record_path(state_dir))?;
+        "write_receipt" => {
+            let id = request.handover_id.ok_or("缺少handover_id")?;
+            let payload = request.payload_json.ok_or("缺少payload_json")?;
+            if id.len() > 256 || payload.len() > 1024 * 1024 {
+                return Err("交接收据超限".to_string());
+            }
+            let mut receipts = provider.receipts.borrow_mut();
+            let records = receipts.entry(id).or_default();
+            if !records.contains(&payload) {
+                if records.len() >= 2 {
+                    return Err("交接收据阶段超限".to_string());
+                }
+                records.push(payload);
+            }
+            drop(receipts);
+            save_provider(dir, &provider)?;
+            json!({"ok": true})
         }
-        _ => return Err("MLS 状态换绑 action 必须为 stage/commit/discard".to_string()),
-    }
-    serde_json::to_string(&serde_json::json!({"ok": true}))
-        .map_err(|error| format!("序列化 MLS 状态换绑结果失败: {error}"))
+        "read_receipt" => {
+            let id = request.handover_id.ok_or("缺少handover_id")?;
+            json!({"payload_json": provider.receipts.borrow().get(&id)})
+        }
+        "delete_receipt" => {
+            let id = request.handover_id.ok_or("缺少handover_id")?;
+            provider.receipts.borrow_mut().remove(&id);
+            save_provider(dir, &provider)?;
+            json!({"ok": true})
+        }
+        "queue_pending" => {
+            let wire = request.pending_inbound.ok_or("缺少pending_inbound")?;
+            let mut pending = provider.pending_inbound.borrow_mut();
+            if !pending.contains(&wire) {
+                if pending.len() >= MAX_PENDING_RESULTS {
+                    return Err("MLS待处理密文队列已满".to_string());
+                }
+                pending.push(wire);
+            }
+            drop(pending);
+            save_provider(dir, &provider)?;
+            json!({"ok": true})
+        }
+        "read_pending" => json!({"pending_inbound": *provider.pending_inbound.borrow()}),
+        "clear_pending" => {
+            provider.pending_inbound.borrow_mut().clear();
+            save_provider(dir, &provider)?;
+            json!({"ok": true})
+        }
+        _ => return Err("MLS存储action非法".to_string()),
+    };
+    serde_json::to_string(&response)
+        .map_err(|_| state_error(ERROR_STATE_INVALID, "存储结果序列化失败"))
 }
 
 fn create_key_package_json(request_json: *const c_char) -> Result<String, String> {
     let request: CreateKeyPackageRequest = parse_request(request_json)?;
+    // 消息标识在触碰持久状态之前校验，重放仍按完整原请求复核。
+    require_non_empty("message_id", &request.message_id)?;
     require_non_empty("user_id", &request.user_id)?;
     require_non_empty("device_id", &request.device_id)?;
 
-    let (
-        key_package_ref,
-        key_package_hex,
-        cipher_suite,
-        not_before_millis,
-        not_after_millis,
-        last_resort,
-    ) = if let Some(dir) = request.state_store_dir.as_deref() {
-        let state_dir = Path::new(dir);
-        let state_key_hex = request
-            .state_key_hex
-            .as_deref()
-            .ok_or_else(|| "提供 state_store_dir 时必须同时提供 state_key_hex".to_string())?;
-        let state_key = parse_state_key(state_key_hex)?;
-        let provider = load_provider(state_dir, &state_key)?;
-        let (credential, signer) = ensure_device_signer(
-            &provider,
-            state_dir,
-            &request.user_id,
-            &request.device_id,
-            &state_key,
-        )?;
-        let bundle =
-            generate_published_key_package(&provider, &signer, credential, request.last_resort)?;
-        let publication = key_package_publication_fields(&provider, &bundle)?;
-        save_provider(state_dir, &provider, &state_key)?;
-        (
-            publication.0,
-            publication.1,
-            format!("{:?}", GMB_MLS_CIPHERSUITE),
-            publication.2,
-            publication.3,
-            publication.4,
-        )
-    } else {
-        let provider = OpenMlsRustCrypto::default();
-        let (credential, signer) = generate_credential(
-            format!("{}:{}", request.user_id, request.device_id).into_bytes(),
-            GMB_MLS_CIPHERSUITE.signature_algorithm(),
-            &provider,
-        )?;
-        let bundle =
-            generate_published_key_package(&provider, &signer, credential, request.last_resort)?;
-        let publication = key_package_publication_fields(&provider, &bundle)?;
-        (
-            publication.0,
-            publication.1,
-            format!("{:?}", GMB_MLS_CIPHERSUITE),
-            publication.2,
-            publication.3,
-            publication.4,
-        )
-    };
+    let state_dir = Path::new(&request.state_store_dir);
+    let _lock = lock_store(state_dir)?;
+    let provider = load_provider(state_dir)?;
+    let (credential, signer) = read_device_signer(&provider, &request.user_id, &request.device_id)?;
+    if let Some(result) = committed_response(&provider, "key_package", request_json)? {
+        return Ok(result);
+    }
+    let bundle =
+        generate_published_key_package(&provider, &signer, credential, request.last_resort)?;
+    let (key_package_ref, key_package_hex, not_before_millis, not_after_millis, last_resort) =
+        key_package_publication_fields(&provider, &bundle)?;
+    let cipher_suite = format!("{:?}", GMB_MLS_CIPHERSUITE);
     let response = json!({
         "user_id": request.user_id,
         "device_id": request.device_id,
@@ -333,9 +345,10 @@ fn create_key_package_json(request_json: *const c_char) -> Result<String, String
         "not_after_millis": not_after_millis,
         "last_resort": last_resort,
     });
-    serde_json::to_string(&response).map_err(|error| error.to_string())
+    commit_response(state_dir, &provider, "key_package", request_json, response)
 }
 
+#[cfg(test)]
 fn two_party_smoke_json(request_json: *const c_char) -> Result<String, String> {
     let request: TwoPartySmokeRequest = parse_request(request_json)?;
     require_non_empty("plaintext", &request.plaintext)?;
@@ -445,9 +458,10 @@ where
     let request = unsafe { CStr::from_ptr(request_json) }
         .to_str()
         .map_err(|_| "request_json 不是合法 UTF-8".to_string())?;
-    serde_json::from_str(request).map_err(|error| format!("解析 request_json 失败: {error}"))
+    serde_json::from_str(request).map_err(|_| "解析request_json失败，字段或结构非法".to_string())
 }
 
+#[cfg(test)]
 fn generate_credential(
     identity: Vec<u8>,
     signature_algorithm: SignatureScheme,
@@ -468,6 +482,7 @@ fn generate_credential(
     ))
 }
 
+#[cfg(test)]
 fn generate_key_package(
     provider: &impl OpenMlsStorageProvider,
     signer: &impl Signer,
@@ -527,157 +542,210 @@ fn key_package_publication_fields(
     ))
 }
 
-/// OpenMLS storage 的可序列化形态。
-///
-/// 不走上游 `save_to_file` / `load_from_file`——那两个 API 硬绑 `&File`，只能把
-/// **明文**直接写盘。这里改为自己序列化 `MemoryStorage.values`(公开字段)到内存
-/// 缓冲，再整体 AEAD 加密落盘，全程无明文触盘。
-#[derive(Serialize, Deserialize, Default)]
-struct SerializableMlsStorage {
-    values: std::collections::HashMap<String, String>,
-}
-
-fn load_provider(state_dir: &Path, state_key: &[u8; 32]) -> Result<MlsProvider, String> {
-    fs::create_dir_all(state_dir).map_err(|error| {
-        state_error(
-            ERROR_STORAGE_READ,
-            format!("创建 MLS 状态目录失败: {error}"),
-        )
-    })?;
-
+/// 身份、协议状态及操作结果只由SDK在系统保护目录统一读写。
+fn load_provider(dir: &Path) -> Result<MlsProvider, String> {
+    use base64::Engine;
+    use std::io::Read;
+    let path = storage_path(dir);
+    require_regular_file(&path)?;
+    let mut options = fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(any(target_os = "ios", target_os = "macos"))]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(0x100);
+    }
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(0x20000);
+    }
+    let mut file = options
+        .open(&path)
+        .map_err(|_| state_error(ERROR_STORAGE_READ, "MLS状态读取失败"))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if file
+            .metadata()
+            .map_err(|_| state_error(ERROR_STORAGE_READ, "文件权限不可读"))?
+            .permissions()
+            .mode()
+            & 0o777
+            != 0o600
+        {
+            return Err(state_error(ERROR_STORAGE_READ, "MLS文件权限不安全"));
+        }
+    }
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes)
+        .map_err(|_| state_error(ERROR_STORAGE_READ, "MLS状态读取失败"))?;
+    let parsed = serde_json::from_slice::<MlsSnapshot>(&bytes);
+    bytes.fill(0);
+    let snapshot = parsed.map_err(|_| state_error(ERROR_STATE_INVALID, "MLS状态结构损坏"))?;
     let storage = MemoryStorage::default();
-    let storage_path = storage_path(state_dir);
-    if storage_path.exists() {
-        use base64::Engine;
-        let blob = fs::read(&storage_path).map_err(|error| {
-            state_error(
-                ERROR_STORAGE_READ,
-                format!("读取 OpenMLS storage 失败: {error}"),
-            )
-        })?;
-        let clear = open_state(state_key, &blob, STATE_AAD_STORAGE)
-            .map_err(|error| state_error(ERROR_STORAGE_AUTH, error))?;
-        let parsed: SerializableMlsStorage = serde_json::from_slice(&clear).map_err(|error| {
-            state_error(
-                ERROR_STATE_INVALID,
-                format!("解析 OpenMLS storage 失败: {error}"),
-            )
-        })?;
+    {
         let mut values = storage
             .values
             .write()
-            .map_err(|_| "OpenMLS storage 写锁异常".to_string())?;
-        for (key, value) in parsed.values {
+            .map_err(|_| state_error(ERROR_STATE_INVALID, "状态锁异常"))?;
+        for (key, value) in snapshot.values {
             let key = base64::prelude::BASE64_STANDARD
                 .decode(key)
-                .map_err(|error| {
-                    state_error(
-                        ERROR_STATE_INVALID,
-                        format!("OpenMLS storage 键解码失败: {error}"),
-                    )
-                })?;
+                .map_err(|_| state_error(ERROR_STATE_INVALID, "状态键编码损坏"))?;
             let value = base64::prelude::BASE64_STANDARD
                 .decode(value)
-                .map_err(|error| {
-                    state_error(
-                        ERROR_STATE_INVALID,
-                        format!("OpenMLS storage 值解码失败: {error}"),
-                    )
-                })?;
+                .map_err(|_| state_error(ERROR_STATE_INVALID, "状态值编码损坏"))?;
             values.insert(key, value);
         }
     }
     Ok(MlsProvider {
         crypto: RustCrypto::default(),
         storage,
+        device: snapshot.device,
+        results: RefCell::new(snapshot.results),
+        pending_inbound: RefCell::new(snapshot.pending_inbound),
+        receipts: RefCell::new(snapshot.receipts),
     })
 }
-
-fn save_provider(
-    state_dir: &Path,
-    provider: &MlsProvider,
-    state_key: &[u8; 32],
-) -> Result<(), String> {
+fn save_provider(dir: &Path, provider: &MlsProvider) -> Result<(), String> {
     use base64::Engine;
-    fs::create_dir_all(state_dir).map_err(|error| format!("创建 MLS 状态目录失败: {error}"))?;
-
-    let mut serializable = SerializableMlsStorage::default();
-    {
-        let values = provider
-            .storage()
-            .values
-            .read()
-            .map_err(|_| "OpenMLS storage 读锁异常".to_string())?;
-        for (key, value) in &*values {
-            serializable.values.insert(
-                base64::prelude::BASE64_STANDARD.encode(key),
-                base64::prelude::BASE64_STANDARD.encode(value),
-            );
-        }
-    }
-    let clear = serde_json::to_vec(&serializable)
-        .map_err(|error| format!("序列化 OpenMLS storage 失败: {error}"))?;
-    let sealed = seal_state(state_key, &clear, STATE_AAD_STORAGE)?;
-    atomic_write(&storage_path(state_dir), &sealed)?;
-    Ok(())
-}
-
-fn ensure_device_signer(
-    provider: &MlsProvider,
-    state_dir: &Path,
-    user_id: &str,
-    device_id: &str,
-    state_key: &[u8; 32],
-) -> Result<(CredentialWithKey, SignatureKeyPair), String> {
-    let record_path = device_record_path(state_dir);
-    let signature_algorithm = GMB_MLS_CIPHERSUITE.signature_algorithm();
-    if record_path.exists() {
-        let blob = fs::read(&record_path).map_err(|error| {
-            state_error(ERROR_DEVICE_READ, format!("读取 MLS 设备记录失败: {error}"))
-        })?;
-        let clear = open_state(state_key, &blob, STATE_AAD_DEVICE)
-            .map_err(|error| state_error(ERROR_DEVICE_AUTH, error))?;
-        let record: DeviceRecord = serde_json::from_slice(&clear).map_err(|error| {
-            state_error(
-                ERROR_STATE_INVALID,
-                format!("解析 MLS 设备记录失败: {error}"),
+    let now = now_millis()?;
+    // 未落库结果不丢弃；确认收据至少覆盖服务端七天投递窗口。
+    provider.results.borrow_mut().retain(|_, r| {
+        !r.acknowledged
+            || now.saturating_sub(r.acknowledged_at_millis.unwrap_or(now))
+                <= RECEIPT_LIFETIME_MILLIS
+    });
+    let values = provider
+        .storage
+        .values
+        .read()
+        .map_err(|_| state_error(ERROR_STATE_INVALID, "状态读锁异常"))?
+        .iter()
+        .map(|(k, v)| {
+            (
+                base64::prelude::BASE64_STANDARD.encode(k),
+                base64::prelude::BASE64_STANDARD.encode(v),
             )
-        })?;
-        if record.user_id != user_id || record.device_id != device_id {
-            return Err(
-                "CHAT_MLS_STATE_OWNER_MISMATCH:MLS 状态目录已绑定到其他 用户身份 或设备"
-                    .to_string(),
-            );
-        }
-        let public_key =
-            decode_hex_field("signature_public_key_hex", &record.signature_public_key_hex)
-                .map_err(|error| state_error(ERROR_STATE_INVALID, error))?;
-        let signer = SignatureKeyPair::read(provider.storage(), &public_key, signature_algorithm)
-            .ok_or_else(|| {
-            state_error(
-                ERROR_SIGNER_MISSING,
-                "MLS 设备签名密钥不在 OpenMLS storage 中",
-            )
-        })?;
-        let credential = credential_with_public_key(user_id, device_id, public_key);
-        return Ok((credential, signer));
-    }
-
-    let (credential, signer) = generate_credential(
-        format!("{user_id}:{device_id}").into_bytes(),
-        signature_algorithm,
-        provider,
-    )?;
-    let record = DeviceRecord {
-        user_id: user_id.to_string(),
-        device_id: device_id.to_string(),
-        signature_public_key_hex: hex::encode(signer.to_public_vec()),
-        signature_scheme: format!("{:?}", signature_algorithm),
+        })
+        .collect();
+    let snapshot = MlsSnapshot {
+        device: provider.device.clone(),
+        values,
+        results: provider.results.borrow().clone(),
+        pending_inbound: provider.pending_inbound.borrow().clone(),
+        receipts: provider.receipts.borrow().clone(),
     };
-    let clear = serde_json::to_vec(&record).map_err(|error| error.to_string())?;
-    let sealed = seal_state(state_key, &clear, STATE_AAD_DEVICE)?;
-    atomic_write(&record_path, &sealed)?;
-    Ok((credential, signer))
+    let mut bytes = serde_json::to_vec(&snapshot)
+        .map_err(|_| state_error(ERROR_STATE_INVALID, "状态序列化失败"))?;
+    let result = atomic_write(&storage_path(dir), &bytes);
+    bytes.fill(0);
+    result
+}
+fn read_device_signer(
+    provider: &MlsProvider,
+    user: &str,
+    device: &str,
+) -> Result<(CredentialWithKey, SignatureKeyPair), String> {
+    require_identity_component(user)?;
+    require_identity_component(device)?;
+    let record = &provider.device;
+    if record.user_id != user || record.device_id != device {
+        return Err("CHAT_MLS_STATE_OWNER_MISMATCH:状态属于其他用户或设备".to_string());
+    }
+    if !record.public_key.starts_with("0x") || record.public_key.len() != 66 {
+        return Err(state_error(ERROR_STATE_INVALID, "公钥结构损坏"));
+    }
+    let public = decode_hex_field("public_key", &record.public_key)?;
+    if record.device_id != hex::encode(&public) {
+        return Err(state_error(ERROR_STATE_INVALID, "设备标识与MLS公钥不一致"));
+    }
+    let signer = SignatureKeyPair::read(
+        provider.storage(),
+        &public,
+        GMB_MLS_CIPHERSUITE.signature_algorithm(),
+    )
+    .ok_or_else(|| state_error(ERROR_SIGNER_MISSING, "签名身份缺失"))?;
+    if signer.to_public_vec() != public {
+        return Err(state_error(ERROR_STATE_INVALID, "公钥与签名身份不一致"));
+    }
+    Ok((credential_with_public_key(user, device, public), signer))
+}
+fn now_millis() -> Result<u64, String> {
+    Ok(std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|_| state_error(ERROR_STATE_INVALID, "系统时钟无效"))?
+        .as_millis() as u64)
+}
+fn result_key(kind: &str, request: &serde_json::Value) -> Result<String, String> {
+    let id = request["message_id"].as_str().ok_or("缺少message_id")?;
+    require_non_empty("message_id", id)?;
+    if id.len() > 4096 {
+        return Err("message_id过长".to_string());
+    }
+    Ok(format!("{kind}:{id}"))
+}
+fn committed_response(
+    provider: &MlsProvider,
+    kind: &str,
+    input: *const c_char,
+) -> Result<Option<String>, String> {
+    let request: serde_json::Value = parse_request(input)?;
+    let key = result_key(kind, &request)?;
+    if let Some(saved) = provider.results.borrow().get(&key) {
+        if saved.request != request {
+            return Err("CHAT_MLS_REQUEST_CONFLICT:同一message_id请求发生变化".to_string());
+        }
+        let mut response = saved.result.clone();
+        if kind == "process" && saved.acknowledged {
+            response["status"] = json!("stale");
+            response["committed"] = json!(true);
+        }
+        return serde_json::to_string(&response)
+            .map(Some)
+            .map_err(|_| state_error(ERROR_STATE_INVALID, "处理结果损坏"));
+    }
+    if provider
+        .results
+        .borrow()
+        .values()
+        .filter(|r| !r.acknowledged)
+        .count()
+        >= MAX_PENDING_RESULTS
+    {
+        return Err("CHAT_MLS_PENDING_FULL:必须先完成已有结果".to_string());
+    }
+    Ok(None)
+}
+fn commit_response(
+    dir: &Path,
+    provider: &MlsProvider,
+    kind: &str,
+    input: *const c_char,
+    mut response: serde_json::Value,
+) -> Result<String, String> {
+    let request: serde_json::Value = parse_request(input)?;
+    if kind == "process" && response["status"] != "applied" {
+        return serde_json::to_string(&response)
+            .map_err(|_| state_error(ERROR_STATE_INVALID, "结果序列化失败"));
+    }
+    let key = result_key(kind, &request)?;
+    response["committed"] = json!(true);
+    let now = now_millis()?;
+    response["created_at_millis"] = json!(now);
+    provider.results.borrow_mut().insert(
+        key,
+        CommittedResult {
+            request,
+            result: response.clone(),
+            acknowledged: false,
+            committed_at_millis: now,
+            acknowledged_at_millis: None,
+        },
+    );
+    save_provider(dir, provider)?;
+    serde_json::to_string(&response).map_err(|_| state_error(ERROR_STATE_INVALID, "结果序列化失败"))
 }
 
 fn credential_with_public_key(
@@ -714,72 +782,107 @@ fn decode_hex_field(field_name: &str, value: &str) -> Result<Vec<u8>, String> {
     hex::decode(normalized).map_err(|error| format!("{field_name} 不是合法 hex: {error}"))
 }
 
-fn storage_path(state_dir: &Path) -> PathBuf {
-    state_dir.join("openmls_storage.bin")
+fn storage_path(dir: &Path) -> PathBuf {
+    dir.join("state.bin")
 }
-
-fn device_record_path(state_dir: &Path) -> PathBuf {
-    state_dir.join("device.bin")
-}
-
-fn rekey_staged_path(path: &Path) -> PathBuf {
-    path.with_extension("account_rekey")
-}
-
-fn stage_rekey_state_file(
-    path: &Path,
-    current_key: &[u8; 32],
-    new_key: &[u8; 32],
-    aad: &[u8],
-) -> Result<(), String> {
-    if !path.exists() {
-        return Ok(());
-    }
-    let current_blob = fs::read(path).map_err(|error| format!("读取 MLS 当前状态失败: {error}"))?;
-    let mut clear = open_state(current_key, &current_blob, aad)?;
-    let new_blob = seal_state(new_key, &clear, aad)?;
-    clear.fill(0);
-    // 写盘前再用新钥认证一次，确保“新密钥已上岗”不是只写未验。
-    let mut verified = open_state(new_key, &new_blob, aad)?;
-    verified.fill(0);
-    atomic_write(&rekey_staged_path(path), &new_blob)
-}
-
-fn commit_rekey_state_file(path: &Path) -> Result<(), String> {
-    let staged = rekey_staged_path(path);
-    if !staged.exists() {
-        return Ok(());
-    }
-    fs::rename(&staged, path).map_err(|error| format!("提交 MLS 新账户状态密文失败: {error}"))
-}
-
-fn discard_rekey_state_file(path: &Path) -> Result<(), String> {
-    let staged = rekey_staged_path(path);
-    if staged.exists() {
-        fs::remove_file(staged).map_err(|error| format!("删除 MLS 换绑暂存失败: {error}"))?;
+fn require_regular_file(path: &Path) -> Result<(), String> {
+    let metadata = fs::symlink_metadata(path)
+        .map_err(|_| state_error(ERROR_STORAGE_READ, "MLS文件缺失或不可读"))?;
+    if !metadata.file_type().is_file() {
+        return Err(state_error(ERROR_STORAGE_READ, "MLS文件类型非法"));
     }
     Ok(())
 }
-
-/// 原子写入:先写同目录临时文件、fsync,再 rename 覆盖目标。
-///
-/// MLS 状态一旦被写坏(例如写到一半崩溃导致截断),该设备的**全部群与会话都不可读**。
-/// rename 在同一文件系统上是原子的,保证要么是完整旧内容、要么是完整新内容。
+/// 独占文件锁覆盖读取、协议变更和提交整个事务。
+fn lock_store(dir: &Path) -> Result<fs::File, String> {
+    if !dir.is_absolute()
+        || fs::canonicalize(dir).map_err(|_| state_error(ERROR_STORAGE_READ, "目录不可用"))? != dir
+    {
+        return Err(state_error(
+            ERROR_STORAGE_READ,
+            "目录必须是无符号链接绝对路径",
+        ));
+    }
+    let path = dir.join("state.lock");
+    if fs::symlink_metadata(&path).is_ok() {
+        require_regular_file(&path)?;
+    }
+    let mut options = fs::OpenOptions::new();
+    options.read(true).write(true).create(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+        #[cfg(any(target_os = "ios", target_os = "macos"))]
+        options.custom_flags(0x100);
+        #[cfg(any(target_os = "android", target_os = "linux"))]
+        options.custom_flags(0x20000);
+    }
+    let file = options
+        .open(path)
+        .map_err(|_| state_error(ERROR_STORAGE_READ, "存储锁不可用"))?;
+    file.lock()
+        .map_err(|_| state_error(ERROR_STORAGE_READ, "存储锁失败"))?;
+    Ok(file)
+}
+/// 先核验保护再写秘密；rename提交后同步父目录，不恢复旧ratchet快照。
 fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), String> {
     use std::io::Write;
-    let tmp = path.with_extension("tmp");
-    {
-        let mut file = fs::File::create(&tmp)
-            .map_err(|error| format!("创建 MLS 状态临时文件失败: {error}"))?;
-        file.write_all(bytes)
-            .map_err(|error| format!("写入 MLS 状态临时文件失败: {error}"))?;
-        file.sync_all()
-            .map_err(|error| format!("同步 MLS 状态临时文件失败: {error}"))?;
+    let tmp = path.with_extension("writing");
+    if fs::symlink_metadata(&tmp).is_ok() {
+        require_regular_file(&tmp)?;
     }
-    fs::rename(&tmp, path).map_err(|error| {
-        let _ = fs::remove_file(&tmp);
-        format!("替换 MLS 状态文件失败: {error}")
-    })
+    if fs::symlink_metadata(path).is_ok() {
+        require_regular_file(path)?;
+    }
+    let mut options = fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+        #[cfg(any(target_os = "ios", target_os = "macos"))]
+        options.custom_flags(0x100);
+        #[cfg(any(target_os = "android", target_os = "linux"))]
+        options.custom_flags(0x20000);
+    }
+    let mut file = options
+        .open(&tmp)
+        .map_err(|_| state_error(ERROR_STORAGE_READ, "临时状态创建失败"))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        file.set_permissions(fs::Permissions::from_mode(0o600))
+            .map_err(|_| state_error(ERROR_STORAGE_READ, "权限设置失败"))?;
+    }
+    #[cfg(target_os = "ios")]
+    {
+        use std::os::fd::AsRawFd;
+        unsafe extern "C" {
+            fn fcntl(fd: i32, command: i32, ...) -> i32;
+        }
+        // Apple文件保护class C，写入前设置并回读。
+        if unsafe { fcntl(file.as_raw_fd(), 64, 3) } != 0
+            || unsafe { fcntl(file.as_raw_fd(), 63) } != 3
+        {
+            return Err(state_error(ERROR_STORAGE_READ, "文件保护不可用"));
+        }
+    }
+    file.write_all(bytes)
+        .map_err(|_| state_error(ERROR_STORAGE_READ, "状态写入失败"))?;
+    file.sync_all()
+        .map_err(|_| state_error(ERROR_STORAGE_READ, "状态同步失败"))?;
+    fs::rename(&tmp, path).map_err(|_| state_error(ERROR_STORAGE_READ, "状态提交失败"))?;
+    fs::File::open(path.parent().ok_or("状态缺少父目录")?)
+        .and_then(|f| f.sync_all())
+        .map_err(|_| state_error(ERROR_STORAGE_READ, "目录同步失败"))?;
+    Ok(())
+}
+fn require_identity_component(value: &str) -> Result<(), String> {
+    if value.trim().is_empty() || value.contains(':') || value.len() > 4096 {
+        return Err("MLS身份标识无效".to_string());
+    }
+    Ok(())
 }
 
 fn require_non_empty(field_name: &str, value: &str) -> Result<(), String> {
@@ -799,20 +902,20 @@ fn require_non_empty(field_name: &str, value: &str) -> Result<(), String> {
 const MAX_GROUP_MEMBERS: usize = 1989;
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct GroupCreateRequest {
     state_store_dir: String,
-    /// MLS 本地状态信封密钥(32 字节 hex),由 Dart 侧 LocalKeyPurpose.mls 子钥下传。
-    state_key_hex: String,
+    message_id: String,
     user_id: String,
     device_id: String,
     group_id: String,
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct GroupAddMembersRequest {
     state_store_dir: String,
-    /// MLS 本地状态信封密钥(32 字节 hex),由 Dart 侧 LocalKeyPurpose.mls 子钥下传。
-    state_key_hex: String,
+    message_id: String,
     user_id: String,
     device_id: String,
     group_id: String,
@@ -820,10 +923,10 @@ struct GroupAddMembersRequest {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct GroupRemoveMembersRequest {
     state_store_dir: String,
-    /// MLS 本地状态信封密钥(32 字节 hex),由 Dart 侧 LocalKeyPurpose.mls 子钥下传。
-    state_key_hex: String,
+    message_id: String,
     user_id: String,
     device_id: String,
     group_id: String,
@@ -832,10 +935,10 @@ struct GroupRemoveMembersRequest {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct GroupCreateMessageRequest {
     state_store_dir: String,
-    /// MLS 本地状态信封密钥(32 字节 hex),由 Dart 侧 LocalKeyPurpose.mls 子钥下传。
-    state_key_hex: String,
+    message_id: String,
     user_id: String,
     device_id: String,
     group_id: String,
@@ -843,10 +946,10 @@ struct GroupCreateMessageRequest {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct GroupProcessRequest {
     state_store_dir: String,
-    /// MLS 本地状态信封密钥(32 字节 hex),由 Dart 侧 LocalKeyPurpose.mls 子钥下传。
-    state_key_hex: String,
+    message_id: String,
     user_id: String,
     device_id: String,
     group_id: String,
@@ -854,10 +957,9 @@ struct GroupProcessRequest {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct GroupStateRequest {
     state_store_dir: String,
-    /// MLS 本地状态信封密钥(32 字节 hex),由 Dart 侧 LocalKeyPurpose.mls 子钥下传。
-    state_key_hex: String,
     user_id: String,
     device_id: String,
     group_id: String,
@@ -988,21 +1090,20 @@ fn user_id_of(credential: &Credential) -> String {
 
 fn group_create_json(request_json: *const c_char) -> Result<String, String> {
     let request: GroupCreateRequest = parse_request(request_json)?;
+    // 消息标识在触碰持久状态之前校验，重放仍按完整原请求复核。
+    require_non_empty("message_id", &request.message_id)?;
     require_non_empty("state_store_dir", &request.state_store_dir)?;
     require_non_empty("user_id", &request.user_id)?;
     require_non_empty("device_id", &request.device_id)?;
     require_non_empty("group_id", &request.group_id)?;
 
     let state_dir = Path::new(&request.state_store_dir);
-    let state_key = parse_state_key(&request.state_key_hex)?;
-    let provider = load_provider(state_dir, &state_key)?;
-    let (credential, signer) = ensure_device_signer(
-        &provider,
-        state_dir,
-        &request.user_id,
-        &request.device_id,
-        &state_key,
-    )?;
+    let _lock = lock_store(state_dir)?;
+    let provider = load_provider(state_dir)?;
+    let (credential, signer) = read_device_signer(&provider, &request.user_id, &request.device_id)?;
+    if let Some(result) = committed_response(&provider, "create", request_json)? {
+        return Ok(result);
+    }
     let group_id = group_id_from_conversation(&request.group_id)?;
     if MlsGroup::load(provider.storage(), &group_id)
         .map_err(|error| format!("加载 MLS 群失败: {error:?}"))?
@@ -1019,18 +1120,19 @@ fn group_create_json(request_json: *const c_char) -> Result<String, String> {
     )
     .map_err(|error| format!("创建 MLS 群失败: {error:?}"))?;
     let epoch = group.epoch().as_u64();
-    save_provider(state_dir, &provider, &state_key)?;
 
     let response = json!({
         "group_id": request.group_id,
         "epoch": epoch,
         "cipher_suite": format!("{:?}", GMB_MLS_CIPHERSUITE),
     });
-    serde_json::to_string(&response).map_err(|error| error.to_string())
+    commit_response(state_dir, &provider, "create", request_json, response)
 }
 
 fn group_add_members_json(request_json: *const c_char) -> Result<String, String> {
     let request: GroupAddMembersRequest = parse_request(request_json)?;
+    // 消息标识在触碰持久状态之前校验，重放仍按完整原请求复核。
+    require_non_empty("message_id", &request.message_id)?;
     require_non_empty("state_store_dir", &request.state_store_dir)?;
     require_non_empty("user_id", &request.user_id)?;
     require_non_empty("device_id", &request.device_id)?;
@@ -1040,15 +1142,13 @@ fn group_add_members_json(request_json: *const c_char) -> Result<String, String>
     }
 
     let state_dir = Path::new(&request.state_store_dir);
-    let state_key = parse_state_key(&request.state_key_hex)?;
-    let provider = load_provider(state_dir, &state_key)?;
-    let (_credential, signer) = ensure_device_signer(
-        &provider,
-        state_dir,
-        &request.user_id,
-        &request.device_id,
-        &state_key,
-    )?;
+    let _lock = lock_store(state_dir)?;
+    let provider = load_provider(state_dir)?;
+    let (_credential, signer) =
+        read_device_signer(&provider, &request.user_id, &request.device_id)?;
+    if let Some(result) = committed_response(&provider, "add", request_json)? {
+        return Ok(result);
+    }
     let group_id = group_id_from_conversation(&request.group_id)?;
     let mut group = MlsGroup::load(provider.storage(), &group_id)
         .map_err(|error| format!("加载 MLS 群失败: {error:?}"))?
@@ -1064,6 +1164,10 @@ fn group_add_members_json(request_json: *const c_char) -> Result<String, String>
         ));
     }
 
+    let prior_members: Vec<String> = group
+        .members()
+        .map(|m| identity_of(&m.credential))
+        .collect();
     let mut key_packages = Vec::with_capacity(adding);
     for (index, kp_hex) in request.key_packages_hex.iter().enumerate() {
         let bytes = decode_hex_field(&format!("key_packages_hex[{index}]"), kp_hex)?;
@@ -1074,6 +1178,10 @@ fn group_add_members_json(request_json: *const c_char) -> Result<String, String>
         key_packages.push(key_package);
     }
 
+    let welcome_members: Vec<String> = key_packages
+        .iter()
+        .map(|kp| identity_of(kp.leaf_node().credential()))
+        .collect();
     let (commit, welcome, _group_info) = group
         .add_members(&provider, &signer, &key_packages)
         .map_err(|error| format!("MLS 加人失败: {error:?}"))?;
@@ -1092,19 +1200,22 @@ fn group_add_members_json(request_json: *const c_char) -> Result<String, String>
             .map_err(|error| format!("序列化 Welcome 失败: {error}"))?,
     );
     let epoch = group.epoch().as_u64();
-    save_provider(state_dir, &provider, &state_key)?;
 
     let response = json!({
         "group_id": request.group_id,
         "epoch": epoch,
         "commit_wire_hex": commit_wire_hex,
         "welcome_wire_hex": welcome_wire_hex,
+        "welcome_member_identities": welcome_members,
+        "prior_member_identities": prior_members,
     });
-    serde_json::to_string(&response).map_err(|error| error.to_string())
+    commit_response(state_dir, &provider, "add", request_json, response)
 }
 
 fn group_remove_members_json(request_json: *const c_char) -> Result<String, String> {
     let request: GroupRemoveMembersRequest = parse_request(request_json)?;
+    // 消息标识在触碰持久状态之前校验，重放仍按完整原请求复核。
+    require_non_empty("message_id", &request.message_id)?;
     require_non_empty("state_store_dir", &request.state_store_dir)?;
     require_non_empty("user_id", &request.user_id)?;
     require_non_empty("device_id", &request.device_id)?;
@@ -1114,15 +1225,13 @@ fn group_remove_members_json(request_json: *const c_char) -> Result<String, Stri
     }
 
     let state_dir = Path::new(&request.state_store_dir);
-    let state_key = parse_state_key(&request.state_key_hex)?;
-    let provider = load_provider(state_dir, &state_key)?;
-    let (_credential, signer) = ensure_device_signer(
-        &provider,
-        state_dir,
-        &request.user_id,
-        &request.device_id,
-        &state_key,
-    )?;
+    let _lock = lock_store(state_dir)?;
+    let provider = load_provider(state_dir)?;
+    let (_credential, signer) =
+        read_device_signer(&provider, &request.user_id, &request.device_id)?;
+    if let Some(result) = committed_response(&provider, "remove", request_json)? {
+        return Ok(result);
+    }
     let group_id = group_id_from_conversation(&request.group_id)?;
     let mut group = MlsGroup::load(provider.storage(), &group_id)
         .map_err(|error| format!("加载 MLS 群失败: {error:?}"))?
@@ -1133,6 +1242,10 @@ fn group_remove_members_json(request_json: *const c_char) -> Result<String, Stri
         .member_user_ids
         .iter()
         .map(|value| value.as_str())
+        .collect();
+    let prior_members: Vec<String> = group
+        .members()
+        .map(|m| identity_of(&m.credential))
         .collect();
     let mut indices = Vec::new();
     let mut removed_user_ids = HashSet::new();
@@ -1161,19 +1274,21 @@ fn group_remove_members_json(request_json: *const c_char) -> Result<String, Stri
             .map_err(|error| format!("序列化 Commit 失败: {error}"))?,
     );
     let epoch = group.epoch().as_u64();
-    save_provider(state_dir, &provider, &state_key)?;
 
     let response = json!({
         "group_id": request.group_id,
         "epoch": epoch,
         "commit_wire_hex": commit_wire_hex,
         "removed_user_ids": removed_user_ids,
+        "prior_member_identities": prior_members,
     });
-    serde_json::to_string(&response).map_err(|error| error.to_string())
+    commit_response(state_dir, &provider, "remove", request_json, response)
 }
 
 fn group_create_message_json(request_json: *const c_char) -> Result<String, String> {
     let request: GroupCreateMessageRequest = parse_request(request_json)?;
+    // 消息标识在触碰持久状态之前校验，重放仍按完整原请求复核。
+    require_non_empty("message_id", &request.message_id)?;
     require_non_empty("state_store_dir", &request.state_store_dir)?;
     require_non_empty("user_id", &request.user_id)?;
     require_non_empty("device_id", &request.device_id)?;
@@ -1181,15 +1296,13 @@ fn group_create_message_json(request_json: *const c_char) -> Result<String, Stri
     require_non_empty("plaintext_hex", &request.plaintext_hex)?;
 
     let state_dir = Path::new(&request.state_store_dir);
-    let state_key = parse_state_key(&request.state_key_hex)?;
-    let provider = load_provider(state_dir, &state_key)?;
-    let (_credential, signer) = ensure_device_signer(
-        &provider,
-        state_dir,
-        &request.user_id,
-        &request.device_id,
-        &state_key,
-    )?;
+    let _lock = lock_store(state_dir)?;
+    let provider = load_provider(state_dir)?;
+    let (_credential, signer) =
+        read_device_signer(&provider, &request.user_id, &request.device_id)?;
+    if let Some(result) = committed_response(&provider, "send", request_json)? {
+        return Ok(result);
+    }
     let group_id = group_id_from_conversation(&request.group_id)?;
     let mut group = MlsGroup::load(provider.storage(), &group_id)
         .map_err(|error| format!("加载 MLS 群失败: {error:?}"))?
@@ -1205,18 +1318,20 @@ fn group_create_message_json(request_json: *const c_char) -> Result<String, Stri
             .map_err(|error| format!("序列化群 application message 失败: {error}"))?,
     );
     let epoch = group.epoch().as_u64();
-    save_provider(state_dir, &provider, &state_key)?;
 
     let response = json!({
         "group_id": request.group_id,
         "epoch": epoch,
         "application_wire_hex": application_wire_hex,
+        "member_identities": group.members().map(|m| identity_of(&m.credential)).collect::<Vec<_>>(),
     });
-    serde_json::to_string(&response).map_err(|error| error.to_string())
+    commit_response(state_dir, &provider, "send", request_json, response)
 }
 
 fn group_process_json(request_json: *const c_char) -> Result<String, String> {
     let request: GroupProcessRequest = parse_request(request_json)?;
+    // 消息标识在触碰持久状态之前校验，重放仍按完整原请求复核。
+    require_non_empty("message_id", &request.message_id)?;
     require_non_empty("state_store_dir", &request.state_store_dir)?;
     require_non_empty("user_id", &request.user_id)?;
     require_non_empty("device_id", &request.device_id)?;
@@ -1224,15 +1339,12 @@ fn group_process_json(request_json: *const c_char) -> Result<String, String> {
     require_non_empty("wire_message_hex", &request.wire_message_hex)?;
 
     let state_dir = Path::new(&request.state_store_dir);
-    let state_key = parse_state_key(&request.state_key_hex)?;
-    let provider = load_provider(state_dir, &state_key)?;
-    let _ = ensure_device_signer(
-        &provider,
-        state_dir,
-        &request.user_id,
-        &request.device_id,
-        &state_key,
-    )?;
+    let _lock = lock_store(state_dir)?;
+    let provider = load_provider(state_dir)?;
+    let _ = read_device_signer(&provider, &request.user_id, &request.device_id)?;
+    if let Some(result) = committed_response(&provider, "process", request_json)? {
+        return Ok(result);
+    }
     let group_id = group_id_from_conversation(&request.group_id)?;
     let wire_bytes = decode_hex_field("wire_message_hex", &request.wire_message_hex)?;
     let message_in = MlsMessageIn::tls_deserialize_exact(wire_bytes)
@@ -1257,7 +1369,6 @@ fn group_process_json(request_json: *const c_char) -> Result<String, String> {
                 .members()
                 .map(|m| identity_of(&m.credential))
                 .collect();
-            save_provider(state_dir, &provider, &state_key)?;
             json!({
                 "group_id": request.group_id,
                 "message_kind": "welcome",
@@ -1269,33 +1380,21 @@ fn group_process_json(request_json: *const c_char) -> Result<String, String> {
                 "member_identities": members,
             })
         }
-        MlsMessageBodyIn::PublicMessage(message) => process_group_protocol(
-            state_dir,
-            &provider,
-            &state_key,
-            &request.group_id,
-            group_id,
-            message.into(),
-        )?,
-        MlsMessageBodyIn::PrivateMessage(message) => process_group_protocol(
-            state_dir,
-            &provider,
-            &state_key,
-            &request.group_id,
-            group_id,
-            message.into(),
-        )?,
+        MlsMessageBodyIn::PublicMessage(message) => {
+            process_group_protocol(&provider, &request.group_id, group_id, message.into())?
+        }
+        MlsMessageBodyIn::PrivateMessage(message) => {
+            process_group_protocol(&provider, &request.group_id, group_id, message.into())?
+        }
         _ => return Err("不支持的群 MLS wire message 类型".to_string()),
     };
-    serde_json::to_string(&response).map_err(|error| error.to_string())
+    commit_response(state_dir, &provider, "process", request_json, response)
 }
 
 /// Commit/Application 的 epoch 有序处理。message_epoch>current→out_of_order(不处理,
-/// Dart 缓冲);<current 或解密失败→stale;==→应用并回吐名册/自我移除标志。
+/// Dart缓冲)；验密失败拒绝，精确已提交收据才允许判定重复。
 fn process_group_protocol(
-    state_dir: &Path,
     provider: &MlsProvider,
-    state_key: &[u8; 32],
     conversation_id: &str,
     group_id: GroupId,
     protocol_message: ProtocolMessage,
@@ -1319,28 +1418,14 @@ fn process_group_protocol(
         }));
     }
 
-    let processed = match group.process_message(provider, protocol_message) {
-        Ok(processed) => processed,
-        Err(error) => {
-            return Ok(json!({
-                "group_id": conversation_id,
-                "message_kind": "unknown",
-                "status": "stale",
-                "message_epoch": message_epoch,
-                "group_epoch": current,
-                "self_removed": false,
-                "plaintext_hex": serde_json::Value::Null,
-                "member_identities": serde_json::Value::Null,
-                "detail": format!("{error:?}"),
-            }));
-        }
-    };
+    let processed = group
+        .process_message(provider, protocol_message)
+        .map_err(|_| "CHAT_MLS_MESSAGE_REJECTED:MLS验密失败，不能确认消息".to_string())?;
 
     match processed.into_content() {
         ProcessedMessageContent::ApplicationMessage(message) => {
             let plaintext = message.into_bytes();
             let epoch = group.epoch().as_u64();
-            save_provider(state_dir, provider, state_key)?;
             Ok(json!({
                 "group_id": conversation_id,
                 "message_kind": "application",
@@ -1366,7 +1451,6 @@ fn process_group_protocol(
             } else {
                 Vec::new()
             };
-            save_provider(state_dir, provider, state_key)?;
             Ok(json!({
                 "group_id": conversation_id,
                 "message_kind": "commit",
@@ -1390,15 +1474,9 @@ fn group_state_json(request_json: *const c_char) -> Result<String, String> {
     require_non_empty("group_id", &request.group_id)?;
 
     let state_dir = Path::new(&request.state_store_dir);
-    let state_key = parse_state_key(&request.state_key_hex)?;
-    let provider = load_provider(state_dir, &state_key)?;
-    let _ = ensure_device_signer(
-        &provider,
-        state_dir,
-        &request.user_id,
-        &request.device_id,
-        &state_key,
-    )?;
+    let _lock = lock_store(state_dir)?;
+    let provider = load_provider(state_dir)?;
+    let _ = read_device_signer(&provider, &request.user_id, &request.device_id)?;
     let group_id = group_id_from_conversation(&request.group_id)?;
     let group = MlsGroup::load(provider.storage(), &group_id)
         .map_err(|error| format!("加载 MLS 群失败: {error:?}"))?
@@ -1420,296 +1498,255 @@ fn group_state_json(request_json: *const c_char) -> Result<String, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        atomic_write, create_key_package_json, group_add_members_json, group_create_json,
-        group_create_message_json, group_process_json, group_remove_members_json, group_state_json,
-        open_state, parse_state_key, seal_state, two_party_smoke_json, ERROR_DEVICE_AUTH,
-        ERROR_STATE_INVALID, ERROR_STORAGE_AUTH, STATE_AAD_DEVICE, STATE_AAD_STORAGE,
+    use super::*;
+    use std::{
+        ffi::CString,
+        sync::atomic::{AtomicUsize, Ordering},
     };
-    use std::ffi::CString;
-    use std::fs;
-
-    /// MLS 状态信封测试密钥(64 hex = 32 字节)。
-    const TEST_STATE_KEY_HEX: &str =
-        "0101010101010101010101010101010101010101010101010101010101010101";
-
-    #[test]
-    fn creates_real_openmls_key_package() {
-        let request = CString::new(r#"{"user_id":"用户身份-ALICE","device_id":"alice-phone"}"#)
-            .expect("request should be valid");
-        let response =
-            create_key_package_json(request.as_ptr()).expect("key package should be created");
-        let json: serde_json::Value =
-            serde_json::from_str(&response).expect("response should be json");
-        assert_eq!(json["user_id"], "用户身份-ALICE");
-        assert!(json["key_package_hex"].as_str().unwrap().len() > 100);
-        let not_before = json["not_before_millis"].as_u64().unwrap();
-        let not_after = json["not_after_millis"].as_u64().unwrap();
-        // OpenMLS 0.8.1 默认 84 天，并额外向过去留 1 小时时钟偏差窗口。
-        assert_eq!(not_after - not_before, (84 * 24 + 1) * 60 * 60 * 1000);
-        assert_eq!(json["last_resort"], false);
-        let key_package_ref = json["key_package_ref"]
-            .as_str()
-            .expect("响应必须含 RFC 9420 KeyPackageRef");
-        assert!(!key_package_ref.is_empty());
-        assert!(key_package_ref
-            .chars()
-            .all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c)));
+    static SERIAL: AtomicUsize = AtomicUsize::new(0);
+    struct Fixture {
+        dir: PathBuf,
+        user: String,
+        device: String,
     }
-
+    impl Fixture {
+        fn new(user: &str) -> Self {
+            let dir = std::env::temp_dir().join(format!(
+                "tatachat_mls_{}_{}",
+                std::process::id(),
+                SERIAL.fetch_add(1, Ordering::Relaxed)
+            ));
+            fs::create_dir(&dir).unwrap();
+            let dir = fs::canonicalize(dir).unwrap();
+            let identity = invoke(
+                identity_json,
+                json!({"state_store_dir":dir,"user_id":user,"action":"initialize"}),
+            )
+            .unwrap();
+            Self {
+                dir,
+                user: user.into(),
+                device: identity["device_id"].as_str().unwrap().into(),
+            }
+        }
+        fn request(&self, id: &str) -> serde_json::Value {
+            json!({"state_store_dir":self.dir,"user_id":self.user,"device_id":self.device,"message_id":id})
+        }
+        fn group(&self, id: &str, group: &str) -> serde_json::Value {
+            let mut r = self.request(id);
+            r["group_id"] = json!(group);
+            r
+        }
+        fn acknowledge(&self, id: &str) {
+            invoke(store_json, json!({"state_store_dir":self.dir,"user_id":self.user,"action":"acknowledge","message_id":id})).unwrap();
+        }
+    }
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.dir);
+        }
+    }
+    fn invoke(
+        f: fn(*const c_char) -> Result<String, String>,
+        request: serde_json::Value,
+    ) -> Result<serde_json::Value, String> {
+        let c = CString::new(serde_json::to_string(&request).unwrap()).unwrap();
+        serde_json::from_str(&f(c.as_ptr())?).map_err(|_| "合成响应解析失败".into())
+    }
+    fn pair() -> (Fixture, Fixture) {
+        let a = Fixture::new("user-a");
+        let b = Fixture::new("user-b");
+        let mut kp = b.request("package");
+        kp["last_resort"] = json!(true);
+        let published = invoke(create_key_package_json, kp).unwrap();
+        invoke(group_create_json, a.group("create", "group")).unwrap();
+        let mut add = a.group("add", "group");
+        add["key_packages_hex"] = json!([published["key_package_hex"]]);
+        let added = invoke(group_add_members_json, add).unwrap();
+        let mut welcome = b.group("welcome", "group");
+        welcome["wire_message_hex"] = added["welcome_wire_hex"].clone();
+        invoke(group_process_json, welcome).unwrap();
+        (a, b)
+    }
     #[test]
-    fn creates_openmls_last_resort_key_package() {
-        let request = CString::new(
-            r#"{"user_id":"用户身份-ALICE","device_id":"alice-phone","last_resort":true}"#,
+    fn identity_is_persistent_and_owner_scoped() {
+        let a = Fixture::new("same-user");
+        let other_device = Fixture::new("same-user");
+        assert_ne!(a.device, other_device.device);
+        let request = json!({"state_store_dir":a.dir,"user_id":a.user,"action":"read"});
+        let first = invoke(identity_json, request.clone()).unwrap();
+        assert_eq!(first, invoke(identity_json, request).unwrap());
+        assert_eq!(first.as_object().unwrap().len(), 3);
+        assert!(invoke(
+            identity_json,
+            json!({"state_store_dir":a.dir,"user_id":"other","action":"read"})
         )
-        .expect("request should be valid");
-        let response = create_key_package_json(request.as_ptr())
-            .expect("last-resort key package should be created");
-        let json: serde_json::Value =
-            serde_json::from_str(&response).expect("response should be json");
-        assert_eq!(json["last_resort"], true);
-        assert!(
-            json["not_after_millis"].as_u64().unwrap()
-                > json["not_before_millis"].as_u64().unwrap()
-        );
+        .unwrap_err()
+        .starts_with("CHAT_MLS_STATE_OWNER_MISMATCH"));
+        assert!(invoke(
+            identity_json,
+            json!({"state_store_dir":a.dir,"user_id":a.user,"action":"initialize"})
+        )
+        .is_err());
+        fs::remove_file(storage_path(&a.dir)).unwrap();
+        assert!(invoke(
+            identity_json,
+            json!({"state_store_dir":a.dir,"user_id":a.user,"action":"read"})
+        )
+        .is_err());
+        assert!(!storage_path(&a.dir).exists());
     }
-
     #[test]
-    fn openmls_two_party_smoke_round_trips_plaintext() {
-        let request =
-            CString::new(r#"{"plaintext":"hello openmls"}"#).expect("request should be valid");
-        let response = two_party_smoke_json(request.as_ptr()).expect("smoke should pass");
-        let json: serde_json::Value =
-            serde_json::from_str(&response).expect("response should be json");
-        assert_eq!(json["plaintext"], "hello openmls");
-        assert_eq!(json["decrypted_plaintext"], "hello openmls");
-        assert!(json["alice_wire_message_hex"].as_str().unwrap().len() > 100);
-    }
-
-    #[test]
-    fn group_three_party_round_trip() {
-        use serde_json::json;
-        use std::fs;
-        use std::os::raw::c_char;
-        use std::path::Path;
-
-        let base = std::env::temp_dir().join(format!("chat_group_rt_{}", std::process::id()));
-        let _ = fs::remove_dir_all(&base);
-        let dir_a = base.join("a");
-        let dir_b = base.join("b");
-        let dir_c = base.join("c");
-        for d in [&dir_a, &dir_b, &dir_c] {
-            fs::create_dir_all(d).expect("临时目录应可创建");
-        }
-        let group_id = "grp:用户身份-A:testnonce";
-        let path = |p: &Path| p.to_str().unwrap().to_string();
-
-        let invoke = |f: fn(*const c_char) -> Result<String, String>, req: serde_json::Value| {
-            let c = CString::new(serde_json::to_string(&req).unwrap()).unwrap();
-            let out = f(c.as_ptr()).expect("FFI 调用应成功");
-            serde_json::from_str::<serde_json::Value>(&out).expect("响应应为 JSON")
-        };
-
-        // A 建群(创建者=唯一成员,epoch 0)。
-        let created = invoke(
-            group_create_json,
-            json!({"state_key_hex": TEST_STATE_KEY_HEX, "state_store_dir": path(&dir_a), "user_id": "用户身份-A", "device_id": "devA", "group_id": group_id}),
-        );
-        assert_eq!(created["epoch"].as_u64(), Some(0));
-
-        // B / C 生成 KeyPackage。
-        let b_kp = invoke(
+    fn requests_require_persistent_state_and_reject_unknown_fields() {
+        assert!(invoke(
             create_key_package_json,
-            json!({"user_id": "用户身份-B", "device_id": "devB", "state_store_dir": path(&dir_b), "state_key_hex": TEST_STATE_KEY_HEX}),
-        )["key_package_hex"]
-            .as_str()
-            .unwrap()
-            .to_string();
-        let c_kp = invoke(
-            create_key_package_json,
-            json!({"user_id": "用户身份-C", "device_id": "devC", "state_store_dir": path(&dir_c), "state_key_hex": TEST_STATE_KEY_HEX}),
-        )["key_package_hex"]
-            .as_str()
-            .unwrap()
-            .to_string();
-
-        // A 批量加 B、C(1 Commit + 1 Welcome)。
-        let added = invoke(
-            group_add_members_json,
-            json!({"state_key_hex": TEST_STATE_KEY_HEX, "state_store_dir": path(&dir_a), "user_id": "用户身份-A", "device_id": "devA", "group_id": group_id, "key_packages_hex": [b_kp, c_kp]}),
+            json!({"user_id":"a","device_id":"d"})
+        )
+        .is_err());
+        let a = Fixture::new("a");
+        let mut req = a.request("package");
+        req["unexpected"] = json!(true);
+        assert!(invoke(create_key_package_json, req).is_err());
+    }
+    #[test]
+    fn messages_survive_restart_before_host_commit() {
+        let (a, b) = pair();
+        let mut send = a.group("send-one", "group");
+        send["plaintext_hex"] = json!(hex::encode("合成消息".as_bytes()));
+        let first = invoke(group_create_message_json, send.clone()).unwrap();
+        // 模拟上次返回前进程退出：重新load只取同一份已提交密文，不推进ratchet。
+        assert_eq!(
+            first,
+            invoke(group_create_message_json, send.clone()).unwrap()
         );
-        let welcome_hex = added["welcome_wire_hex"].as_str().unwrap().to_string();
-        assert_eq!(added["epoch"].as_u64(), Some(1));
-
-        // B / C 处理 Welcome 入群,名册应为 3 人。
-        for (dir, owner, dev) in [
-            (&dir_b, "用户身份-B", "devB"),
-            (&dir_c, "用户身份-C", "devC"),
-        ] {
-            let joined = invoke(
-                group_process_json,
-                json!({"state_key_hex": TEST_STATE_KEY_HEX, "state_store_dir": path(dir.as_path()), "user_id": owner, "device_id": dev, "group_id": group_id, "wire_message_hex": welcome_hex}),
-            );
-            assert_eq!(joined["message_kind"].as_str(), Some("welcome"));
-            assert_eq!(joined["member_identities"].as_array().unwrap().len(), 3);
+        let mut receive = b.group("received-one", "group");
+        receive["wire_message_hex"] = first["application_wire_hex"].clone();
+        let clear = invoke(group_process_json, receive.clone()).unwrap();
+        assert_eq!(clear["plaintext_hex"], send["plaintext_hex"]);
+        assert_eq!(clear, invoke(group_process_json, receive.clone()).unwrap());
+        b.acknowledge("received-one");
+        let duplicate = invoke(group_process_json, receive.clone()).unwrap();
+        assert_eq!(duplicate["status"], "stale");
+        assert_eq!(duplicate["committed"], true);
+        assert!(duplicate["plaintext_hex"].is_null());
+        // 当前名册前进后，同一发送提交仍保留原密文及原接收设备集合。
+        let mut remove = a.group("remove-later", "group");
+        remove["member_user_ids"] = json!([b.user]);
+        invoke(group_remove_members_json, remove).unwrap();
+        assert_eq!(
+            first,
+            invoke(group_create_message_json, send.clone()).unwrap()
+        );
+        assert_eq!(first["member_identities"].as_array().unwrap().len(), 2);
+        let mut state = a.group("unused-read-id", "group");
+        state.as_object_mut().unwrap().remove("message_id");
+        assert_eq!(invoke(group_state_json, state).unwrap()["member_count"], 1);
+        send["plaintext_hex"] = json!(hex::encode(b"changed"));
+        assert!(invoke(group_create_message_json, send)
+            .unwrap_err()
+            .starts_with("CHAT_MLS_REQUEST_CONFLICT"));
+        receive["message_id"] = json!("different-message");
+        assert!(invoke(group_process_json, receive)
+            .unwrap_err()
+            .starts_with("CHAT_MLS_MESSAGE_REJECTED"));
+    }
+    #[test]
+    fn interrupted_temporary_write_does_not_replace_committed_identity() {
+        let a = Fixture::new("user");
+        atomic_write(&a.dir.join("unrelated.bin"), b"synthetic").unwrap();
+        fs::write(
+            storage_path(&a.dir).with_extension("writing"),
+            b"incomplete",
+        )
+        .unwrap();
+        let read = invoke(
+            identity_json,
+            json!({"state_store_dir":a.dir,"user_id":a.user,"action":"read"}),
+        )
+        .unwrap();
+        assert_eq!(read["device_id"], a.device);
+        fs::write(storage_path(&a.dir), b"broken").unwrap();
+        assert!(invoke(
+            identity_json,
+            json!({"state_store_dir":a.dir,"user_id":a.user,"action":"read"})
+        )
+        .unwrap_err()
+        .starts_with(ERROR_STATE_INVALID));
+        assert_eq!(fs::read(storage_path(&a.dir)).unwrap(), b"broken");
+    }
+    #[test]
+    fn independent_transactions_are_serialized_and_results_are_not_lost() {
+        let (a, _b) = pair();
+        let req = a.group("template", "group");
+        let handles: Vec<_> = (0..8)
+            .map(|i| {
+                let mut request = req.clone();
+                request["message_id"] = json!(format!("thread-{i}"));
+                request["plaintext_hex"] = json!(hex::encode(format!("合成{i}")));
+                std::thread::spawn(move || invoke(group_create_message_json, request).unwrap())
+            })
+            .collect();
+        for handle in handles {
+            assert_eq!(handle.join().unwrap()["committed"], true);
         }
-
-        // A 发文本,B/C 端到端解密。
-        let plaintext_hex = hex::encode("你好，群聊".as_bytes());
-        let msg = invoke(
-            group_create_message_json,
-            json!({"state_key_hex": TEST_STATE_KEY_HEX, "state_store_dir": path(&dir_a), "user_id": "用户身份-A", "device_id": "devA", "group_id": group_id, "plaintext_hex": plaintext_hex}),
+        let pending = invoke(
+            store_json,
+            json!({"state_store_dir":a.dir,"user_id":a.user,"action":"pending_results"}),
+        )
+        .unwrap();
+        assert_eq!(pending["results"].as_array().unwrap().len(), 10);
+    }
+    #[test]
+    fn pending_ciphertext_and_receipts_use_same_owned_snapshot() {
+        let a = Fixture::new("user");
+        let req = |action| json!({"state_store_dir":a.dir,"user_id":a.user,"action":action});
+        let mut queue = req("queue_pending");
+        queue["pending_inbound"] = json!({"conversation_id":"group","wire_hex":"0102"});
+        invoke(store_json, queue.clone()).unwrap();
+        invoke(store_json, queue).unwrap();
+        assert_eq!(
+            invoke(store_json, req("read_pending")).unwrap()["pending_inbound"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
         );
-        let app_hex = msg["application_wire_hex"].as_str().unwrap().to_string();
-        for (dir, owner, dev) in [
-            (&dir_b, "用户身份-B", "devB"),
-            (&dir_c, "用户身份-C", "devC"),
-        ] {
-            let got = invoke(
-                group_process_json,
-                json!({"state_key_hex": TEST_STATE_KEY_HEX, "state_store_dir": path(dir.as_path()), "user_id": owner, "device_id": dev, "group_id": group_id, "wire_message_hex": app_hex}),
-            );
-            assert_eq!(got["message_kind"].as_str(), Some("application"));
-            assert_eq!(got["status"].as_str(), Some("applied"));
-            assert_eq!(got["plaintext_hex"].as_str(), Some(plaintext_hex.as_str()));
-        }
-
-        // A 移除 C。
-        let removed = invoke(
-            group_remove_members_json,
-            json!({"state_key_hex": TEST_STATE_KEY_HEX, "state_store_dir": path(&dir_a), "user_id": "用户身份-A", "device_id": "devA", "group_id": group_id, "member_user_ids": ["用户身份-C"]}),
+        let mut write = req("write_receipt");
+        write["handover_id"] = json!("binding");
+        write["payload_json"] = json!("synthetic metadata");
+        invoke(store_json, write).unwrap();
+        let mut read = req("read_receipt");
+        read["handover_id"] = json!("binding");
+        assert_eq!(
+            invoke(store_json, read).unwrap()["payload_json"],
+            json!(["synthetic metadata"])
         );
-        let remove_commit_hex = removed["commit_wire_hex"].as_str().unwrap().to_string();
-        assert_eq!(removed["epoch"].as_u64(), Some(2));
-
-        // B 应用 Commit → 名册剩 A、B,未自我移除。
-        let b_after = invoke(
-            group_process_json,
-            json!({"state_key_hex": TEST_STATE_KEY_HEX, "state_store_dir": path(&dir_b), "user_id": "用户身份-B", "device_id": "devB", "group_id": group_id, "wire_message_hex": remove_commit_hex}),
+    }
+    #[test]
+    fn openmls_smoke_remains_standard() {
+        let result = invoke(two_party_smoke_json, json!({"plaintext":"合成消息"})).unwrap();
+        assert_eq!(result["plaintext"], result["decrypted_plaintext"]);
+    }
+    #[cfg(unix)]
+    #[test]
+    fn state_file_is_private_and_links_are_rejected() {
+        use std::os::unix::fs::{symlink, PermissionsExt};
+        let a = Fixture::new("user");
+        assert_eq!(
+            fs::metadata(storage_path(&a.dir))
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o600
         );
-        assert_eq!(b_after["message_kind"].as_str(), Some("commit"));
-        assert_eq!(b_after["self_removed"].as_bool(), Some(false));
-        assert_eq!(b_after["member_identities"].as_array().unwrap().len(), 2);
-
-        // C 应用 Commit → 自身被移除(后向保密)。
-        let c_after = invoke(
-            group_process_json,
-            json!({"state_key_hex": TEST_STATE_KEY_HEX, "state_store_dir": path(&dir_c), "user_id": "用户身份-C", "device_id": "devC", "group_id": group_id, "wire_message_hex": remove_commit_hex}),
-        );
-        assert_eq!(c_after["self_removed"].as_bool(), Some(true));
-
-        // group_state 名册对账 = A、B。
-        let state = invoke(
-            group_state_json,
-            json!({"state_key_hex": TEST_STATE_KEY_HEX, "state_store_dir": path(&dir_a), "user_id": "用户身份-A", "device_id": "devA", "group_id": group_id}),
-        );
-        assert_eq!(state["member_count"].as_u64(), Some(2));
-
-        let _ = fs::remove_dir_all(&base);
-    }
-
-    #[test]
-    fn state_envelope_round_trip() {
-        let key = [7u8; 32];
-        let clear = b"MLS \xe7\xa7\x81\xe9\x92\xa5";
-        let sealed = seal_state(&key, clear, STATE_AAD_STORAGE).expect("seal");
-        // 密文里不得出现明文
-        assert!(!sealed.windows(clear.len()).any(|w| w == clear));
-        let opened = open_state(&key, &sealed, STATE_AAD_STORAGE).expect("open");
-        assert_eq!(opened, clear);
-    }
-
-    #[test]
-    fn state_envelope_rejects_wrong_key() {
-        let sealed = seal_state(&[1u8; 32], b"x", STATE_AAD_STORAGE).expect("seal");
-        assert!(open_state(&[2u8; 32], &sealed, STATE_AAD_STORAGE).is_err());
-    }
-
-    #[test]
-    fn state_envelope_rejects_wrong_aad() {
-        let key = [3u8; 32];
-        let sealed = seal_state(&key, b"x", STATE_AAD_STORAGE).expect("seal");
-        // storage 与 device 两个域不可互换,防止两个文件被对调
-        assert!(open_state(&key, &sealed, STATE_AAD_DEVICE).is_err());
-    }
-
-    #[test]
-    fn state_envelope_rejects_tampered_ciphertext() {
-        let key = [4u8; 32];
-        let mut sealed = seal_state(&key, b"hello", STATE_AAD_STORAGE).expect("seal");
-        let last = sealed.len() - 1;
-        sealed[last] ^= 0xFF;
-        assert!(open_state(&key, &sealed, STATE_AAD_STORAGE).is_err());
-    }
-
-    #[test]
-    fn state_envelope_nonce_is_random() {
-        let key = [5u8; 32];
-        let a = seal_state(&key, b"same", STATE_AAD_STORAGE).expect("seal");
-        let b = seal_state(&key, b"same", STATE_AAD_STORAGE).expect("seal");
-        assert_ne!(a, b, "同明文同密钥两次密文必须不同");
-    }
-
-    #[test]
-    fn parse_state_key_rejects_bad_input() {
-        assert!(parse_state_key("zz").is_err());
-        assert!(parse_state_key(&"ab".repeat(32)).is_ok()); // 64 hex = 32 字节
-        assert!(parse_state_key(&"ab".repeat(16)).is_err()); // 32 hex = 16 字节,过短
-    }
-
-    #[test]
-    fn local_state_failures_have_stable_codes() {
-        let base = std::env::temp_dir().join(format!(
-            "tatachat_sdk_mls_state_codes_{}",
-            std::process::id()
-        ));
-        let _ = fs::remove_dir_all(&base);
-
-        let storage_dir = base.join("storage");
-        fs::create_dir_all(&storage_dir).expect("create storage dir");
-        let storage_blob = seal_state(&[1u8; 32], b"{}", STATE_AAD_STORAGE).expect("seal");
-        fs::write(storage_dir.join("openmls_storage.bin"), storage_blob).expect("write");
-        let storage_error = match super::load_provider(&storage_dir, &[2u8; 32]) {
-            Ok(_) => panic!("wrong storage key must fail"),
-            Err(error) => error,
-        };
-        assert!(storage_error.starts_with(ERROR_STORAGE_AUTH));
-
-        let invalid_dir = base.join("invalid");
-        fs::create_dir_all(&invalid_dir).expect("create invalid dir");
-        let invalid_blob = seal_state(&[3u8; 32], b"not-json", STATE_AAD_STORAGE).expect("seal");
-        fs::write(invalid_dir.join("openmls_storage.bin"), invalid_blob).expect("write");
-        let invalid_error = match super::load_provider(&invalid_dir, &[3u8; 32]) {
-            Ok(_) => panic!("invalid storage must fail"),
-            Err(error) => error,
-        };
-        assert!(invalid_error.starts_with(ERROR_STATE_INVALID));
-
-        let device_dir = base.join("device");
-        fs::create_dir_all(&device_dir).expect("create device dir");
-        let device_blob = seal_state(&[4u8; 32], b"{}", STATE_AAD_DEVICE).expect("seal");
-        fs::write(device_dir.join("device.bin"), device_blob).expect("write");
-        let provider = super::load_provider(&device_dir, &[5u8; 32]).expect("empty provider");
-        let device_error =
-            super::ensure_device_signer(&provider, &device_dir, "user-a", "device-a", &[5u8; 32])
-                .expect_err("wrong device key must fail");
-        assert!(device_error.starts_with(ERROR_DEVICE_AUTH));
-
-        fs::remove_dir_all(&base).expect("temporary state must be removed");
-    }
-
-    #[test]
-    fn atomic_write_replaces_without_leaving_temp() {
-        let dir =
-            std::env::temp_dir().join(format!("tatachat_sdk_mls_atomic_{}", std::process::id()));
-        let _ = fs::create_dir_all(&dir);
-        let target = dir.join("state.bin");
-        atomic_write(&target, b"first").expect("first write");
-        assert_eq!(fs::read(&target).unwrap(), b"first");
-        atomic_write(&target, b"second-longer").expect("second write");
-        assert_eq!(fs::read(&target).unwrap(), b"second-longer");
-        // 临时文件不得残留
-        assert!(!target.with_extension("tmp").exists());
-        let _ = fs::remove_dir_all(&dir);
+        let target = a.dir.join("separate.bin");
+        fs::rename(storage_path(&a.dir), &target).unwrap();
+        symlink(&target, storage_path(&a.dir)).unwrap();
+        assert!(invoke(
+            identity_json,
+            json!({"state_store_dir":a.dir,"user_id":a.user,"action":"read"})
+        )
+        .is_err());
     }
 }

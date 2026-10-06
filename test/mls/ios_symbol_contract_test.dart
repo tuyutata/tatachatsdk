@@ -8,12 +8,15 @@ void main() {
     () {
       final chatSdkScript = File('scripts/build-native.sh').readAsStringSync();
       final chatSdkHeader = File('tatachat_sdk.h').readAsStringSync();
-      final chatSdkPodspec = File('ios/tatachat_sdk.podspec')
-          .readAsStringSync();
-      final privacyManifest = File('ios/PrivacyInfo.xcprivacy')
-          .readAsStringSync();
-      final platformPlugin = File('ios/TataChatSdkPlugin.swift')
-          .readAsStringSync();
+      final chatSdkPodspec = File(
+        'ios/tatachat_sdk.podspec',
+      ).readAsStringSync();
+      final privacyManifest = File(
+        'ios/PrivacyInfo.xcprivacy',
+      ).readAsStringSync();
+      final platformPlugin = File(
+        'ios/TataChatSdkPlugin.swift',
+      ).readAsStringSync();
       final package = File('pubspec.yaml').readAsStringSync();
       final loader = File('lib/src/mls/mls_native.dart').readAsStringSync();
 
@@ -39,6 +42,20 @@ void main() {
         chatSdkHeader,
         contains('tatachat_sdk_mls_create_key_package_json'),
       );
+      expect(chatSdkHeader, contains('tatachat_sdk_mls_identity_json'));
+      expect(chatSdkHeader, contains('tatachat_sdk_mls_store_json'));
+      expect(
+        chatSdkHeader,
+        isNot(contains('tatachat_sdk_mls_rekey_state_json')),
+      );
+      expect(
+        chatSdkHeader,
+        isNot(contains('tatachat_sdk_mls_two_party_smoke_json')),
+      );
+      expect(chatSdkScript, contains('tatachat_sdk_mls_identity_json'));
+      expect(chatSdkScript, contains('tatachat_sdk_mls_store_json'));
+      expect(chatSdkScript, contains('mls_rekey_state|mls_two_party_smoke'));
+      expect(platformPlugin, contains('prepareMlsStorage'));
       expect(chatSdkHeader, contains('tatachat_sdk_mls_group_create_json'));
       expect(
         chatSdkHeader,

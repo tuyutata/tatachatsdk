@@ -426,8 +426,9 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
       if (result.duration < const Duration(milliseconds: 800)) {
         await File(result.path).delete();
         if (mounted) {
-          ScaffoldMessenger.of(context)
-              .showSnackBar(const SnackBar(content: Text('说话时间太短')));
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('说话时间太短')));
         }
         return;
       }
@@ -473,8 +474,9 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
       controlPlaintext,
     );
     if (!mounted || downloaded == null) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text('已保存：${downloaded.fileName}')));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('已保存：${downloaded.fileName}')));
   }
 
   Future<void> _deleteConversation() async {

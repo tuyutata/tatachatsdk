@@ -30,6 +30,16 @@ public final class TataChatSdkPlugin: NSObject, FlutterPlugin,
     let securityChannel = FlutterMethodChannel(
       name: "tatachat_sdk/security", binaryMessenger: registrar.messenger())
     securityChannel.setMethodCallHandler { call, result in
+      if call.method == "eraseMlsStorage" {
+        do { try Self.eraseMlsStorage(call); result(nil) }
+        catch { result(FlutterError(code: "mls_storage_unavailable", message: "MLS安全存储清理失败", details: nil)) }
+        return
+      }
+      if call.method == "prepareMlsStorage" {
+        do { result(try Self.prepareMlsStorage(call)) }
+        catch { result(FlutterError(code: "mls_storage_unavailable", message: "MLS安全存储不可用", details: nil)) }
+        return
+      }
       guard call.method == "excludeChatDataFromBackup" else {
         result(FlutterMethodNotImplemented)
         return
@@ -42,6 +52,71 @@ public final class TataChatSdkPlugin: NSObject, FlutterPlugin,
           code: "chat_backup_exclusion_failed", message: "聊天数据备份排除失败", details: nil))
       }
     }
+  }
+
+  /// 只删除SDK自有保护目录；整库清理仅由SDK既有全量擦除入口调用。
+  private static func eraseMlsStorage(_ call: FlutterMethodCall) throws {
+    let manager = FileManager.default
+    guard let support = manager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first,
+          let args = call.arguments as? [String: Any] else { throw CocoaError(.fileReadInvalidFileName) }
+    var target = support.resolvingSymlinksInPath().appendingPathComponent("tatachat_sdk_mls", isDirectory: true)
+    if let user = args["user_id"] {
+      guard let user = user as? String, !user.isEmpty, user.utf8.count <= 120, !user.contains(":") else { throw CocoaError(.fileReadInvalidFileName) }
+      let name = user.utf8.map { String(format: "%02x", $0) }.joined()
+      target.appendPathComponent(name, isDirectory: true)
+    }
+    guard target.resolvingSymlinksInPath().path == target.path else { throw CocoaError(.fileReadInvalidFileName) }
+    if manager.fileExists(atPath: target.path) { try manager.removeItem(at: target) }
+    if manager.fileExists(atPath: target.path) { throw CocoaError(.fileWriteUnknown) }
+  }
+
+  /// SDK在秘密生成前验证目录保护；已有目录缺状态时由读取接口明确失败。
+  private static func prepareMlsStorage(_ call: FlutterMethodCall) throws -> [String: Any] {
+    guard let args = call.arguments as? [String: Any], let user = args["user_id"] as? String,
+          !user.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+          !user.contains(":"), user.utf8.count <= 4096,
+          let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+      throw CocoaError(.fileReadInvalidFileName)
+    }
+    let manager = FileManager.default
+    // 系统容器路径可能含/var别名；先规范平台给出的根，再拒绝SDK子目录链接。
+    let root = support.resolvingSymlinksInPath().appendingPathComponent("tatachat_sdk_mls", isDirectory: true)
+    let name = user.utf8.map { String(format: "%02x", $0) }.joined()
+    // UTF-8编码保持一一对应，不用字符替换造成不同用户目录碰撞。
+    guard name.count <= 240 else { throw CocoaError(.fileReadInvalidFileName) }
+    let target = root.appendingPathComponent(name, isDirectory: true)
+    let created = !manager.fileExists(atPath: target.path)
+    for var directory in [root, target] {
+      if manager.fileExists(atPath: directory.path) {
+        let resource = try directory.resourceValues(forKeys: [.isSymbolicLinkKey, .isDirectoryKey])
+        guard resource.isSymbolicLink != true, resource.isDirectory == true,
+              directory.resolvingSymlinksInPath().path == directory.path else { throw CocoaError(.fileReadInvalidFileName) }
+      } else {
+        try manager.createDirectory(at: directory, withIntermediateDirectories: true,
+          attributes: [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication, .posixPermissions: 0o700])
+      }
+      try manager.setAttributes([.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication, .posixPermissions: 0o700], ofItemAtPath: directory.path)
+      var values = URLResourceValues(); values.isExcludedFromBackup = true
+      try directory.setResourceValues(values)
+      let attrs = try manager.attributesOfItem(atPath: directory.path)
+      guard attrs[.protectionKey] as? FileProtectionType == .completeUntilFirstUserAuthentication,
+            (attrs[.posixPermissions] as? NSNumber)?.intValue == 0o700,
+            try directory.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup == true else { throw CocoaError(.fileWriteUnknown) }
+    }
+    guard let items = manager.enumerator(at: target, includingPropertiesForKeys: [.isSymbolicLinkKey]) else {
+      throw CocoaError(.fileReadUnknown)
+    }
+    do {
+      for case var item as URL in items {
+        guard try item.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink != true else { throw CocoaError(.fileReadInvalidFileName) }
+        try manager.setAttributes([.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication], ofItemAtPath: item.path)
+        var values = URLResourceValues(); values.isExcludedFromBackup = true; try item.setResourceValues(values)
+        let attrs = try manager.attributesOfItem(atPath: item.path)
+        guard attrs[.protectionKey] as? FileProtectionType == .completeUntilFirstUserAuthentication,
+              try item.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup == true else { throw CocoaError(.fileWriteUnknown) }
+      }
+    }
+    return ["path": target.path, "created": created]
   }
 
   /// 只处理SDK拥有的聊天路径；设置后回读属性，不能以调用成功替代安全结果。

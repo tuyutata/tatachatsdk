@@ -302,9 +302,9 @@ class DirectCallSession {
   Future<void> _serial(Future<void> Function() operation) {
     final next = _tail.then<void>(
       (_) => operation(),
-      onError: (Object _, StackTrace __) => operation(),
+      onError: (Object _, StackTrace _) => operation(),
     );
-    _tail = next.then<void>((_) {}, onError: (_, __) {});
+    _tail = next.then<void>((_) {}, onError: (_, _) {});
     return next;
   }
 }

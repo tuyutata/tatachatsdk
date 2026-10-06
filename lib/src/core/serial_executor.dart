@@ -7,9 +7,9 @@ final class SerialExecutor {
     final previous = _tails[key] ?? Future<void>.value();
     final current = previous.then<T>(
       (_) => operation(),
-      onError: (_, __) => operation(),
+      onError: (_, _) => operation(),
     );
-    final tail = current.then<void>((_) {}, onError: (_, __) {});
+    final tail = current.then<void>((_) {}, onError: (_, _) {});
     _tails[key] = tail;
     tail.whenComplete(() {
       if (identical(_tails[key], tail)) _tails.remove(key);

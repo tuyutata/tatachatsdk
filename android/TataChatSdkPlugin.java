@@ -12,6 +12,8 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.UserManager;
+import android.system.Os;
 import android.provider.OpenableColumns;
 import android.webkit.MimeTypeMap;
 
@@ -50,6 +52,7 @@ public final class TataChatSdkPlugin implements FlutterPlugin, ActivityAware,
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private ExecutorService worker;
     private MethodChannel channel;
+    private MethodChannel securityChannel;
     private Context applicationContext;
     private Activity activity;
     private ActivityPluginBinding activityBinding;
@@ -62,6 +65,17 @@ public final class TataChatSdkPlugin implements FlutterPlugin, ActivityAware,
         worker.execute(() -> clearStagedFiles(applicationContext));
         channel = new MethodChannel(binding.getBinaryMessenger(), CHANNEL);
         channel.setMethodCallHandler(this);
+        securityChannel = new MethodChannel(binding.getBinaryMessenger(), "tatachat_sdk/security");
+        securityChannel.setMethodCallHandler((call, result) -> {
+            if ("eraseMlsStorage".equals(call.method)) {
+                try { eraseMlsStorage(call); result.success(null); }
+                catch (Exception error) { result.error("mls_storage_unavailable", "MLS安全存储清理失败", null); }
+                return;
+            }
+            if (!"prepareMlsStorage".equals(call.method)) { result.notImplemented(); return; }
+            try { result.success(prepareMlsStorage(call)); }
+            catch (Exception error) { result.error("mls_storage_unavailable", "MLS安全存储不可用", null); }
+        });
     }
 
     @Override
@@ -75,7 +89,65 @@ public final class TataChatSdkPlugin implements FlutterPlugin, ActivityAware,
             worker.shutdownNow();
             worker = null;
         }
+        if (securityChannel != null) { securityChannel.setMethodCallHandler(null); securityChannel = null; }
         applicationContext = null;
+    }
+
+    /** 只删除SDK自有目录，不读取或清空宿主安全存储。 */
+    private void eraseMlsStorage(MethodCall call) throws Exception {
+        Context context = applicationContext;
+        if (context == null || context.isDeviceProtectedStorage()) throw new IOException("storage unavailable");
+        UserManager users = (UserManager) context.getSystemService(Context.USER_SERVICE);
+        if (users == null || !users.isUserUnlocked()) throw new IOException("storage locked");
+        File target = new File(context.getNoBackupFilesDir().getCanonicalFile(), "tatachat_sdk_mls");
+        if (call.hasArgument("user_id")) {
+            String user = call.argument("user_id");
+            if (user == null || user.trim().isEmpty() || user.contains(":")) throw new IOException("invalid owner");
+            byte[] bytes = user.getBytes(StandardCharsets.UTF_8);
+            if (bytes.length > 120) throw new IOException("invalid owner length");
+            StringBuilder name = new StringBuilder();
+            for (byte value : bytes) name.append(String.format(Locale.ROOT, "%02x", value & 255));
+            target = new File(target, name.toString());
+        }
+        eraseOwnedMlsDirectory(target);
+    }
+    private static void eraseOwnedMlsDirectory(File directory) throws IOException {
+        if (!directory.getCanonicalPath().equals(directory.getAbsolutePath())) throw new IOException("symlink");
+        if (!directory.exists()) return;
+        if (directory.isDirectory()) {
+            File[] entries = directory.listFiles();
+            if (entries == null) throw new IOException("list failed");
+            for (File entry : entries) eraseOwnedMlsDirectory(entry);
+        }
+        if (!directory.delete() || directory.exists()) throw new IOException("erase failed");
+    }
+
+    /** 默认凭据加密非备份区域；不创建KeyStore包装钥，不要求逐次生物识别。 */
+    private Map<String, Object> prepareMlsStorage(MethodCall call) throws Exception {
+        Context context = applicationContext;
+        if (context == null || context.isDeviceProtectedStorage()) throw new IOException("storage unavailable");
+        UserManager users = (UserManager) context.getSystemService(Context.USER_SERVICE);
+        if (users == null || !users.isUserUnlocked()) throw new IOException("storage locked");
+        String user = call.argument("user_id");
+        if (user == null || user.trim().isEmpty() || user.contains(":")) throw new IOException("invalid owner");
+        byte[] bytes = user.getBytes(StandardCharsets.UTF_8);
+        if (bytes.length > 120) throw new IOException("invalid owner length");
+        StringBuilder name = new StringBuilder();
+        for (byte value : bytes) name.append(String.format(Locale.ROOT, "%02x", value & 255));
+        // 规范系统提供的容器别名；SDK子目录仍须逐项拒绝符号链接。
+        File root = new File(context.getNoBackupFilesDir().getCanonicalFile(), "tatachat_sdk_mls");
+        File target = new File(root, name.toString());
+        boolean created = !target.exists();
+        for (File directory : new File[]{root, target}) {
+            if (!directory.getCanonicalPath().equals(directory.getAbsolutePath())) throw new IOException("symlink");
+            if (!directory.exists() && !directory.mkdir()) throw new IOException("mkdir failed");
+            if (!directory.isDirectory()) throw new IOException("not directory");
+            Os.chmod(directory.getAbsolutePath(), 0700);
+            if ((Os.stat(directory.getAbsolutePath()).st_mode & 0777) != 0700) throw new IOException("permissions failed");
+        }
+        Map<String, Object> result = new HashMap<>();
+        result.put("path", target.getCanonicalPath()); result.put("created", created);
+        return result;
     }
 
     @Override

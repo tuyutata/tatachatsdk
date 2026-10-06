@@ -2592,6 +2592,7 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
     });
   }
 
+  /// 本机事务成功返回后，调用方才可确认原生MLS处理结果及服务端接收。
   @override
   Future<void> saveIncomingMessage({
     required ChatBindingFenceToken bindingToken,

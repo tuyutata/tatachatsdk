@@ -190,12 +190,16 @@ class ChatFlow<TBindingToken> {
   }) async {
     final now = createdAtMillis ?? DateTime.now().millisecondsSinceEpoch;
     final payload = ChatPayloadCodec.encode(ChatContent.text(text));
-    final outbound = await _createDirectOutbound(
-      conversationId: conversationId,
-      recipientUserId: recipientUserId,
-      senderDeviceId: senderDeviceId,
-      recipientKeyPackages: recipientKeyPackages,
-      plaintext: utf8.encode(payload),
+    final outbound = await _crypto.withMessage(
+      pendingLocalMessageId ?? '$conversationId:$now',
+      () => _createDirectOutbound(
+        conversationId: conversationId,
+        recipientUserId: recipientUserId,
+        senderDeviceId: senderDeviceId,
+        recipientKeyPackages: recipientKeyPackages,
+        plaintext: utf8.encode(payload),
+        messageId: pendingLocalMessageId ?? '$conversationId:$now',
+      ),
     );
     return _deliverOutbound(
       outbound: outbound,
@@ -226,12 +230,16 @@ class ChatFlow<TBindingToken> {
     final payload = ChatPayloadCodec.encode(
       ChatContent.sticker(packId: packId, stickerId: stickerId),
     );
-    final outbound = await _createDirectOutbound(
-      conversationId: conversationId,
-      recipientUserId: recipientUserId,
-      senderDeviceId: senderDeviceId,
-      recipientKeyPackages: recipientKeyPackages,
-      plaintext: utf8.encode(payload),
+    final outbound = await _crypto.withMessage(
+      pendingLocalMessageId ?? '$conversationId:$now',
+      () => _createDirectOutbound(
+        conversationId: conversationId,
+        recipientUserId: recipientUserId,
+        senderDeviceId: senderDeviceId,
+        recipientKeyPackages: recipientKeyPackages,
+        plaintext: utf8.encode(payload),
+        messageId: pendingLocalMessageId ?? '$conversationId:$now',
+      ),
     );
     return _deliverOutbound(
       outbound: outbound,
@@ -268,12 +276,16 @@ class ChatFlow<TBindingToken> {
     }
     final now = createdAtMillis ?? DateTime.now().millisecondsSinceEpoch;
     final payload = ChatPayloadCodec.encode(media);
-    final outbound = await _createDirectOutbound(
-      conversationId: conversationId,
-      recipientUserId: recipientUserId,
-      senderDeviceId: senderDeviceId,
-      recipientKeyPackages: recipientKeyPackages,
-      plaintext: utf8.encode(payload),
+    final outbound = await _crypto.withMessage(
+      pendingLocalMessageId ?? '$conversationId:$now',
+      () => _createDirectOutbound(
+        conversationId: conversationId,
+        recipientUserId: recipientUserId,
+        senderDeviceId: senderDeviceId,
+        recipientKeyPackages: recipientKeyPackages,
+        plaintext: utf8.encode(payload),
+        messageId: pendingLocalMessageId ?? '$conversationId:$now',
+      ),
     );
     return _deliverOutbound(
       outbound: outbound,
@@ -371,6 +383,10 @@ class ChatFlow<TBindingToken> {
       await onApplicationStored?.call();
     }
 
+    await _crypto.acknowledgeMessage(
+      pendingLocalMessageId ?? '$conversationId:$nowMillis',
+    );
+
     Future<List<ChatDeliveryResult>> deliverQueued() async {
       final results = <ChatDeliveryResult>[];
       for (final item in queued) {
@@ -428,7 +444,18 @@ class ChatFlow<TBindingToken> {
     );
     final wireMessage = mlsWireMessageFromEncryptedMessage(message);
     try {
-      final inbound = await _crypto.groupProcess(wireMessage);
+      final inbound = await _crypto.withMessage(
+        message.messageId,
+        () => _crypto.groupProcess(wireMessage),
+      );
+      if (inbound.status == GroupProcessStatus.stale && inbound.committed) {
+        return ChatIncomingProcessResult(
+          messageId: message.messageId,
+          accepted: true,
+          queuedPending: false,
+          acceptedMessages: <EncryptedMessage>[message],
+        );
+      }
       if (inbound.status == GroupProcessStatus.outOfOrder) {
         await _store.savePendingInbound(
           bindingToken: _bindingToken,
@@ -444,6 +471,7 @@ class ChatFlow<TBindingToken> {
         );
       }
       if (inbound.kind == GroupInboundKind.welcome) {
+        await _crypto.acknowledgeMessage(message.messageId);
         final acceptedMessages = <EncryptedMessage>[];
         final pending = await _store.takePendingInbound(
           _ownerUserId,
@@ -467,6 +495,7 @@ class ChatFlow<TBindingToken> {
       }
 
       if (inbound.kind == GroupInboundKind.commit) {
+        await _crypto.acknowledgeMessage(message.messageId);
         return ChatIncomingProcessResult(
           messageId: message.messageId,
           accepted: true,
@@ -488,6 +517,7 @@ class ChatFlow<TBindingToken> {
         messageKind: content.kind,
         plaintext: plaintext,
       );
+      await _crypto.acknowledgeMessage(message.messageId);
       final postStore = afterIncomingStore?.call(message, content);
       if (postStore != null) {
         unawaited(
@@ -556,7 +586,69 @@ class ChatFlow<TBindingToken> {
     required String senderDeviceId,
     required List<MlsKeyPackage> recipientKeyPackages,
     required List<int> plaintext,
+    required String messageId,
   }) async {
+    final result = <_DirectWireTarget>[];
+    // 崩溃后名册已前进时，仍恢复此前已提交的Welcome/Commit，不能只补Application。
+    final persisted = await _crypto.pendingMessageResults(messageId);
+    for (final entry in persisted) {
+      final saved = (entry['result'] as Map).cast<String, dynamic>();
+      if (saved['welcome_wire_hex'] is! String) continue;
+      MlsWireMessage restoreWire(String field, MlsMessageKind kind) {
+        final hex = saved[field] as String;
+        return MlsWireMessage(
+          conversationId: conversationId,
+          messageKind: kind,
+          wireBytes: [
+            for (var i = 0; i < hex.length; i += 2)
+              int.parse(hex.substring(i, i + 2), radix: 16),
+          ],
+        );
+      }
+
+      for (final identity
+          in (saved['welcome_member_identities'] as List).cast<String>()) {
+        result.add(
+          _DirectWireTarget(
+            wire: restoreWire('welcome_wire_hex', MlsMessageKind.welcome),
+            recipient: MlsMemberIdentity.parse(identity),
+          ),
+        );
+      }
+      for (final identity
+          in (saved['prior_member_identities'] as List).cast<String>()) {
+        final member = MlsMemberIdentity.parse(identity);
+        if (member.userId == _ownerUserId &&
+            member.deviceId == senderDeviceId) {
+          continue;
+        }
+        result.add(
+          _DirectWireTarget(
+            wire: restoreWire('commit_wire_hex', MlsMessageKind.commit),
+            recipient: member,
+          ),
+        );
+      }
+    }
+    // 发送已经提交后，只复核同一明文请求并使用原成员；不再取当前名册补新人。
+    if (persisted.any(
+      (entry) => (entry['result'] as Map)['application_wire_hex'] is String,
+    )) {
+      final application = await _crypto.groupCreateMessage(
+        conversationId,
+        plaintext,
+      );
+      for (final member in membersFromMemberIdentities(
+        await _crypto.messageMemberIdentities(conversationId, messageId),
+      )) {
+        if (member.userId == _ownerUserId &&
+            member.deviceId == senderDeviceId) {
+          continue;
+        }
+        result.add(_DirectWireTarget(wire: application, recipient: member));
+      }
+      return result;
+    }
     if (recipientKeyPackages.isEmpty) {
       throw StateError('接收方没有可用的 MLS KeyPackage');
     }
@@ -591,7 +683,6 @@ class ChatFlow<TBindingToken> {
           ),
         )
         .toList(growable: false);
-    final result = <_DirectWireTarget>[];
     if (missing.isNotEmpty) {
       final bundle = await _crypto.addMembers(conversationId, missing);
       final welcome = bundle.welcome;
@@ -618,12 +709,12 @@ class ChatFlow<TBindingToken> {
       }
     }
 
-    final current = membersFromMemberIdentities(
-      (await _crypto.groupState(conversationId)).memberIdentities,
-    );
     final application = await _crypto.groupCreateMessage(
       conversationId,
       plaintext,
+    );
+    final current = membersFromMemberIdentities(
+      await _crypto.messageMemberIdentities(conversationId, messageId),
     );
     for (final member in current) {
       if (member.userId == _ownerUserId && member.deviceId == senderDeviceId) {

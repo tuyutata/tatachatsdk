@@ -93,7 +93,7 @@ class _StickerGrid extends StatelessWidget {
               StickerPack.assetPath(item.id),
               package: 'tatachat_sdk',
               fit: BoxFit.contain,
-              errorBuilder: (_, __, ___) =>
+              errorBuilder: (_, _, _) =>
                   const Icon(Icons.broken_image_rounded, color: Colors.grey),
             ),
           ),

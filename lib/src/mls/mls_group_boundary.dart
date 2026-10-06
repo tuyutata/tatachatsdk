@@ -1,3 +1,4 @@
+import 'dart:io';
 // 私密小群(MLS 群)的 Dart 侧边界模型与接口。
 //
 // 只定义可测的数据边界与注入点;真正的 OpenMLS 群加解密由 Rust native
@@ -117,6 +118,8 @@ class GroupCommitBundle {
     required this.commit,
     this.welcome,
     this.removedUserIds = const [],
+    this.priorMemberIdentities = const [],
+    this.createdAtMillis,
   });
 
   final String groupId;
@@ -124,6 +127,8 @@ class GroupCommitBundle {
   final MlsWireMessage commit;
   final MlsWireMessage? welcome;
   final List<String> removedUserIds;
+  final List<String> priorMemberIdentities;
+  final int? createdAtMillis;
 }
 
 /// `group_process` 处理入站群消息的结果。
@@ -137,6 +142,7 @@ class GroupInbound {
     required this.selfRemoved,
     this.plaintext,
     this.memberIdentities,
+    this.committed = false,
   });
 
   final String groupId;
@@ -153,6 +159,9 @@ class GroupInbound {
 
   /// 应用 Commit / 入群 Welcome 后的 MLS 权威名册(标识,含设备段)。
   final List<String>? memberIdentities;
+
+  /// 原生已提交精确处理收据，不能由stale状态推定。
+  final bool committed;
 
   bool get isApplied => status == GroupProcessStatus.applied;
 
@@ -210,4 +219,66 @@ abstract class MlsGroupCrypto {
 
   /// 只读群状态(epoch + 名册)。
   Future<GroupState> groupState(String groupId);
+}
+
+/// 持久化实现的事务能力；复用现有message_id，不扩展密码协议。
+abstract interface class MlsPersistentCrypto {
+  Future<T> withMessage<T>(String messageId, Future<T> Function() operation);
+  Future<void> acknowledgeMessage(String messageId);
+  Future<List<Map<String, dynamic>>> pendingMessageResults(String? messageId);
+}
+
+/// 生产必须接入持久化实现；非持久化替身只允许合成测试。
+extension MlsPersistentOperations on MlsGroupCrypto {
+  Future<T> withMessage<T>(String messageId, Future<T> Function() operation) {
+    final current = this;
+    if (current is MlsPersistentCrypto) {
+      return current.withMessage(messageId, operation);
+    }
+    if (!Platform.environment.containsKey('FLUTTER_TEST')) {
+      throw StateError('MLS实现缺少持久化事务');
+    }
+    return operation();
+  }
+
+  Future<void> acknowledgeMessage(String messageId) async {
+    final current = this;
+    if (current is MlsPersistentCrypto) {
+      await current.acknowledgeMessage(messageId);
+      return;
+    }
+    if (!Platform.environment.containsKey('FLUTTER_TEST')) {
+      throw StateError('MLS实现缺少落库确认');
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> pendingMessageResults(
+    String? messageId,
+  ) async {
+    final current = this;
+    if (current is MlsPersistentCrypto) {
+      return current.pendingMessageResults(messageId);
+    }
+    if (!Platform.environment.containsKey('FLUTTER_TEST')) {
+      throw StateError('MLS实现缺少恢复接口');
+    }
+    return [];
+  }
+
+  /// 扇出使用该密文提交时的成员集合，重试期间当前epoch可能已经前进。
+  Future<List<String>> messageMemberIdentities(
+    String groupId,
+    String messageId,
+  ) async {
+    for (final entry in await pendingMessageResults(messageId)) {
+      final result = (entry['result'] as Map).cast<String, dynamic>();
+      if (result['application_wire_hex'] is String) {
+        return (result['member_identities'] as List).cast<String>();
+      }
+    }
+    if (!Platform.environment.containsKey('FLUTTER_TEST')) {
+      throw StateError('MLS发送结果缺失');
+    }
+    return (await groupState(groupId)).memberIdentities;
+  }
 }

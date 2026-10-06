@@ -120,9 +120,7 @@ final class IoTataChatServerHttpAdapter implements TataChatServerHttpAdapter {
         uri.userInfo.isNotEmpty ||
         bearerToken.isEmpty ||
         bearerToken.codeUnits.any((unit) => unit <= 32)) {
-      throw const ChatServerConnectionException(
-        'attachment_request_invalid',
-      );
+      throw const ChatServerConnectionException('attachment_request_invalid');
     }
   }
 

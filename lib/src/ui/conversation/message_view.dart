@@ -26,24 +26,23 @@ typedef ChatMessageSnapshot = ({
 typedef ChatLoadMessageSnapshotCallback =
     Future<ChatMessageSnapshot> Function();
 typedef ChatSendTextCallback = Future<void> Function(String text);
-typedef ChatSendMediaCallback = Future<void> Function(
-  ChatMediaDraft media, {
-  ChatMediaLocalCommitNotifier? onLocalCommitted,
-});
-typedef ChatSendStickerCallback = Future<void> Function(
-  String packId,
-  String stickerId,
-);
+typedef ChatSendMediaCallback =
+    Future<void> Function(
+      ChatMediaDraft media, {
+      ChatMediaLocalCommitNotifier? onLocalCommitted,
+    });
+typedef ChatSendStickerCallback =
+    Future<void> Function(String packId, String stickerId);
 typedef ChatSyncCallback = Future<int> Function();
-typedef ChatStartRealtimeCallback = Future<Future<void> Function()?> Function({
-  required Future<void> Function() onNotice,
-  Future<void> Function()? onDisconnected,
-});
+typedef ChatStartRealtimeCallback =
+    Future<Future<void> Function()?> Function({
+      required Future<void> Function() onNotice,
+      Future<void> Function()? onDisconnected,
+    });
 typedef ChatDownloadAttachmentCallback =
     Future<ChatDownloadedAttachment> Function(String controlPlaintext);
-typedef ChatResolveMediaPathsCallback = Future<Map<String, String>> Function(
-  List<ChatContent> contents,
-);
+typedef ChatResolveMediaPathsCallback =
+    Future<Map<String, String>> Function(List<ChatContent> contents);
 typedef ChatMarkReadCallback = Future<void> Function(int readThroughMillis);
 typedef ChatErrorMessageCallback = String Function(Object error);
 typedef ChatControllerPauseCallback = Future<void> Function();
@@ -600,9 +599,8 @@ class ChatConversationController extends ChangeNotifier
 }
 
 typedef ChatConversationListCoordinateCallback = Future<void> Function();
-typedef ChatConversationListRefreshCallback = Future<bool> Function(
-  String scope,
-);
+typedef ChatConversationListRefreshCallback =
+    Future<bool> Function(String scope);
 
 /// 会话列表共用的生命周期、单飞协调、待发重试、WSS 订阅与轮询降级控制器。
 ///
@@ -823,10 +821,8 @@ class ChatConversationListController extends ChangeNotifier
   }
 }
 
-typedef ChatGroupSenderBuilder = Widget Function(
-  BuildContext context,
-  String userId,
-);
+typedef ChatGroupSenderBuilder =
+    Widget Function(BuildContext context, String userId);
 
 /// Reusable direct/group message viewport, including all message categories.
 class ChatMessageListView extends StatelessWidget {
@@ -958,7 +954,7 @@ class ChatMessageListView extends StatelessWidget {
               File(message.source),
               fit: BoxFit.cover,
               cacheWidth: cacheWidth,
-              errorBuilder: (_, __, ___) => _mediaPlaceholder(
+              errorBuilder: (_, _, _) => _mediaPlaceholder(
                 context,
                 icon: Icons.broken_image_rounded,
                 label: '图片无法显示',
@@ -1168,7 +1164,7 @@ class ChatMessageListView extends StatelessWidget {
         ? Image.asset(
             StickerPack.assetPath(stickerId),
             fit: BoxFit.contain,
-            errorBuilder: (_, __, ___) => _stickerFallback(context),
+            errorBuilder: (_, _, _) => _stickerFallback(context),
           )
         : _stickerFallback(context);
     return _mediaAligned(

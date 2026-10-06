@@ -5,10 +5,7 @@ use std::os::raw::c_char;
 
 mod mls;
 
-/// Keeps every C ABI entry in a host static library that embeds TataChatSDK.
-///
-/// 宿主应用 iOS links one Rust static library to avoid loading two copies of
-/// Rust's runtime and compiler builtins into the same Mach-O image.
+/// 保留SDK全部C ABI入口，避免链接时移除Dart动态查找的符号。
 #[doc(hidden)]
 #[inline(never)]
 pub fn retain_ffi() {
@@ -16,8 +13,8 @@ pub fn retain_ffi() {
     let _ = std::hint::black_box([
         tatachat_sdk_free_string as *const () as usize,
         mls::tatachat_sdk_mls_create_key_package_json as *const () as usize,
-        mls::tatachat_sdk_mls_two_party_smoke_json as *const () as usize,
-        mls::tatachat_sdk_mls_rekey_state_json as *const () as usize,
+        mls::tatachat_sdk_mls_identity_json as *const () as usize,
+        mls::tatachat_sdk_mls_store_json as *const () as usize,
         mls::tatachat_sdk_mls_group_create_json as *const () as usize,
         mls::tatachat_sdk_mls_group_add_members_json as *const () as usize,
         mls::tatachat_sdk_mls_group_remove_members_json as *const () as usize,

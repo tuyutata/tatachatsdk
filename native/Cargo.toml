@@ -18,7 +18,6 @@ openmls_rust_crypto = "0.5.1"
 openmls_basic_credential = "0.5.0"
 openmls_traits = "0.5.0"
 openmls_memory_storage = { version = "0.5.0", features = ["persistence"] }
-aes-gcm = "=0.10.3"
 base64 = "=0.22.1"
 
 [workspace]

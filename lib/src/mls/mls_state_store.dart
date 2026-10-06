@@ -1,231 +1,206 @@
-import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
-import 'package:cryptography/cryptography.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 
-import 'mls_session.dart';
+import 'mls_boundary.dart';
+import 'mls_native.dart';
 
-/// TataChatSDK 的 MLS 本地状态目录。
-///
-/// OpenMLS provider storage 由 Rust native 写入该目录；Dart 只管理目录位置、
-/// 下传状态消息密钥，以及 application 早于 Welcome 到达时的 pending 队列。
-///
-/// 该目录下**一律不得出现明文**：`openmls_storage.bin` / `device.bin` 由 Rust
-/// 用 [stateKey] 做 AES-256-GCM 消息；`pending_inbound.bin` 由本类同钥加密。
+/// SDK拥有的系统保护MLS目录；不持有应用供给的包装钥。
 class MlsStateStore {
   const MlsStateStore(
     this.directory, {
     required this.ownerUserId,
-    required this.stateKey,
+    this.newlyCreated = false,
+    this.debugCallJson,
   });
-
   final Directory directory;
   final String ownerUserId;
-
-  /// MLS 本地状态密钥（32 字节，来自 `LocalKeyPurpose.mls` 子钥）。
-  final Uint8List stateKey;
-
+  final bool newlyCreated;
+  @visibleForTesting
+  final Map<String, dynamic> Function(Map<String, Object?>)? debugCallJson;
+  @visibleForTesting
+  static Future<MlsStateStore> Function(String)? debugPrepare;
+  @visibleForTesting
+  static Future<void> Function(String?)? debugErase;
   String get path => directory.path;
+  static const _security = MethodChannel('tatachat_sdk/security');
 
-  /// 下传给 Rust native 的小写 hex 形式。
-  String get stateKeyHex =>
-      stateKey.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
-
-  /// 运行上下文失效时立即清零 MLS 状态消息钥，不等待垃圾回收。
-  void dispose() {
-    stateKey.fillRange(0, stateKey.length, 0);
+  /// 平台插件在任何MLS秘密生成前创建并验证存储保护。
+  static Future<MlsStateStore> prepare(String userId) async {
+    if (userId.trim().isEmpty || userId.contains(':')) {
+      throw ArgumentError('用户身份无效');
+    }
+    final fixture = debugPrepare;
+    if (fixture != null) {
+      if (!Platform.environment.containsKey('FLUTTER_TEST')) {
+        throw UnsupportedError('MLS夹具仅用于合成测试');
+      }
+      return fixture(userId);
+    }
+    final result = await _security.invokeMapMethod<String, dynamic>(
+      'prepareMlsStorage',
+      {'user_id': userId},
+    );
+    if (result == null ||
+        result['path'] is! String ||
+        result['created'] is! bool) {
+      throw StateError('MLS保护存储不可用');
+    }
+    final store = MlsStateStore(
+      Directory(result['path'] as String),
+      ownerUserId: userId,
+      newlyCreated: result['created'] as bool,
+    );
+    await store.ensureReady();
+    return store;
   }
 
-  String get _pendingAad => 'tatachatsdk/mls|$ownerUserId|pending_inbound';
+  /// 既有SDK隐私擦除入口使用；不读取或删除宿主钱包存储。
+  static Future<void> erase({String? userId}) async {
+    final fixture = debugErase;
+    if (fixture != null) {
+      if (!Platform.environment.containsKey('FLUTTER_TEST')) {
+        throw UnsupportedError('MLS夹具仅用于合成测试');
+      }
+      await fixture(userId);
+      return;
+    }
+    // 无平台存储夹具的纯Dart测试从未创建系统MLS目录。
+    if (Platform.environment.containsKey('FLUTTER_TEST') &&
+        debugPrepare == null) {
+      return;
+    }
+    await _security.invokeMethod<void>('eraseMlsStorage', {'user_id': ?userId});
+  }
 
   Future<void> ensureReady() async {
-    if (!directory.existsSync()) {
-      await directory.create(recursive: true);
+    if (!directory.isAbsolute ||
+        await FileSystemEntity.type(path, followLinks: false) !=
+            FileSystemEntityType.directory ||
+        await directory.resolveSymbolicLinks() != path) {
+      throw StateError('MLS存储目录未准备或存在符号链接');
     }
   }
 
-  /// 删除当前设备的全部 TataChatSDK 密码状态并立即建立空目录。
-  ///
-  /// 调用方仍持有同一 [stateKey]，但 OpenMLS 签名者、KeyPackage、群状态和
-  /// pending 队列都会从唯一空状态重新建立，禁止保留第二套设备公开钥状态。
-  Future<void> reset() async {
-    final target = directory.absolute;
-    if (target.path == target.parent.path) {
-      throw StateError('TataChatSDK 状态目录不能是文件系统根目录');
-    }
-    final type = await FileSystemEntity.type(target.path, followLinks: false);
-    if (type == FileSystemEntityType.link) {
-      await Link(target.path).delete();
-    } else if (type == FileSystemEntityType.directory) {
-      await target.delete(recursive: true);
-    } else if (type != FileSystemEntityType.notFound) {
-      throw StateError('TataChatSDK 状态路径必须是目录');
-    }
-    await target.create(recursive: true);
-  }
-
-  File get _pendingFile => _pendingFileFor(directory);
-
-  File get _pendingRekeyFile => _pendingRekeyFileFor(directory);
-
-  Future<void> queuePendingInbound(MlsWireMessage message) async {
+  /// 身份读取与初始化分离；已有目录缺状态时明确失败，不自动换钥。
+  Future<ChatDevice> initializeIdentity() => _identity('initialize');
+  Future<ChatDevice> readIdentity() => _identity('read');
+  Future<ChatDevice> _identity(String action) async {
     await ensureReady();
-    final existing = await readPendingInbound();
-    existing.add(message);
-    final encoded = existing.map(_wireMessageToJson).toList();
-    await _writePending(encoded);
+    final response = _call(true, {
+      'state_store_dir': path,
+      'user_id': ownerUserId,
+      'action': action,
+    });
+    if (response['user_id'] != ownerUserId) throw StateError('MLS身份所有者不一致');
+    final identity = ChatDevice(
+      userId: ownerUserId,
+      deviceId: response['device_id'] as String,
+      publicKey: response['public_key'] as String,
+    );
+    final error = identity.validate();
+    if (error != null ||
+        !RegExp(r'^0x[0-9a-f]{64}$').hasMatch(identity.publicKey ?? '')) {
+      throw StateError('MLS公开身份结果无效');
+    }
+    return identity;
+  }
+
+  Map<String, dynamic> _call(bool identity, Map<String, Object?> request) {
+    final fixture = debugCallJson;
+    if (fixture != null) {
+      if (!Platform.environment.containsKey('FLUTTER_TEST')) {
+        throw UnsupportedError('MLS夹具仅用于合成测试');
+      }
+      return fixture(request);
+    }
+    final bindings = MlsNativeBindings.load();
+    return bindings.callJson(
+      identity ? bindings.identity : bindings.store,
+      request,
+    );
+  }
+
+  Map<String, dynamic> _store(
+    String action, {
+    String? messageId,
+    Map<String, Object?>? pending,
+    String? handoverId,
+    String? payloadJson,
+  }) {
+    return _call(false, {
+      'state_store_dir': path,
+      'user_id': ownerUserId,
+      'action': action,
+      'message_id': ?messageId,
+      'pending_inbound': ?pending,
+      'handover_id': ?handoverId,
+      'payload_json': ?payloadJson,
+    });
+  }
+
+  /// 交接收据使用同一系统保护存储，不另设MAC钥或签名钥。
+  Future<void> writeReceipt(String id, String payload) async {
+    await ensureReady();
+    _store('write_receipt', handoverId: id, payloadJson: payload);
+  }
+
+  Future<List<String>> readReceipt(String id) async {
+    await ensureReady();
+    return (_store('read_receipt', handoverId: id)['payload_json'] as List?)
+            ?.cast<String>() ??
+        [];
+  }
+
+  Future<void> deleteReceipt(String id) async {
+    await ensureReady();
+    _store('delete_receipt', handoverId: id);
+  }
+
+  Future<void> acknowledge(String messageId) async {
+    await ensureReady();
+    _store('acknowledge', messageId: messageId);
+  }
+
+  Future<List<Map<String, dynamic>>> pendingResults(String? messageId) async {
+    await ensureReady();
+    return (_store('pending_results', messageId: messageId)['results'] as List)
+        .map((e) => (e as Map).cast<String, dynamic>())
+        .toList();
+  }
+
+  Future<void> queuePendingInbound(MlsWireMessage wire) async {
+    await ensureReady();
+    _store(
+      'queue_pending',
+      pending: {
+        'conversation_id': wire.conversationId,
+        'wire_hex': wire.wireHex,
+      },
+    );
   }
 
   Future<List<MlsWireMessage>> readPendingInbound() async {
-    if (!_pendingFile.existsSync()) {
-      return [];
-    }
-    final blob = await _pendingFile.readAsString();
-    if (blob.trim().isEmpty) {
-      return [];
-    }
-    // 解密失败必须抛出：静默返回空会让早到的 application message 被悄悄丢弃。
-    final raw = await _decryptStateString(
-      key: stateKey,
-      blob: blob,
-      aad: _pendingAad,
-    );
-    if (raw.trim().isEmpty) {
-      return [];
-    }
-    final items = (jsonDecode(raw) as List).cast<Map<String, dynamic>>();
-    return items.map(_wireMessageFromJson).toList();
+    await ensureReady();
+    return (_store('read_pending')['pending_inbound'] as List).map((item) {
+      final hex = item['wire_hex'] as String;
+      if (hex.length.isOdd) throw const FormatException('MLS密文编码无效');
+      return MlsWireMessage(
+        conversationId: item['conversation_id'] as String,
+        wireBytes: [
+          for (var i = 0; i < hex.length; i += 2)
+            int.parse(hex.substring(i, i + 2), radix: 16),
+        ],
+      );
+    }).toList();
   }
 
   Future<void> clearPendingInbound() async {
-    if (_pendingFile.existsSync()) {
-      await _writePending(const <Map<String, Object?>>[]);
-    }
+    await ensureReady();
+    _store('clear_pending');
   }
 
-  Future<void> _writePending(List<Map<String, Object?>> items) async {
-    final blob = await _encryptStateString(
-      key: stateKey,
-      plaintext: jsonEncode(items),
-      aad: _pendingAad,
-    );
-    await _pendingFile.writeAsString(blob, flush: true);
-  }
-
-  /// 只在内存解开 pending 队列并写入新账户密文旁路文件，正式文件保持不动。
-  Future<void> stageAccountHandover(Uint8List newStateKey) async {
-    if (!_pendingFile.existsSync()) return;
-    final oldBlob = await _pendingFile.readAsString();
-    final plaintext = await _decryptStateString(
-      key: stateKey,
-      blob: oldBlob,
-      aad: _pendingAad,
-    );
-    final newBlob = await _encryptStateString(
-      key: newStateKey,
-      plaintext: plaintext,
-      aad: _pendingAad,
-    );
-    // 写前再验一次目标密文，确保新账户密钥确实能够接管。
-    await _decryptStateString(
-      key: newStateKey,
-      blob: newBlob,
-      aad: _pendingAad,
-    );
-    await _pendingRekeyFile.writeAsString(newBlob, flush: true);
-  }
-
-  /// finalized 后只提交已验证的目标密文文件，不构造或接收任何占位密钥。
-  static Future<void> commitAccountHandoverFiles(Directory directory) async {
-    final pendingFile = _pendingFileFor(directory);
-    final pendingRekeyFile = _pendingRekeyFileFor(directory);
-    if (!await pendingRekeyFile.exists()) return;
-    final backup = File('${pendingFile.path}.account_previous');
-    if (await backup.exists()) await backup.delete();
-    if (await pendingFile.exists()) await pendingFile.rename(backup.path);
-    try {
-      await pendingRekeyFile.rename(pendingFile.path);
-      if (await backup.exists()) await backup.delete();
-    } catch (_) {
-      if (await pendingFile.exists()) await pendingFile.delete();
-      if (await backup.exists()) await backup.rename(pendingFile.path);
-      rethrow;
-    }
-  }
-
-  static Future<void> discardAccountHandoverFiles(Directory directory) async {
-    final pendingRekeyFile = _pendingRekeyFileFor(directory);
-    if (await pendingRekeyFile.exists()) await pendingRekeyFile.delete();
-  }
-
-  static File _pendingFileFor(Directory directory) =>
-      File('${directory.path}/pending_inbound.bin');
-
-  static File _pendingRekeyFileFor(Directory directory) =>
-      File('${directory.path}/pending_inbound.account_rekey');
-}
-
-final AesGcm _pendingCipher = AesGcm.with256bits();
-
-Future<String> _encryptStateString({
-  required Uint8List key,
-  required String plaintext,
-  required String aad,
-}) async {
-  final secretBox = await _pendingCipher.encrypt(
-    utf8.encode(plaintext),
-    secretKey: SecretKey(key),
-    nonce: _pendingCipher.newNonce(),
-    aad: utf8.encode(aad),
-  );
-  return base64Encode(secretBox.concatenation());
-}
-
-Future<String> _decryptStateString({
-  required Uint8List key,
-  required String blob,
-  required String aad,
-}) async {
-  final secretBox = SecretBox.fromConcatenation(
-    base64Decode(blob),
-    nonceLength: 12,
-    macLength: 16,
-  );
-  final plaintext = await _pendingCipher.decrypt(
-    secretBox,
-    secretKey: SecretKey(key),
-    aad: utf8.encode(aad),
-  );
-  return utf8.decode(plaintext);
-}
-
-Map<String, Object?> _wireMessageToJson(MlsWireMessage message) {
-  return {
-    'conversation_id': message.conversationId,
-    'wire_hex': _bytesToHex(message.wireBytes),
-  };
-}
-
-MlsWireMessage _wireMessageFromJson(Map<String, dynamic> json) {
-  return MlsWireMessage(
-    conversationId: (json['conversation_id'] ?? '').toString(),
-    wireBytes: _hexToBytes((json['wire_hex'] ?? '').toString()),
-  );
-}
-
-String _bytesToHex(List<int> bytes) {
-  return bytes.map((byte) => byte.toRadixString(16).padLeft(2, '0')).join();
-}
-
-List<int> _hexToBytes(String value) {
-  final normalized = value.startsWith('0x') ? value.substring(2) : value;
-  if (normalized.length.isOdd) {
-    throw const FormatException('Chat MLS pending hex 长度必须为偶数');
-  }
-  final bytes = <int>[];
-  for (var i = 0; i < normalized.length; i += 2) {
-    bytes.add(int.parse(normalized.substring(i, i + 2), radix: 16));
-  }
-  return bytes;
+  /// 本对象没有秘密缓冲；销毁不删除持久化身份。
+  void dispose() {}
 }

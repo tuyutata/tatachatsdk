@@ -71,6 +71,8 @@ assert_symbols() {
   fi
   symbols="$("$nm_bin" "${nm_args[@]}" "$library" 2>/dev/null | awk '{print $NF}' || true)"
   local required_symbols=(
+    tatachat_sdk_mls_identity_json
+    tatachat_sdk_mls_store_json
     tatachat_sdk_mls_create_key_package_json
     tatachat_sdk_mls_group_create_json
     tatachat_sdk_mls_group_add_members_json
@@ -89,9 +91,9 @@ assert_symbols() {
     fi
   done
 
-  # 中文注释：原始 HPKE 与独立设备身份接口已被统一 OpenMLS 群协议取代，禁止重新导出。
-  if grep -Eq '^_?tatachat_sdk_(device_identity|mls_encrypt|mls_decrypt)_json$' <<<"$symbols"; then
-    printf 'TataChatSDK legacy direct-encryption symbols found in %s\n' "$library" >&2
+  # 中文注释：只导出现行OpenMLS边界；旧直聊、MLS包装和生产smoke接口禁止导出。
+  if grep -Eq '^_?tatachat_sdk_(device_identity|mls_encrypt|mls_decrypt|mls_rekey_state|mls_two_party_smoke)_json$' <<<"$symbols"; then
+    printf 'TataChatSDK legacy MLS/direct symbols found in %s\n' "$library" >&2
     exit 1
   fi
 }

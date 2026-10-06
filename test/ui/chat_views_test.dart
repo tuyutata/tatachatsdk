@@ -21,8 +21,9 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           builder: (context, child) => MediaQuery(
-            data: MediaQuery.of(context)
-                .copyWith(textScaler: TextScaler.linear(scenario.textScale)),
+            data: MediaQuery.of(
+              context,
+            ).copyWith(textScaler: TextScaler.linear(scenario.textScale)),
             child: child!,
           ),
           home: Scaffold(
@@ -238,10 +239,11 @@ void main() {
   });
 }
 
-typedef _RealtimeStart = Future<Future<void> Function()?> Function({
-  required Future<void> Function() onNotice,
-  Future<void> Function()? onDisconnected,
-});
+typedef _RealtimeStart =
+    Future<Future<void> Function()?> Function({
+      required Future<void> Function() onNotice,
+      Future<void> Function()? onDisconnected,
+    });
 
 class _Runtime extends ChatSdk {
   _Runtime({required this.onStart}) : super(host: _Host());

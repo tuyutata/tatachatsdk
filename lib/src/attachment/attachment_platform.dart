@@ -36,8 +36,9 @@ final class ChatAttachmentPlatform {
         fileName is! String ||
         !_validFileName(fileName) ||
         mime is! String ||
-        !RegExp(r'^[a-z0-9][a-z0-9.+-]*/[a-z0-9][a-z0-9.+-]*$')
-            .hasMatch(mime)) {
+        !RegExp(
+          r'^[a-z0-9][a-z0-9.+-]*/[a-z0-9][a-z0-9.+-]*$',
+        ).hasMatch(mime)) {
       throw const FormatException('系统文件选择结果无效');
     }
     return ChatPickedFile(path: path, fileName: fileName, mime: mime);

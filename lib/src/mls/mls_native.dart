@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
@@ -9,42 +10,10 @@ import 'mls_boundary.dart';
 import 'mls_group_boundary.dart';
 import 'mls_state_store.dart';
 
-/// OpenMLS native smoke 结果。
-class MlsNativeSmokeResult {
-  const MlsNativeSmokeResult({
-    required this.plaintext,
-    required this.decryptedPlaintext,
-    required this.cipherSuite,
-    required this.aliceWireMessageHex,
-    required this.bobKeyPackageHex,
-    required this.welcomeHex,
-  });
-
-  final String plaintext;
-  final String decryptedPlaintext;
-  final String cipherSuite;
-  final String aliceWireMessageHex;
-  final String bobKeyPackageHex;
-  final String welcomeHex;
-
-  bool get roundTripOk => plaintext == decryptedPlaintext;
-
-  factory MlsNativeSmokeResult.fromJson(Map<String, dynamic> json) {
-    return MlsNativeSmokeResult(
-      plaintext: (json['plaintext'] ?? '').toString(),
-      decryptedPlaintext: (json['decrypted_plaintext'] ?? '').toString(),
-      cipherSuite: (json['cipher_suite'] ?? '').toString(),
-      aliceWireMessageHex: (json['alice_wire_message_hex'] ?? '').toString(),
-      bobKeyPackageHex: (json['bob_key_package_hex'] ?? '').toString(),
-      welcomeHex: (json['welcome_hex'] ?? '').toString(),
-    );
-  }
-}
-
 /// 通过现有 native 库调用 Rust OpenMLS。
 ///
 /// 该类只负责跨 FFI 边界，密码学实现全部在 Rust OpenMLS 中完成。
-class NativeMlsCrypto implements MlsGroupCrypto {
+class NativeMlsCrypto implements MlsGroupCrypto, MlsPersistentCrypto {
   NativeMlsCrypto({
     MlsNativeBindings? bindings,
     ChatDevice? identity,
@@ -57,7 +26,24 @@ class NativeMlsCrypto implements MlsGroupCrypto {
   final ChatDevice? _identity;
   final MlsStateStore? _stateStore;
 
-  /// 当前账户运行上下文退出后立即清零 Dart 侧 MLS 状态消息钥。
+  static final Object _messageZoneKey = Object();
+  String get _messageId {
+    final id = Zone.current[_messageZoneKey] as String?;
+    if (id == null || id.isEmpty) throw StateError('MLS状态变更必须提供现有message_id');
+    return id;
+  }
+
+  @override
+  Future<T> withMessage<T>(String messageId, Future<T> Function() operation) =>
+      runZoned(operation, zoneValues: {_messageZoneKey: messageId});
+  @override
+  Future<void> acknowledgeMessage(String messageId) =>
+      _requireStateStore().acknowledge(messageId);
+  @override
+  Future<List<Map<String, dynamic>>> pendingMessageResults(String? messageId) =>
+      _requireStateStore().pendingResults(messageId);
+
+  /// 上下文释放不删除持久化MLS身份。
   void dispose() {
     _stateStore?.dispose();
   }
@@ -75,8 +61,9 @@ class NativeMlsCrypto implements MlsGroupCrypto {
     final response = _bindings.callJson(_bindings.createKeyPackage, {
       'user_id': identity.userId,
       'device_id': identity.deviceId,
-      if (_stateStore != null) 'state_store_dir': _stateStore.path,
-      if (_stateStore != null) 'state_key_hex': _stateStore.stateKeyHex,
+      'state_store_dir': _requireStateStore().path,
+      'message_id':
+          'key-package:${identity.deviceId}:$lastResort:${DateTime.now().millisecondsSinceEpoch ~/ 86400000}',
       'last_resort': lastResort,
     });
     return MlsKeyPackage(
@@ -91,16 +78,6 @@ class NativeMlsCrypto implements MlsGroupCrypto {
     );
   }
 
-  /// 运行 Rust OpenMLS 两方 round-trip smoke。
-  Future<MlsNativeSmokeResult> runTwoPartySmoke({
-    required String plaintext,
-  }) async {
-    final response = _bindings.callJson(_bindings.twoPartySmoke, {
-      'plaintext': plaintext,
-    });
-    return MlsNativeSmokeResult.fromJson(response);
-  }
-
   // 私聊和群聊统一调用同一套 OpenMLS 群接口。
 
   @override
@@ -110,7 +87,7 @@ class NativeMlsCrypto implements MlsGroupCrypto {
     await stateStore.ensureReady();
     final response = _bindings.callJson(_bindings.groupCreate, {
       'state_store_dir': stateStore.path,
-      'state_key_hex': stateStore.stateKeyHex,
+      'message_id': _messageId,
       'user_id': identity.userId,
       'device_id': identity.deviceId,
       'group_id': groupId,
@@ -131,7 +108,7 @@ class NativeMlsCrypto implements MlsGroupCrypto {
     await stateStore.ensureReady();
     final response = _bindings.callJson(_bindings.groupAddMembers, {
       'state_store_dir': stateStore.path,
-      'state_key_hex': stateStore.stateKeyHex,
+      'message_id': _messageId,
       'user_id': identity.userId,
       'device_id': identity.deviceId,
       'group_id': groupId,
@@ -148,6 +125,9 @@ class NativeMlsCrypto implements MlsGroupCrypto {
         (response['commit_wire_hex'] ?? '').toString(),
         MlsMessageKind.commit,
       ),
+      priorMemberIdentities: (response['prior_member_identities'] as List)
+          .cast<String>(),
+      createdAtMillis: (response['created_at_millis'] as num).toInt(),
       welcome: welcomeHex.isEmpty
           ? null
           : _groupWire(groupId, welcomeHex, MlsMessageKind.welcome),
@@ -164,7 +144,7 @@ class NativeMlsCrypto implements MlsGroupCrypto {
     await stateStore.ensureReady();
     final response = _bindings.callJson(_bindings.groupRemoveMembers, {
       'state_store_dir': stateStore.path,
-      'state_key_hex': stateStore.stateKeyHex,
+      'message_id': _messageId,
       'user_id': identity.userId,
       'device_id': identity.deviceId,
       'group_id': groupId,
@@ -184,6 +164,9 @@ class NativeMlsCrypto implements MlsGroupCrypto {
         MlsMessageKind.commit,
       ),
       removedUserIds: removed,
+      priorMemberIdentities: (response['prior_member_identities'] as List)
+          .cast<String>(),
+      createdAtMillis: (response['created_at_millis'] as num).toInt(),
     );
   }
 
@@ -197,7 +180,7 @@ class NativeMlsCrypto implements MlsGroupCrypto {
     await stateStore.ensureReady();
     final response = _bindings.callJson(_bindings.groupCreateMessage, {
       'state_store_dir': stateStore.path,
-      'state_key_hex': stateStore.stateKeyHex,
+      'message_id': _messageId,
       'user_id': identity.userId,
       'device_id': identity.deviceId,
       'group_id': groupId,
@@ -217,7 +200,7 @@ class NativeMlsCrypto implements MlsGroupCrypto {
     await stateStore.ensureReady();
     final response = _bindings.callJson(_bindings.groupProcess, {
       'state_store_dir': stateStore.path,
-      'state_key_hex': stateStore.stateKeyHex,
+      'message_id': _messageId,
       'user_id': identity.userId,
       'device_id': identity.deviceId,
       'group_id': wire.conversationId,
@@ -242,6 +225,7 @@ class NativeMlsCrypto implements MlsGroupCrypto {
           ? null
           : _hexToBytes(plaintextHex),
       memberIdentities: members,
+      committed: response['committed'] == true,
     );
   }
 
@@ -252,7 +236,6 @@ class NativeMlsCrypto implements MlsGroupCrypto {
     await stateStore.ensureReady();
     final response = _bindings.callJson(_bindings.groupState, {
       'state_store_dir': stateStore.path,
-      'state_key_hex': stateStore.stateKeyHex,
       'user_id': identity.userId,
       'device_id': identity.deviceId,
       'group_id': groupId,
@@ -319,8 +302,8 @@ typedef MlsFreeStringDart = void Function(Pointer<Utf8> ptr);
 class MlsNativeBindings {
   MlsNativeBindings._({
     required this.createKeyPackage,
-    required this.twoPartySmoke,
-    required this.rekeyState,
+    required this.identity,
+    required this.store,
     required this.groupCreate,
     required this.groupAddMembers,
     required this.groupRemoveMembers,
@@ -331,8 +314,8 @@ class MlsNativeBindings {
   }) : _freeString = freeString;
 
   final MlsJsonDart createKeyPackage;
-  final MlsJsonDart twoPartySmoke;
-  final MlsJsonDart rekeyState;
+  final MlsJsonDart identity;
+  final MlsJsonDart store;
   final MlsJsonDart groupCreate;
   final MlsJsonDart groupAddMembers;
   final MlsJsonDart groupRemoveMembers;
@@ -347,11 +330,11 @@ class MlsNativeBindings {
       createKeyPackage: library.lookupFunction<MlsJsonNative, MlsJsonDart>(
         'tatachat_sdk_mls_create_key_package_json',
       ),
-      twoPartySmoke: library.lookupFunction<MlsJsonNative, MlsJsonDart>(
-        'tatachat_sdk_mls_two_party_smoke_json',
+      identity: library.lookupFunction<MlsJsonNative, MlsJsonDart>(
+        'tatachat_sdk_mls_identity_json',
       ),
-      rekeyState: library.lookupFunction<MlsJsonNative, MlsJsonDart>(
-        'tatachat_sdk_mls_rekey_state_json',
+      store: library.lookupFunction<MlsJsonNative, MlsJsonDart>(
+        'tatachat_sdk_mls_store_json',
       ),
       groupCreate: library.lookupFunction<MlsJsonNative, MlsJsonDart>(
         'tatachat_sdk_mls_group_create_json',
@@ -406,22 +389,6 @@ class MlsNativeBindings {
         _freeString(resultPtr);
       }
     }
-  }
-
-  /// 运行 Rust MLS 状态换绑边界；明文只在 Rust 内存中短暂存在。
-  void runStateRekey({
-    required String stateStoreDir,
-    required String action,
-    String? currentStateKeyHex,
-    String? newStateKeyHex,
-  }) {
-    callJson(rekeyState, <String, Object?>{
-      'state_store_dir': stateStoreDir,
-      'action': action,
-      if (currentStateKeyHex != null)
-        'current_state_key_hex': currentStateKeyHex,
-      if (newStateKeyHex != null) 'new_state_key_hex': newStateKeyHex,
-    });
   }
 }
 
@@ -531,9 +498,6 @@ DynamicLibrary _loadChatSdkLibrary() {
 enum MlsNativeErrorCode {
   stateOwnerMismatch,
   storageReadFailed,
-  storageAuthFailed,
-  deviceReadFailed,
-  deviceAuthFailed,
   stateInvalid,
   signerMissing,
   libraryUnavailable,
@@ -552,15 +516,6 @@ class MlsNativeException implements Exception {
     if (message.contains('CHAT_MLS_STORAGE_READ_FAILED')) {
       return MlsNativeException(MlsNativeErrorCode.storageReadFailed, message);
     }
-    if (message.contains('CHAT_MLS_STORAGE_AUTH_FAILED')) {
-      return MlsNativeException(MlsNativeErrorCode.storageAuthFailed, message);
-    }
-    if (message.contains('CHAT_MLS_DEVICE_READ_FAILED')) {
-      return MlsNativeException(MlsNativeErrorCode.deviceReadFailed, message);
-    }
-    if (message.contains('CHAT_MLS_DEVICE_AUTH_FAILED')) {
-      return MlsNativeException(MlsNativeErrorCode.deviceAuthFailed, message);
-    }
     if (message.contains('CHAT_MLS_STATE_INVALID')) {
       return MlsNativeException(MlsNativeErrorCode.stateInvalid, message);
     }
@@ -573,25 +528,10 @@ class MlsNativeException implements Exception {
   final MlsNativeErrorCode code;
   final String technicalMessage;
 
-  /// 只有本机 TataChatSDK 状态自身无法认证或解析时才允许清空 Chat 域重建。
-  bool get requiresStateReset => switch (code) {
-    MlsNativeErrorCode.stateOwnerMismatch ||
-    MlsNativeErrorCode.storageReadFailed ||
-    MlsNativeErrorCode.storageAuthFailed ||
-    MlsNativeErrorCode.deviceReadFailed ||
-    MlsNativeErrorCode.deviceAuthFailed ||
-    MlsNativeErrorCode.stateInvalid ||
-    MlsNativeErrorCode.signerMissing => true,
-    _ => false,
-  };
-
   /// 脱敏诊断只记录该稳定码，不记录用户、账户、路径、密钥或底层文本。
   String get diagnosticCode => switch (code) {
     MlsNativeErrorCode.stateOwnerMismatch => 'state_owner_mismatch',
     MlsNativeErrorCode.storageReadFailed => 'storage_read_failed',
-    MlsNativeErrorCode.storageAuthFailed => 'storage_auth_failed',
-    MlsNativeErrorCode.deviceReadFailed => 'device_read_failed',
-    MlsNativeErrorCode.deviceAuthFailed => 'device_auth_failed',
     MlsNativeErrorCode.stateInvalid => 'state_invalid',
     MlsNativeErrorCode.signerMissing => 'signer_missing',
     MlsNativeErrorCode.libraryUnavailable => 'library_unavailable',
@@ -603,9 +543,6 @@ class MlsNativeException implements Exception {
   String get userMessage => switch (code) {
     MlsNativeErrorCode.stateOwnerMismatch => '当前用户身份的聊天设备状态属于其他用户，请重新切换账户后再试',
     MlsNativeErrorCode.storageReadFailed ||
-    MlsNativeErrorCode.storageAuthFailed ||
-    MlsNativeErrorCode.deviceReadFailed ||
-    MlsNativeErrorCode.deviceAuthFailed ||
     MlsNativeErrorCode.stateInvalid ||
     MlsNativeErrorCode.signerMissing => '当前用户身份的聊天加密状态无法恢复，请重新进入宿主',
     MlsNativeErrorCode.libraryUnavailable => '聊天安全组件加载失败，请重新安装当前版本',

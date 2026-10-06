@@ -13,10 +13,9 @@ void tatachat_sdk_free_string(char *value);
 
 char *tatachat_sdk_mls_create_key_package_json(const char *request_json, char **error_out);
 
-char *tatachat_sdk_mls_two_party_smoke_json(const char *request_json, char **error_out);
+char *tatachat_sdk_mls_identity_json(const char *request_json, char **error_out);
 
-char *tatachat_sdk_mls_rekey_state_json(const char *request_json,
-                                        char **error_out);
+char *tatachat_sdk_mls_store_json(const char *request_json, char **error_out);
 
 char *tatachat_sdk_mls_group_create_json(const char *request_json, char **error_out);
 

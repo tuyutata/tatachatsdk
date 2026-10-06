@@ -7,13 +7,20 @@ export 'mls_session.dart';
 
 /// 本机 Chat 设备身份。
 class ChatDevice {
-  const ChatDevice({required this.userId, required this.deviceId});
+  const ChatDevice({
+    required this.userId,
+    required this.deviceId,
+    this.publicKey,
+  });
 
   /// Chat 永久用户身份主键，由宿主产品注入。
   final String userId;
 
   /// 同一用户下唯一设备标识。
   final String deviceId;
+
+  /// 已初始化原生MLS签名公钥；只读公开值，不是独立设备认证钥。
+  final String? publicKey;
 
   String? validate() {
     if (userId.trim().isEmpty || userId.contains(':')) {

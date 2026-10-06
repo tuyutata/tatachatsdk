@@ -16,7 +16,7 @@ void main() {
   test('files within the host limit pass through unchanged', () async {
     final compressor = _compressor(
       sizeOf: (_) async => 5,
-      compressImage: (_, __) async => throw StateError('must not compress'),
+      compressImage: (_, _) async => throw StateError('must not compress'),
     );
     expect(
       await compressor.ensureWithinLimit(
@@ -31,7 +31,7 @@ void main() {
     final sizes = {'/large.jpg': _limit + 1, '/small.jpg': 10};
     final compressor = _compressor(
       sizeOf: (path) async => sizes[path]!,
-      compressImage: (_, __) async => '/small.jpg',
+      compressImage: (_, _) async => '/small.jpg',
     );
     expect(
       await compressor.ensureWithinLimit(
@@ -45,7 +45,7 @@ void main() {
   test('an image still over limit is rejected', () async {
     final compressor = _compressor(
       sizeOf: (_) async => _limit + 1,
-      compressImage: (_, __) async => '/still-large.jpg',
+      compressImage: (_, _) async => '/still-large.jpg',
     );
     await expectLater(
       compressor.ensureWithinLimit(
@@ -59,7 +59,7 @@ void main() {
   test('a failed image compression is rejected', () async {
     final compressor = _compressor(
       sizeOf: (_) async => _limit + 1,
-      compressImage: (_, __) async => null,
+      compressImage: (_, _) async => null,
     );
     await expectLater(
       compressor.ensureWithinLimit(
@@ -74,7 +74,7 @@ void main() {
     var compressCalled = false;
     final compressor = _compressor(
       sizeOf: (_) async => _limit + 1,
-      compressImage: (_, __) async {
+      compressImage: (_, _) async {
         compressCalled = true;
         return null;
       },

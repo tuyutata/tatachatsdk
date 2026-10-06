@@ -533,8 +533,9 @@ class ChatIsar {
     }
 
     try {
-      final deleted = await _deleteInstance(opened)
-          .timeout(_forcedDeleteTimeout);
+      final deleted = await _deleteInstance(
+        opened,
+      ).timeout(_forcedDeleteTimeout);
       if (!deleted) {
         throw StateError('Chat 数据库仍被其它实例持有，未实际关闭并删除。');
       }
@@ -556,7 +557,7 @@ class ChatIsar {
       (_) {
         if (identical(_deleteInFlight, task)) _deleteInFlight = null;
       },
-      onError: (Object _, StackTrace __) {
+      onError: (Object _, StackTrace _) {
         if (identical(_deleteInFlight, task)) _deleteInFlight = null;
       },
     );
@@ -688,8 +689,9 @@ class ChatIsar {
       if (!candidate.isOpen) continue;
       deleteWasAttempted = true;
       try {
-        final deleted = await _deleteInstance(candidate)
-            .timeout(_forcedDeleteTimeout);
+        final deleted = await _deleteInstance(
+          candidate,
+        ).timeout(_forcedDeleteTimeout);
         if (!deleted) {
           failures.add('Chat 数据库仍被其它实例持有，未实际关闭并删除。');
         }

@@ -66,14 +66,14 @@ class ChatSdk extends ChatRuntimeCore {
     final starting = _starting;
     final pending = Future.wait<void>([
       if (starting != null)
-        starting.then<void>((_) {}, onError: (Object _, StackTrace __) {}),
+        starting.then<void>((_) {}, onError: (Object _, StackTrace _) {}),
       super.close(),
     ]).then<void>((_) {});
     _stopping = pending;
     // 关闭失败仍允许重试清理，但绝不允许重启一个已停止的实例。
     pending.then<void>(
       (_) {},
-      onError: (Object _, StackTrace __) {
+      onError: (Object _, StackTrace _) {
         if (identical(_stopping, pending)) _stopping = null;
       },
     );

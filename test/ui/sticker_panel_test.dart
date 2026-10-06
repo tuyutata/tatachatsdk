@@ -31,7 +31,7 @@ void main() {
   testWidgets('渲染四个分类 Tab', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
-        home: Scaffold(body: StickerPanel(onPick: (_, __) {})),
+        home: Scaffold(body: StickerPanel(onPick: (_, _) {})),
       ),
     );
     await tester.pump();

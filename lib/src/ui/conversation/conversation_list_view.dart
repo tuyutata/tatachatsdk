@@ -41,13 +41,13 @@ class ChatSectionHeader<T> extends StatelessWidget {
       barrierLabel: '关闭新建菜单',
       barrierColor: Colors.transparent,
       transitionDuration: const Duration(milliseconds: 120),
-      pageBuilder: (_, __, ___) => _ChatEntryMenu<T>(
+      pageBuilder: (_, _, _) => _ChatEntryMenu<T>(
         anchorCenterX: origin.dx + box.size.width / 2,
         top: origin.dy + box.size.height + 2,
         actions: actions,
         style: style,
       ),
-      transitionBuilder: (_, animation, __, child) =>
+      transitionBuilder: (_, animation, _, child) =>
           FadeTransition(opacity: animation, child: child),
     );
     if (selected != null) onAction(selected);
@@ -487,8 +487,10 @@ class _ChatEntryMenu<T> extends StatelessWidget {
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.sizeOf(context).width;
     // 按实际字形、文字倍率和图标测量，保留原基准最小宽度及屏幕边界。
-    final labelStyle = Theme.of(context).textTheme.bodyMedium!
-        .copyWith(color: Colors.white, fontSize: style.scale(context, 15));
+    final labelStyle = Theme.of(context).textTheme.bodyMedium!.copyWith(
+      color: Colors.white,
+      fontSize: style.scale(context, 15),
+    );
     final maximumWidth = math.max(0.0, screenWidth - _edgeGap * 2);
     final contentInset =
         38 + style.scale(context, 20) + style.scale(context, 12);
