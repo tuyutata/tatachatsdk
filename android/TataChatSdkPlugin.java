@@ -72,6 +72,11 @@ public final class TataChatSdkPlugin implements FlutterPlugin, ActivityAware,
                 catch (Exception error) { result.error("mls_storage_unavailable", "MLS安全存储清理失败", null); }
                 return;
             }
+            if ("prepareDataStorage".equals(call.method)) {
+                try { result.success(prepareDataStorage()); }
+                catch (Exception error) { result.error("data_storage_unavailable", "SDK系统保护存储不可用", null); }
+                return;
+            }
             if (!"prepareMlsStorage".equals(call.method)) { result.notImplemented(); return; }
             try { result.success(prepareMlsStorage(call)); }
             catch (Exception error) { result.error("mls_storage_unavailable", "MLS安全存储不可用", null); }
@@ -91,6 +96,37 @@ public final class TataChatSdkPlugin implements FlutterPlugin, ActivityAware,
         }
         if (securityChannel != null) { securityChannel.setMethodCallHandler(null); securityChannel = null; }
         applicationContext = null;
+    }
+
+    /** SDK 所属 CE 非备份目录；权限、路径和每个现有侧文件均回读。 */
+    private String prepareDataStorage() throws Exception {
+        Context context = applicationContext;
+        if (context == null || context.isDeviceProtectedStorage()) throw new IOException("storage unavailable");
+        UserManager users = (UserManager) context.getSystemService(Context.USER_SERVICE);
+        if (users == null || !users.isUserUnlocked()) throw new IOException("storage locked");
+        // 精确删除旧 SDK 数据文件与附件目录；不读取、解密或改写其他业务数据库。
+        File support = context.getFilesDir().getCanonicalFile();
+        for (String name : new String[]{"tatachat_sdk_chat.isar", "tatachat_sdk_chat.isar.lock"}) {
+            eraseOwnedMlsDirectory(new File(support, name));
+        }
+        File documents = new File(context.getDataDir().getCanonicalFile(), "app_flutter");
+        eraseOwnedMlsDirectory(new File(documents, "chat"));
+        File root = new File(context.getNoBackupFilesDir().getCanonicalFile(), "tatachat_sdk_data");
+        if (!root.exists() && !root.mkdir()) throw new IOException("mkdir failed");
+        protectOwnedTree(root);
+        return root.getCanonicalPath();
+    }
+    private static void protectOwnedTree(File file) throws Exception {
+        if (!file.getCanonicalPath().equals(file.getAbsolutePath())) throw new IOException("symlink");
+        int permissions = file.isDirectory() ? 0700 : 0600;
+        if (!file.isDirectory() && !file.isFile()) throw new IOException("invalid file");
+        Os.chmod(file.getAbsolutePath(), permissions);
+        if ((Os.stat(file.getAbsolutePath()).st_mode & 0777) != permissions) throw new IOException("permissions failed");
+        if (file.isDirectory()) {
+            File[] entries = file.listFiles();
+            if (entries == null) throw new IOException("list failed");
+            for (File entry : entries) protectOwnedTree(entry);
+        }
     }
 
     /** 只删除SDK自有目录，不读取或清空宿主安全存储。 */

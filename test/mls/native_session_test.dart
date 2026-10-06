@@ -34,6 +34,23 @@ void main() {
       () => a.addMembers('group', [package]),
     );
     await b.withMessage('welcome', () => b.groupProcess(added.welcome!));
+    // 群已建立后签认证证明，快照逐字不变；随后继续真实MLS发送和重启恢复。
+    final snapshot = File('${aStore.path}/state.bin');
+    final beforeAuthentication = await snapshot.readAsBytes();
+    final authentication = await aStore.signAuthentication(
+      accountId: '0x${List.filled(32, '11').join()}',
+      bindingRevision: 1,
+      request: MlsAuthenticationRequest(
+        serviceOrigin: 'https://api.example.test',
+        challenge: '0x${List.filled(32, '22').join()}',
+        expiresAtMillis: DateTime.now().millisecondsSinceEpoch + 120000,
+        method: 'POST',
+        requestTarget: '/auth/session',
+        bodyBytes: utf8.encode('synthetic request'),
+      ),
+    );
+    expect(authentication.deviceId, aId.deviceId);
+    expect(await snapshot.readAsBytes(), beforeAuthentication);
     final first = await a.withMessage(
       'message-a',
       () => a.groupCreateMessage('group', utf8.encode('合成消息')),
@@ -52,6 +69,7 @@ void main() {
       () => b.groupProcess(first),
     );
     expect(utf8.decode(result.plaintext!), '合成消息');
+    expect(result.senderMemberIdentity, 'alice:' + aId.deviceId);
     final restartedReceiver = NativeMlsCrypto(
       identity: await bStore.readIdentity(),
       stateStore: bStore,
@@ -61,6 +79,7 @@ void main() {
       () => restartedReceiver.groupProcess(first),
     );
     expect(recovered.plaintext, result.plaintext);
+    expect(recovered.senderMemberIdentity, result.senderMemberIdentity);
     await restartedReceiver.acknowledgeMessage('message-b');
     final duplicate = await restartedReceiver.withMessage(
       'message-b',

@@ -254,13 +254,73 @@ class ChatFlow<TBindingToken> {
     );
   }
 
-  /// 附件密文已在 R2 ready 后，只把含传输密钥/摘要的控制消息放入 OpenMLS 消息。
+  /// 附件创建前固定私聊实际设备叶子；首次会话只保存真实Welcome，不造占位消息。
+  Future<GroupState> prepareAttachmentAudience({
+    required String conversationId, required String recipientUserId,
+    required String senderDeviceId, required List<MlsKeyPackage> keyPackages,
+    required String messageId,
+  }) async {
+    GroupState state;
+    final transaction = '$messageId:audience';
+    try {
+      state = await _crypto.groupState(conversationId);
+    } catch (error) {
+      if (!_needsDirectWelcome(error)) rethrow;
+      await _crypto.withMessage(transaction, () => _crypto.createGroup(conversationId));
+      state = await _crypto.groupState(conversationId);
+    }
+    if (state.memberIdentities.length == 1 && state.memberIdentities.single == '$_ownerUserId:$senderDeviceId') {
+      if (keyPackages.isEmpty || keyPackages.any((p) => p.userId != recipientUserId || !p.lastResort)) {
+        throw StateError('附件首次私聊KeyPackage无效');
+      }
+      await _crypto.withMessage(transaction, () => _crypto.addMembers(conversationId,keyPackages));
+      state = await _crypto.groupState(conversationId);
+    }
+    final queued = <EncryptedMessage>[];
+    for (final record in await _crypto.pendingMessageResults(transaction)) {
+      final saved = (record['result'] as Map).cast<String,dynamic>();
+      if (saved['welcome_wire_hex'] is! String) continue;
+      final now = saved['created_at_millis'] as int;
+      final hex = saved['welcome_wire_hex'] as String;
+      final welcome = MlsWireMessage(
+        conversationId:conversationId, messageKind:MlsMessageKind.welcome,
+        wireBytes:[for(var i=0;i<hex.length;i+=2)int.parse(hex.substring(i,i+2),radix:16)],
+      );
+      for (final value in (saved['welcome_member_identities'] as List).cast<String>()) {
+        final member = MlsMemberIdentity.parse(value);
+        final message = welcome.toEncryptedMessage(
+          messageId:_newMessageId('$transaction:${member.wireValue}',now,0),senderUserId:_ownerUserId,
+          senderDeviceId:senderDeviceId,recipientUserId:member.userId,
+          recipientDeviceId:member.deviceId,createdAtMillis:now,
+        );
+        await _store.queueOutgoingMessage(
+          bindingToken:_bindingToken,ownerUserId:_ownerUserId,message:message,
+          messageBytes:message.writeToBuffer(),recipientUserId:member.userId,
+          deliveryState:ChatMessageDeliveryState.queued,
+        );
+        queued.add(message);
+      }
+    }
+    await _crypto.acknowledgeMessage(transaction);
+    if (queued.isNotEmpty) {
+      final scheduler = deliveryScheduler;
+      Future<void> deliver() async {
+        for(final message in queued) {
+          final result = await _deliverer(message,message.writeToBuffer(),message.recipientUserId,message.recipientDeviceId);
+          await _store.markOutgoingDelivery(bindingToken:_bindingToken,ownerUserId:_ownerUserId,messageId:message.messageId,state:result.state,errorMessage:result.errorMessage);
+        }
+      }
+      if(scheduler!=null) { scheduler(conversationId,deliver); } else { await deliver(); }
+    }
+    return state;
+  }
+
+  /// R2完成后发送唯一MLS附件描述；不携带应用密钥。
   Future<List<ChatDeliveryResult>> sendMediaControl({
     required String conversationId,
     required String senderUserId,
     required String recipientUserId,
     required String senderDeviceId,
-    required List<MlsKeyPackage> recipientKeyPackages,
     required ChatContent media,
     String? pendingLocalMessageId,
     int? createdAtMillis,
@@ -278,11 +338,10 @@ class ChatFlow<TBindingToken> {
     final payload = ChatPayloadCodec.encode(media);
     final outbound = await _crypto.withMessage(
       pendingLocalMessageId ?? '$conversationId:$now',
-      () => _createDirectOutbound(
+      () => _createMediaOutbound(
         conversationId: conversationId,
-        recipientUserId: recipientUserId,
+        media: media,
         senderDeviceId: senderDeviceId,
-        recipientKeyPackages: recipientKeyPackages,
         plaintext: utf8.encode(payload),
         messageId: pendingLocalMessageId ?? '$conversationId:$now',
       ),
@@ -331,11 +390,18 @@ class ChatFlow<TBindingToken> {
               MlsMessageKind.application => 2,
               MlsMessageKind.unknown => 3,
             };
+      // 附件控制按精确设备区分可靠队列键，防止同CID其他设备的条目被覆盖。
+      final isMedia = const {
+        ChatMessageKind.image, ChatMessageKind.video, ChatMessageKind.file, ChatMessageKind.audio,
+      }.contains(messageKind);
+      final seed = isMedia
+          ? '${pendingLocalMessageId ?? conversationId}:${target.recipient.wireValue}'
+          : pendingLocalMessageId ?? conversationId;
       final message = wireMessage.toEncryptedMessage(
         // 本地待发送行用稳定 ID 与语义序号做 seed；初始化或网络失败后重试
         // 仍得到同一 Message ID，Store/收端幂等去重。
         messageId: _newMessageId(
-          pendingLocalMessageId ?? conversationId,
+          seed,
           nowMillis,
           messageIndex,
         ),
@@ -508,6 +574,11 @@ class ChatFlow<TBindingToken> {
       }
       final plaintext = utf8.decode(inbound.plaintext ?? const []);
       final content = ChatPayloadCodec.decode(plaintext);
+      if (content.isMedia && (
+          inbound.senderMemberIdentity != '${message.senderUserId}:${message.senderDeviceId}' ||
+          content.attachmentSenderMemberIdentity != inbound.senderMemberIdentity)) {
+        throw StateError('附件控制实际MLS发送者不一致');
+      }
       await _store.saveIncomingMessage(
         bindingToken: _bindingToken,
         ownerUserId: _ownerUserId,
@@ -580,6 +651,25 @@ class ChatFlow<TBindingToken> {
   }
 
   /// 私聊是仅含双方活跃设备的 MLS 群；新设备通过标准 Welcome 加入。
+  /// 文件控制只使用已固定的聊天组，不能为附件补新人或重新创建会话。
+  Future<List<_DirectWireTarget>> _createMediaOutbound({
+    required String conversationId,required ChatContent media,
+    required String senderDeviceId,required List<int> plaintext,required String messageId,
+  }) async {
+    final saved=await _crypto.pendingMessageResults(messageId);
+    if(!saved.any((r)=>(r['result'] as Map)['application_wire_hex'] is String)) {
+      final state=await _crypto.groupState(conversationId);
+      if(state.epoch!=media.attachmentChatEpoch ||
+          jsonEncode([...state.memberIdentities]..sort())!=jsonEncode(media.attachmentMemberIdentities)) {
+        throw StateError('附件控制的聊天设备名册已失效');
+      }
+    }
+    final wire=await _crypto.groupCreateMessage(conversationId,plaintext);
+    return membersFromMemberIdentities(await _crypto.messageMemberIdentities(conversationId,messageId))
+        .where((m)=>m.wireValue!='$_ownerUserId:$senderDeviceId')
+        .map((m)=>_DirectWireTarget(wire:wire,recipient:m)).toList();
+  }
+
   Future<List<_DirectWireTarget>> _createDirectOutbound({
     required String conversationId,
     required String recipientUserId,
@@ -734,7 +824,6 @@ class ChatFlow<TBindingToken> {
     required String conversationId,
     required String controlPlaintext,
     required Directory cacheDirectory,
-    required List<int> attachmentKey,
     required Directory plainDirectory,
   }) async {
     final content = ChatPayloadCodec.decode(controlPlaintext);
@@ -750,7 +839,6 @@ class ChatFlow<TBindingToken> {
       contentType: content.mime ?? 'application/octet-stream',
       clearByteSize: content.byteSize ?? 0,
       cacheDirectory: cacheDirectory,
-      attachmentKey: attachmentKey,
       plainDirectory: plainDirectory,
     );
     if (cached != null) return cached;
@@ -759,10 +847,8 @@ class ChatFlow<TBindingToken> {
 
   /// 把一份本机文件导入 App 私有缓存(流式,零整块内存)。
   ///
-  /// [moveSource]=true 用于接收端把 HTTPS 下载落盘的密文临时文件**移动**进缓存(同卷
-  /// rename 零拷贝,跨卷回退流式复制后删源);=false 用于发送端把源文件**复制**
-  /// 进缓存(保留源)。两者落到同一按 conversationId/attachmentId/fileName 派生
-  /// 的缓存路径。
+  /// 接收文件经MLS及完整性核验后流式收入系统保护缓存；moveSource只删除准确临时源。
+  /// 发送方保留用户源文件，两端共用唯一缓存路径。
   static Future<ChatDownloadedAttachment> importAttachmentFileToCache({
     required String conversationId,
     required String attachmentId,
@@ -772,7 +858,6 @@ class ChatFlow<TBindingToken> {
     required int byteSize,
     required bool moveSource,
     required Directory cacheDirectory,
-    required List<int> attachmentKey,
     required Directory plainDirectory,
   }) async {
     final cachePath = attachmentCachePath(
@@ -781,26 +866,14 @@ class ChatFlow<TBindingToken> {
       attachmentId: attachmentId,
       fileName: fileName,
     );
-    // 长期缓存只落密文。moveSource=true(接收端临时文件)封存后删源；
-    // =false(发送端用户原文件)保留源。
-    await AttachmentVault.seal(
-      plainSource: File(sourcePath),
-      cachePath: cachePath,
-      key: attachmentKey,
-      deleteSource: moveSource,
-    );
-    // 返回给 UI 的是解密出来的**短命明文**，由前台生命周期统一 purge。
-    final plain = await AttachmentVault.openPlain(
-      cachePath: cachePath,
-      key: attachmentKey,
-      plainDirectory: plainDirectory,
-    );
+    // 已核验的明文流式写入系统保护缓存，不存在应用钥或再次加解密。
+    final source = File(sourcePath);
+    if (await source.length() != byteSize) throw StateError('附件缓存大小不一致');
+    final cached = await AttachmentVault.cache(source:source,cachePath:cachePath);
+    if (moveSource && source.path != cached.path) await source.delete();
     return ChatDownloadedAttachment(
-      attachmentId: attachmentId,
-      fileName: fileName,
-      contentType: contentType,
-      clearByteSize: byteSize,
-      filePath: plain.path,
+      attachmentId:attachmentId,fileName:fileName,contentType:contentType,
+      clearByteSize:byteSize,filePath:cached.path,
     );
   }
 
@@ -817,7 +890,6 @@ class ChatFlow<TBindingToken> {
     required int byteSize,
     required int maxByteSize,
     required Directory cacheDirectory,
-    required List<int> attachmentKey,
     required Directory plainDirectory,
   }) async {
     if (byteSize > maxByteSize) {
@@ -835,7 +907,6 @@ class ChatFlow<TBindingToken> {
       sourcePath: tempFilePath,
       byteSize: byteSize,
       moveSource: true,
-      attachmentKey: attachmentKey,
       plainDirectory: plainDirectory,
       cacheDirectory: cacheDirectory,
     );
@@ -856,10 +927,7 @@ class ChatFlow<TBindingToken> {
     ).path;
   }
 
-  /// 判定密文缓存是否就绪，并解密出短命明文供展示。
-  ///
-  /// 密文长度含分块 GCM 框架开销、与明文长度不等，**不能再拿密文 stat 比对
-  /// [clearByteSize]**；改为解密后验明文长度，长度不符视为损坏并清掉明文。
+  /// 系统保护缓存只读；明文长度不符明确失败，不重新推进MLS接收链。
   static Future<ChatDownloadedAttachment?> readCachedAttachment({
     required String conversationId,
     required String attachmentId,
@@ -867,7 +935,6 @@ class ChatFlow<TBindingToken> {
     required String contentType,
     required int clearByteSize,
     required Directory cacheDirectory,
-    required List<int> attachmentKey,
     required Directory plainDirectory,
   }) async {
     final cachePath = attachmentCachePath(
@@ -876,27 +943,11 @@ class ChatFlow<TBindingToken> {
       attachmentId: attachmentId,
       fileName: fileName,
     );
-    if (!await AttachmentVault.hasCipher(cachePath)) {
-      return null;
-    }
-    // 先复用已解密好的明文：会话打开时每条媒体消息都会走一次路径解析，
-    // 若每次都整文件解密，一个有若干视频的会话首屏就要解出上 GB。
-    final reusable = await AttachmentVault.existingPlain(
-      cachePath: cachePath,
-      plainDirectory: plainDirectory,
-    );
-    final plain = reusable != null && await reusable.length() == clearByteSize
-        ? reusable
-        : await AttachmentVault.openPlain(
-            cachePath: cachePath,
-            key: attachmentKey,
-            plainDirectory: plainDirectory,
-          );
+    if (!plainDirectory.isAbsolute) throw StateError('附件目录必须是绝对路径');
+    if (!await AttachmentVault.hasCache(cachePath)) return null;
+    final plain = File(cachePath);
     final length = await plain.length();
-    if (length != clearByteSize) {
-      await AttachmentVault.releasePlain(plain);
-      return null;
-    }
+    if (length != clearByteSize) throw StateError('附件缓存大小不一致');
     return ChatDownloadedAttachment(
       attachmentId: attachmentId,
       fileName: fileName,

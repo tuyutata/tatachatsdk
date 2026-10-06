@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:crypto/crypto.dart' as crypto;
 import 'package:flutter/foundation.dart';
 import 'package:isar_community/isar.dart';
 
@@ -9,11 +8,70 @@ import '../core/chat_content.dart';
 import '../core/chat_message.dart';
 import '../group/model.dart';
 import '../protocol/message.dart';
-import 'chat_crypto.dart';
 import 'chat_isar.dart';
 import 'flow_store.dart';
 import 'models.dart';
 import 'records.dart';
+
+/// 宿主公开身份绑定；不包含密钥，不触发钱包访问。
+class ChatBinding {
+  const ChatBinding({
+    required this.bindingScope,
+    required this.userId,
+    required this.bindingRevision,
+    required this.accountId,
+  });
+
+  final String bindingScope;
+  final String userId;
+  final int bindingRevision;
+  final String accountId;
+
+  String get id => '$bindingScope|$userId|$bindingRevision|$accountId';
+
+  Map<String, Object> toJson() => <String, Object>{
+    'binding_scope': bindingScope,
+    'user_id': userId,
+    'binding_revision': bindingRevision,
+    'account_id': accountId,
+  };
+
+  factory ChatBinding.fromJson(String source) {
+    final value = jsonDecode(source);
+    if (value is! Map<String, dynamic> ||
+        value.keys.toSet().difference(const <String>{
+          'binding_scope',
+          'user_id',
+          'binding_revision',
+          'account_id',
+        }).isNotEmpty ||
+        value.length != 4 ||
+        value['binding_scope'] is! String ||
+        value['user_id'] is! String ||
+        value['binding_revision'] is! int ||
+        value['account_id'] is! String) {
+      throw const FormatException('聊天公开绑定格式无效');
+    }
+    final binding = ChatBinding(
+      bindingScope: value['binding_scope'] as String,
+      userId: value['user_id'] as String,
+      bindingRevision: value['binding_revision'] as int,
+      accountId: value['account_id'] as String,
+    );
+    binding.validate();
+    return binding;
+  }
+
+  void validate() {
+    if (bindingScope.trim().isEmpty ||
+        userId.trim().isEmpty ||
+        bindingRevision <= 0 ||
+        accountId.trim().isEmpty) {
+      throw StateError('聊天公开绑定不完整');
+    }
+  }
+}
+
 
 /// Chat 路由缓存记录。
 class ChatRouteRecord {
@@ -48,14 +106,14 @@ class ChatBindingFenceToken {
     required this.ownerUserId,
     required this.bindingRevision,
     required this.accountId,
-    required this.keyDomain,
+    required this.bindingScope,
     required this.generation,
   });
 
   final String ownerUserId;
   final int bindingRevision;
   final String accountId;
-  final String keyDomain;
+  final String bindingScope;
   final int generation;
 }
 
@@ -95,19 +153,16 @@ class _ChatBindingMutationGate {
 /// 本仓库只保存手机本地状态。TataChatServer 瞬时转发和近场 transport 只拿到完整
 /// Protobuf message bytes，不会接触 [plaintext]。
 class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
-  ChatStore({ChatIsar? chatIsar, ChatCrypto? crypto})
+  ChatStore({ChatIsar? chatIsar})
     : this._(
         chatIsar: chatIsar ?? ChatIsar.instance,
-        crypto: crypto ?? ChatCrypto(),
         bindingMutationGate: _processBindingMutationGate,
       );
 
   ChatStore._({
     required ChatIsar chatIsar,
-    required ChatCrypto crypto,
     required _ChatBindingMutationGate bindingMutationGate,
   }) : _chatIsar = chatIsar,
-       _crypto = crypto,
        _bindingMutationGate = bindingMutationGate;
 
   /// 在同一 Flutter 测试 isolate 内模拟另一 isolate 的独立静态 gate。
@@ -115,39 +170,30 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
   @visibleForTesting
   factory ChatStore.withIndependentBindingGateForTest({
     ChatIsar? chatIsar,
-    ChatCrypto? crypto,
   }) {
     return ChatStore._(
       chatIsar: chatIsar ?? ChatIsar.instance,
-      crypto: crypto ?? ChatCrypto(),
       bindingMutationGate: _ChatBindingMutationGate(),
     );
   }
 
   final ChatIsar _chatIsar;
 
-  /// 聊天本地密文的唯一加解密边界。加解密一律在 Isar 事务**之外**完成,
-  /// 不让密码学运算占住写事务。
-  final ChatCrypto _crypto;
-
+  /// 本地数据仅由 SDK 系统文件保护边界保护，不派生应用数据密钥。
   final _ChatBindingMutationGate _bindingMutationGate;
 
-  /// 同一 user ID 的密文写入与账户交接必须按调用先后串行。
+  /// 同一 user ID 的本地写入与公开绑定变更必须按调用先后串行。
   ///
-  /// Chat 密文先在 Isar 事务外准备；如果只依赖 ChatIsar 队列，已经开始加密但尚未
-  /// 入库的旧绑定消息可能排到交接提交之后。这里仅串行 Chat 域内同一 user ID 的绑定
+  /// 消息载荷先在事务外校验；在最终事务内再复核持久代次，拒绝旧绑定晚写。
+  /// 这里只串行 Chat 域内同一 user ID 的绑定
   /// 变更，不接入 WalletIsar，也不阻塞其它 user ID。
   static final _ChatBindingMutationGate _processBindingMutationGate =
       _ChatBindingMutationGate();
 
-  static const int _handoverCommitMaxAttempts = 4;
   static const String _fenceActive = 'active';
   static const String _fenceCleared = 'cleared';
   static const int _maxFenceGeneration = 0x7fffffffffffffff;
-  static const String _handoverManifestMacDomain =
-      'tatachat_sdk.local/chat-handover-manifest|';
-  static final RegExp _handoverDigestPattern = RegExp(r'^[0-9a-f]{64}$');
-  static final RegExp _keyDomainPattern = RegExp(r'^0x[0-9a-f]{64}$');
+  static final RegExp _bindingScopePattern = RegExp(r'^0x[0-9a-f]{64}$');
 
   Future<T> _serializeBindingMutation<T>(
     String userId,
@@ -159,7 +205,7 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
   /// 普通读写绝不隐式创建 fence；只有 finalized binding 收敛入口可以显式调用。
   /// 已存在的 cleared/其它 binding 也不得由本入口悄悄恢复。
   Future<ChatBindingFenceToken> activateBindingFence(
-    ChatDataBinding binding,
+    ChatBinding binding,
   ) async {
     binding.validate();
     return _serializeBindingMutation(binding.userId, () {
@@ -172,18 +218,14 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
             ..ownerUserId = binding.userId
             ..bindingRevision = binding.bindingRevision
             ..accountId = binding.accountId
-            ..keyDomain = binding.keyDomain
+            ..bindingScope = binding.bindingScope
             ..generation = 1
-            ..fenceState = _fenceActive
-            ..pendingBindingRevision = null
-            ..pendingAccountId = null
-            ..pendingKeyDomain = null;
+            ..fenceState = _fenceActive;
           await isar.chatBindingFenceEntitys.putByOwnerUserId(row);
           return _tokenFromFence(row, binding);
         }
         _validateFence(existing);
-        if (!_isActiveCurrentFence(existing, binding) ||
-            _hasPendingFence(existing)) {
+        if (!_isActiveCurrentFence(existing, binding)) {
           throw StateError('Chat 写入门闩已经绑定到其它状态，禁止重复激活');
         }
         return _tokenFromFence(existing, binding);
@@ -191,12 +233,9 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
     });
   }
 
-  /// 把持久门闩收敛到链上 finalized binding。
-  ///
-  /// 这是 crash recovery 与 cleared 后重新激活的唯一入口。存在 staged handover 时
-  /// 必须完成带签名的 commit，不能用 finalized 观察结果绕过密文交接。
+  /// 收敛链上 finalized 公开绑定；同 CID 历史保留，旧代次队列在同一事务清除。
   Future<ChatBindingFenceToken> convergeFinalizedBinding(
-    ChatDataBinding current,
+    ChatBinding current,
   ) async {
     current.validate();
     return _serializeBindingMutation(current.userId, () {
@@ -209,19 +248,13 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
             ..ownerUserId = current.userId
             ..bindingRevision = current.bindingRevision
             ..accountId = current.accountId
-            ..keyDomain = current.keyDomain
+            ..bindingScope = current.bindingScope
             ..generation = 1
-            ..fenceState = _fenceActive
-            ..pendingBindingRevision = null
-            ..pendingAccountId = null
-            ..pendingKeyDomain = null;
+            ..fenceState = _fenceActive;
           await isar.chatBindingFenceEntitys.putByOwnerUserId(created);
           return _tokenFromFence(created, current);
         }
         _validateFence(row);
-        if (_hasPendingFence(row)) {
-          throw StateError('Chat 存在待提交的账户交接，禁止绕过 commit 收敛绑定');
-        }
         if (_isActiveCurrentFence(row, current)) {
           return _tokenFromFence(row, current);
         }
@@ -230,28 +263,33 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
           throw StateError('finalized Chat binding 版本不得回退或同版本换账户');
         }
         await _clearTransientChatStateInTxn(isar, current.userId);
-        _clearCompletedHandoverReceipt(row);
+        final conversations = await isar.chatConversationEntitys.filter()
+            .ownerUserIdEqualTo(current.userId).findAll();
+        for (final item in conversations) {
+          item..bindingRevision = current.bindingRevision..accountId = current.accountId;
+          await isar.chatConversationEntitys.put(item);
+        }
+        final messages = await isar.chatMessageEntitys.filter()
+            .ownerUserIdEqualTo(current.userId).findAll();
+        for (final item in messages) {
+          item..bindingRevision = current.bindingRevision..accountId = current.accountId;
+          await isar.chatMessageEntitys.put(item);
+        }
         row
           ..bindingRevision = current.bindingRevision
           ..accountId = current.accountId
-          ..keyDomain = current.keyDomain
+          ..bindingScope = current.bindingScope
           ..generation = _nextFenceGeneration(row.generation)
-          ..fenceState = _fenceActive
-          ..pendingBindingRevision = null
-          ..pendingAccountId = null
-          ..pendingKeyDomain = null;
+          ..fenceState = _fenceActive;
         await isar.chatBindingFenceEntitys.put(row);
         return _tokenFromFence(row, current);
       });
     });
   }
 
-  /// 捕获本次运行上下文的不可变持久 token。
-  ///
-  /// transition pending 时普通上下文一律不能捕获 token；handover 只能走专属
-  /// staged/completed fence 校验，不能借 source 或 target token 绕过持久阻断。
+  /// 捕获不可变公开绑定与持久 generation，防止旧上下文晚写。
   Future<ChatBindingFenceToken> captureBindingFenceToken(
-    ChatDataBinding binding,
+    ChatBinding binding,
   ) async {
     binding.validate();
     return _chatIsar.read((isar) async {
@@ -262,7 +300,7 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
         throw StateError('Chat 写入门闩尚未显式激活');
       }
       _validateFence(row);
-      if (!_isActiveCurrentFence(row, binding) || _hasPendingFence(row)) {
+      if (!_isActiveCurrentFence(row, binding)) {
         throw StateError('Chat binding 与持久写入门闩不一致');
       }
       return _tokenFromFence(row, binding);
@@ -276,120 +314,14 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
     });
   }
 
-  /// handover 内部专属能力：只接受精确 source/current + pending target。
-  /// 普通 writer 在 pending 期间一律 fail-closed，不能借 source token 继续写。
-  Future<void> validateStagedAccountHandoverFence({
-    required ChatDataBinding source,
-    required ChatDataBinding target,
-    required ChatBindingFenceToken sourceToken,
-  }) {
-    _validateHandover(source, target);
-    return _chatIsar.read((isar) async {
-      await _requireStagedFenceInTxn(
-        isar,
-        sourceToken: sourceToken,
-        source: source,
-        target: target,
-      );
-    });
-  }
-
-  /// handover 重复 commit 专属能力：必须命中 commit 同事务写入的精确收据。
-  Future<void> validateCompletedAccountHandoverFence({
-    required ChatDataBinding source,
-    required ChatDataBinding target,
-    required ChatBindingFenceToken targetToken,
-  }) {
-    _validateHandover(source, target);
-    return _chatIsar.read((isar) async {
-      await _requireCompletedFenceInTxn(
-        isar,
-        targetToken: targetToken,
-        source: source,
-        target: target,
-      );
-    });
-  }
-
-  /// handover admin 在普通 token 被 pending 阻断后捕获 source generation。
-  /// 该 token 只能交给 staged 专属校验，不能通过普通 writer CAS。
-  Future<ChatBindingFenceToken> captureStagedAccountHandoverFenceToken({
-    required ChatDataBinding source,
-    required ChatDataBinding target,
-  }) async {
-    _validateHandover(source, target);
-    return _captureStagedFenceToken(source: source, target: target);
-  }
-
-  /// 重复 commit 只在精确 completion receipt 存在时返回 target token。
-  Future<ChatBindingFenceToken> captureCompletedAccountHandoverFenceToken({
-    required ChatDataBinding source,
-    required ChatDataBinding target,
-  }) async {
-    _validateHandover(source, target);
-    return _chatIsar.read((isar) async {
-      final row = await isar.chatBindingFenceEntitys.getByOwnerUserId(
-        target.userId,
-      );
-      if (row == null) throw StateError('Chat 持久写入门闩缺失');
-      _validateFence(row);
-      if (!_isActiveCurrentFence(row, target) ||
-          _hasPendingFence(row) ||
-          !_matchesCompletedHandoverReceipt(
-            row,
-            source: source,
-            target: target,
-          )) {
-        throw StateError('Chat 换绑完成 fence 缺少精确 completion receipt');
-      }
-      return _tokenFromFence(row, target);
-    });
-  }
-
-  Future<ChatBindingFenceToken> _captureCurrentFenceToken(
-    ChatDataBinding binding, {
-    required bool requireNoPending,
-  }) {
-    return _chatIsar.read((isar) async {
-      final row = await isar.chatBindingFenceEntitys.getByOwnerUserId(
-        binding.userId,
-      );
-      if (row == null) throw StateError('Chat 持久写入门闩缺失');
-      _validateFence(row);
-      if (!_isActiveCurrentFence(row, binding) ||
-          (requireNoPending && _hasPendingFence(row))) {
-        throw StateError('Chat 当前 binding fence 与操作上下文不一致');
-      }
-      return _tokenFromFence(row, binding);
-    });
-  }
-
-  Future<ChatBindingFenceToken> _captureStagedFenceToken({
-    required ChatDataBinding source,
-    required ChatDataBinding target,
-  }) {
-    return _chatIsar.read((isar) async {
-      final row = await isar.chatBindingFenceEntitys.getByOwnerUserId(
-        source.userId,
-      );
-      if (row == null) throw StateError('Chat 持久写入门闩缺失');
-      _validateFence(row);
-      if (!_isActiveCurrentFence(row, source) ||
-          !_isPendingFenceBinding(row, target)) {
-        throw StateError('Chat 换绑 fence 尚未 stage 或已变化');
-      }
-      return _tokenFromFence(row, source);
-    });
-  }
-
   static ChatBindingFenceToken _tokenFromFence(
     ChatBindingFenceEntity row,
-    ChatDataBinding binding,
+    ChatBinding binding,
   ) => ChatBindingFenceToken(
     ownerUserId: binding.userId,
     bindingRevision: binding.bindingRevision,
     accountId: binding.accountId,
-    keyDomain: binding.keyDomain,
+    bindingScope: binding.bindingScope,
     generation: row.generation,
   );
 
@@ -400,205 +332,61 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
     return generation + 1;
   }
 
-  static bool _hasPendingFence(ChatBindingFenceEntity row) =>
-      row.pendingBindingRevision != null;
-
-  static void _clearCompletedHandoverReceipt(ChatBindingFenceEntity row) {
-    row
-      ..completedSourceBindingRevision = null
-      ..completedSourceAccountId = null
-      ..completedSourceKeyDomain = null
-      ..completedTargetBindingRevision = null
-      ..completedTargetAccountId = null
-      ..completedTargetKeyDomain = null
-      ..completedGeneration = null;
-  }
-
-  static bool _matchesCompletedHandoverReceipt(
-    ChatBindingFenceEntity row, {
-    required ChatDataBinding source,
-    required ChatDataBinding target,
-  }) =>
-      row.completedSourceBindingRevision == source.bindingRevision &&
-      row.completedSourceAccountId == source.accountId &&
-      row.completedSourceKeyDomain == source.keyDomain &&
-      row.completedTargetBindingRevision == target.bindingRevision &&
-      row.completedTargetAccountId == target.accountId &&
-      row.completedTargetKeyDomain == target.keyDomain &&
-      row.completedGeneration == row.generation;
-
   static bool _isCurrentFenceBinding(
     ChatBindingFenceEntity row,
-    ChatDataBinding binding,
+    ChatBinding binding,
   ) =>
       row.ownerUserId == binding.userId &&
       row.bindingRevision == binding.bindingRevision &&
       row.accountId == binding.accountId &&
-      row.keyDomain == binding.keyDomain;
-
-  static bool _isPendingFenceBinding(
-    ChatBindingFenceEntity row,
-    ChatDataBinding binding,
-  ) =>
-      row.ownerUserId == binding.userId &&
-      row.pendingBindingRevision == binding.bindingRevision &&
-      row.pendingAccountId == binding.accountId &&
-      row.pendingKeyDomain == binding.keyDomain;
+      row.bindingScope == binding.bindingScope;
 
   static bool _isActiveCurrentFence(
     ChatBindingFenceEntity row,
-    ChatDataBinding binding,
+    ChatBinding binding,
   ) => row.fenceState == _fenceActive && _isCurrentFenceBinding(row, binding);
 
   static void _validateFence(ChatBindingFenceEntity row) {
-    final hasCurrentRevision = row.bindingRevision != null;
-    final hasCurrentAccount = row.accountId != null;
-    final hasCurrentKeyDomain = row.keyDomain != null;
-    final hasPendingRevision = row.pendingBindingRevision != null;
-    final hasPendingAccount = row.pendingAccountId != null;
-    final hasPendingKeyDomain = row.pendingKeyDomain != null;
-    final completedFields = <Object?>[
-      row.completedSourceBindingRevision,
-      row.completedSourceAccountId,
-      row.completedSourceKeyDomain,
-      row.completedTargetBindingRevision,
-      row.completedTargetAccountId,
-      row.completedTargetKeyDomain,
-      row.completedGeneration,
-    ];
-    final completedFieldCount = completedFields
-        .where((value) => value != null)
-        .length;
-    if (row.ownerUserId.isEmpty ||
-        row.generation <= 0 ||
-        row.generation > _maxFenceGeneration ||
-        hasCurrentRevision != hasCurrentAccount ||
-        hasCurrentRevision != hasCurrentKeyDomain ||
-        hasPendingRevision != hasPendingAccount ||
-        hasPendingRevision != hasPendingKeyDomain ||
-        (completedFieldCount != 0 &&
-            completedFieldCount != completedFields.length) ||
-        (hasCurrentRevision &&
-            (row.bindingRevision! <= 0 ||
-                row.accountId!.isEmpty ||
-                !_keyDomainPattern.hasMatch(row.keyDomain!))) ||
-        (hasPendingRevision &&
-            (row.pendingBindingRevision! <= 0 ||
-                row.pendingAccountId!.isEmpty ||
-                !_keyDomainPattern.hasMatch(row.pendingKeyDomain!))) ||
+    final present = <Object?>[row.bindingRevision, row.accountId, row.bindingScope]
+        .where((value) => value != null).length;
+    if (row.ownerUserId.isEmpty || row.generation <= 0 ||
+        row.generation > _maxFenceGeneration || (present != 0 && present != 3) ||
         (row.fenceState != _fenceActive && row.fenceState != _fenceCleared) ||
-        (row.fenceState == _fenceActive && !hasCurrentRevision) ||
-        (row.fenceState == _fenceCleared && hasPendingRevision) ||
-        (row.fenceState == _fenceCleared && completedFieldCount != 0) ||
-        (hasPendingRevision &&
-            row.pendingBindingRevision! <= row.bindingRevision!) ||
-        (completedFieldCount != 0 &&
-            (row.completedSourceBindingRevision! <= 0 ||
-                row.completedTargetBindingRevision! != row.bindingRevision ||
-                row.completedTargetAccountId != row.accountId ||
-                row.completedTargetKeyDomain != row.keyDomain ||
-                row.completedSourceKeyDomain != row.completedTargetKeyDomain ||
-                !_keyDomainPattern.hasMatch(row.completedSourceKeyDomain!) ||
-                !_keyDomainPattern.hasMatch(row.completedTargetKeyDomain!) ||
-                row.completedTargetBindingRevision! <=
-                    row.completedSourceBindingRevision! ||
-                row.completedGeneration != row.generation))) {
-      throw const FormatException('Chat 持久写入门闩结构损坏');
+        (row.fenceState == _fenceActive && present != 3) ||
+        (present == 3 && (row.bindingRevision! <= 0 || row.accountId!.isEmpty ||
+            !_bindingScopePattern.hasMatch(row.bindingScope!)))) {
+      throw const FormatException('Chat 持久绑定门闩结构损坏');
     }
   }
 
   static Future<ChatBindingFenceEntity> _requireBindingTokenInTxn(
-    Isar isar,
-    ChatBindingFenceToken token,
+    Isar isar, ChatBindingFenceToken token,
   ) async {
-    final row = await isar.chatBindingFenceEntitys.getByOwnerUserId(
-      token.ownerUserId,
-    );
-    if (row == null) throw StateError('Chat 持久写入门闩缺失');
+    final row = await isar.chatBindingFenceEntitys.getByOwnerUserId(token.ownerUserId);
+    if (row == null) throw StateError('Chat 持久绑定门闩缺失');
     _validateFence(row);
-    final matchesCurrent =
-        row.bindingRevision == token.bindingRevision &&
-        row.accountId == token.accountId &&
-        row.keyDomain == token.keyDomain;
-    final matchesPending =
-        row.pendingBindingRevision == token.bindingRevision &&
-        row.pendingAccountId == token.accountId &&
-        row.pendingKeyDomain == token.keyDomain;
-    if (row.fenceState != _fenceActive ||
-        row.generation != token.generation ||
-        _hasPendingFence(row) ||
-        (!matchesCurrent && !matchesPending)) {
-      throw StateError('Chat 写入 token 已过期或 binding 不匹配');
+    if (row.fenceState != _fenceActive || row.generation != token.generation ||
+        row.bindingRevision != token.bindingRevision || row.accountId != token.accountId ||
+        row.bindingScope != token.bindingScope) {
+      throw StateError('Chat 绑定 token 已过期');
     }
     return row;
   }
 
-  static Future<ChatBindingFenceEntity> _requireCurrentFenceInTxn(
-    Isar isar, {
-    required ChatBindingFenceToken token,
-    required ChatDataBinding current,
-    bool allowPending = false,
-  }) async {
-    final row = allowPending
-        ? await isar.chatBindingFenceEntitys.getByOwnerUserId(token.ownerUserId)
-        : await _requireBindingTokenInTxn(isar, token);
-    if (row == null) throw StateError('Chat 持久写入门闩缺失');
+  Future<ChatBinding> _resolveBinding({
+    required String ownerUserId, required String currentAccountId,
+    String? expectedBindingScope,
+  }) => _chatIsar.read((isar) async {
+    final row = await isar.chatBindingFenceEntitys.getByOwnerUserId(ownerUserId);
+    if (row == null) throw StateError('Chat 公开绑定尚未激活');
     _validateFence(row);
-    if (!_isActiveCurrentFence(row, current) ||
-        row.generation != token.generation ||
-        token.bindingRevision != current.bindingRevision ||
-        token.accountId != current.accountId ||
-        token.keyDomain != current.keyDomain) {
-      throw StateError('Chat 当前 binding fence 已变化');
+    if (row.fenceState != _fenceActive || row.accountId != currentAccountId ||
+        (expectedBindingScope != null && row.bindingScope != expectedBindingScope)) {
+      throw StateError('Chat 公开绑定已变化');
     }
-    return row;
-  }
-
-  static Future<ChatBindingFenceEntity> _requireStagedFenceInTxn(
-    Isar isar, {
-    required ChatBindingFenceToken sourceToken,
-    required ChatDataBinding source,
-    required ChatDataBinding target,
-  }) async {
-    final row = await isar.chatBindingFenceEntitys.getByOwnerUserId(
-      sourceToken.ownerUserId,
-    );
-    if (row == null) throw StateError('Chat 持久写入门闩缺失');
-    _validateFence(row);
-    if (!_isActiveCurrentFence(row, source) ||
-        row.generation != sourceToken.generation ||
-        sourceToken.bindingRevision != source.bindingRevision ||
-        sourceToken.accountId != source.accountId ||
-        sourceToken.keyDomain != source.keyDomain) {
-      throw StateError('Chat 换绑来源 fence 已变化');
-    }
-    if (!_isPendingFenceBinding(row, target)) {
-      throw StateError('Chat 换绑目标 fence 缺失或已变化');
-    }
-    return row;
-  }
-
-  static Future<ChatBindingFenceEntity> _requireCompletedFenceInTxn(
-    Isar isar, {
-    required ChatBindingFenceToken targetToken,
-    required ChatDataBinding source,
-    required ChatDataBinding target,
-  }) async {
-    final row = await _requireCurrentFenceInTxn(
-      isar,
-      token: targetToken,
-      current: target,
-    );
-    if (_hasPendingFence(row) ||
-        !_matchesCompletedHandoverReceipt(
-          row,
-          source: source,
-          target: target,
-        )) {
-      throw StateError('Chat 换绑完成 fence 缺少精确 completion receipt');
-    }
-    return row;
-  }
+    return ChatBinding(bindingScope: row.bindingScope!, userId: ownerUserId,
+        bindingRevision: row.bindingRevision!, accountId: row.accountId!);
+  });
 
   static void _requireWriterContext({
     required ChatBindingFenceToken bindingToken,
@@ -614,1055 +402,37 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
 
   static void _requireResolvedBinding({
     required ChatBindingFenceToken bindingToken,
-    required ChatCipherBinding binding,
+    required ChatBinding binding,
   }) {
     if (bindingToken.bindingRevision != binding.bindingRevision ||
         bindingToken.accountId != binding.accountId ||
-        bindingToken.keyDomain != binding.keyDomain) {
-      throw StateError('Chat 加密 binding 与持久 token 不一致');
+        bindingToken.bindingScope != binding.bindingScope) {
+      throw StateError('Chat 公开 binding 与持久 token 不一致');
     }
   }
 
-  /// 把正文加密成密文 + 搜索索引;正文为空时返回空密文与空索引。
-  Future<_SealedMessage> _sealMessage({
-    required String ownerUserId,
-    required String currentAccountId,
-    required String messageId,
-    required String? plaintext,
-    required ChatCipherBinding binding,
+  /// 正文按唯一目标载荷保存于系统保护数据库，搜索索引只保存去重 bigram。
+  Future<_StoredMessageContent> _prepareMessage({
+    required String ownerUserId, required String currentAccountId,
+    required String messageId, required String? plaintext, required ChatBinding binding,
   }) async {
     if (plaintext == null || plaintext.isEmpty) {
-      return const _SealedMessage(cipher: null, tokens: <String>[]);
+      return const _StoredMessageContent(payload: null, tokens: <String>[]);
     }
-    return _SealedMessage(
-      cipher: await _crypto.encryptText(
-        ownerUserId: ownerUserId,
-        currentAccountId: currentAccountId,
-        recordId: messageId,
-        plaintext: plaintext,
-        binding: binding,
-      ),
-      // 索引建在**摘要**上,与搜索时的匹配口径一致(媒体/贴纸取类型化占位)。
-      tokens: await _crypto.buildSearchTokens(
-        ownerUserId: ownerUserId,
-        currentAccountId: currentAccountId,
-        text: _messageSummary(plaintext),
-        binding: binding,
-      ),
-    );
+    return _StoredMessageContent(payload: plaintext, tokens: _searchTokens(_messageSummary(plaintext)));
   }
 
-  Future<String> _sealSummary({
-    required String ownerUserId,
-    required String currentAccountId,
-    required String conversationId,
-    required String? plaintext,
-    required ChatCipherBinding binding,
-  }) => _crypto.encryptText(
-    ownerUserId: ownerUserId,
-    currentAccountId: currentAccountId,
-    recordId: conversationId,
-    plaintext: _messageSummary(plaintext),
-    binding: binding,
-  );
-
-  /// 换绑交易提交前，把全部聊天正文、会话摘要和搜索索引预演成目标账户密文。
-  ///
-  /// 正式聊天行不改动；暂存清单只含绑定事实、稳定记录标识、记录 ID、来源密文指纹
-  /// 与目标子钥 MAC，不保存明文、随机目标密文或搜索 token。
-  /// 任一此前密文认证失败都会整体中止，禁止带着半套历史记录继续换绑。
-  Future<void> stageAccountHandover({
-    required ChatDataBinding source,
-    required ChatDataBinding target,
-  }) async {
-    _validateHandover(source, target);
-    await _serializeBindingMutation(source.userId, () async {
-      final sourceToken = await _captureCurrentFenceToken(
-        source,
-        requireNoPending: false,
-      );
-      final sourceKeys = await _crypto.handoverKeys(source);
-      try {
-        final targetKeys = await _crypto.handoverKeys(target);
-        try {
-          final snapshot = await _readHandoverBindingSnapshot(source);
-          // stage 仍完整预演来源解密、目标重加密与回读，但随机目标密文只活在内存中。
-          await _prepareHandoverSnapshot(
-            source: source,
-            target: target,
-            sourceKeys: sourceKeys,
-            targetKeys: targetKeys,
-            snapshot: snapshot,
-          );
-          final key = _handoverKey(target);
-          final value = _encodeHandoverManifest(
-            source: source,
-            target: target,
-            snapshot: snapshot,
-            macKey: targetKeys.index,
-          );
-          await _chatIsar.writeTxn((isar) async {
-            final fence = await _requireCurrentFenceInTxn(
-              isar,
-              token: sourceToken,
-              current: source,
-              allowPending: true,
-            );
-            if (_hasPendingFence(fence) &&
-                !_isPendingFenceBinding(fence, target)) {
-              throw StateError('Chat 已存在其它待提交的换绑目标');
-            }
-            final row =
-                await isar.chatAccountHandoverEntitys.getByHandoverKey(key) ??
-                ChatAccountHandoverEntity();
-            row
-              ..handoverKey = key
-              ..ownerUserId = target.userId
-              ..sourceBindingRevision = source.bindingRevision
-              ..sourceAccountId = source.accountId
-              ..targetBindingRevision = target.bindingRevision
-              ..targetAccountId = target.accountId
-              ..manifestJson = value;
-            await isar.chatAccountHandoverEntitys.putByHandoverKey(row);
-            fence
-              ..pendingBindingRevision = target.bindingRevision
-              ..pendingAccountId = target.accountId
-              ..pendingKeyDomain = target.keyDomain;
-            _clearCompletedHandoverReceipt(fence);
-            await isar.chatBindingFenceEntitys.put(fence);
-          });
-        } finally {
-          targetKeys.dispose();
-        }
-      } finally {
-        sourceKeys.dispose();
-      }
-    });
-  }
-
-  /// finalized 后重取当前来源绑定快照，事务外重加密，再用严格 CAS
-  /// 一次切换全部聊天密文。任何并发变化都整体重做，禁止提交半套记录。
-  Future<void> commitAccountHandover({
-    required ChatDataBinding source,
-    required ChatDataBinding target,
-  }) async {
-    _validateHandover(source, target);
-    await _serializeBindingMutation(source.userId, () async {
-      final key = _handoverKey(target);
-      final sourceKeys = await _crypto.handoverKeys(source);
-      try {
-        final targetKeys = await _crypto.handoverKeys(target);
-        try {
-          for (
-            var attempt = 0;
-            attempt < _handoverCommitMaxAttempts;
-            attempt += 1
-          ) {
-            final manifest = await _readValidatedHandoverManifest(
-              key: key,
-              source: source,
-              target: target,
-              macKey: targetKeys.index,
-            );
-
-            if (manifest == null) {
-              final targetToken = await _captureCurrentFenceToken(
-                target,
-                requireNoPending: true,
-              );
-              final snapshot = await _readHandoverBindingSnapshot(source);
-              final targetSnapshot = await _readHandoverBindingSnapshot(target);
-              if (!_isEmptyHandoverBindingSnapshot(snapshot)) {
-                throw StateError('聊天换绑交接清单缺失且来源绑定仍有聊天密文');
-              }
-              // marker 只允许在已经完整提交后缺失：目标行必须全部通过目标子钥认证，
-              // 随后再在事务内确认 marker、来源与目标快照都没有变化。
-              await _validateHandoverTargetSnapshot(
-                target: target,
-                targetKeys: targetKeys,
-                snapshot: targetSnapshot,
-              );
-              final completed = await _chatIsar.writeTxn((isar) async {
-                await _requireCompletedFenceInTxn(
-                  isar,
-                  targetToken: targetToken,
-                  source: source,
-                  target: target,
-                );
-                final currentManifest = await isar.chatAccountHandoverEntitys
-                    .getByHandoverKey(key);
-                if (currentManifest != null) return false;
-                final currentSnapshot = await _readHandoverBindingSnapshotInTxn(
-                  isar,
-                  source,
-                );
-                final currentTargetSnapshot =
-                    await _readHandoverBindingSnapshotInTxn(isar, target);
-                return _isEmptyHandoverBindingSnapshot(currentSnapshot) &&
-                    _sameHandoverBindingSnapshot(
-                      targetSnapshot,
-                      currentTargetSnapshot,
-                    );
-              });
-              if (completed) return;
-              continue;
-            }
-
-            final sourceToken = await _captureStagedFenceToken(
-              source: source,
-              target: target,
-            );
-            final snapshot = await _readHandoverBindingSnapshot(source);
-            final targetSnapshot = await _readHandoverBindingSnapshot(target);
-            await _chatIsar.read(
-              (isar) => _validateHandoverManifestRowsInTxn(
-                isar,
-                manifest.identity,
-                source: source,
-                target: target,
-              ),
-            );
-            final prepared = await _prepareHandoverSnapshot(
-              source: source,
-              target: target,
-              sourceKeys: sourceKeys,
-              targetKeys: targetKeys,
-              snapshot: snapshot,
-            );
-            await _validateHandoverTargetSnapshot(
-              target: target,
-              targetKeys: targetKeys,
-              snapshot: targetSnapshot,
-            );
-            final committed = await _chatIsar.writeTxn((isar) async {
-              final fence = await _requireStagedFenceInTxn(
-                isar,
-                sourceToken: sourceToken,
-                source: source,
-                target: target,
-              );
-              final currentManifest = await isar.chatAccountHandoverEntitys
-                  .getByHandoverKey(key);
-              if (!_sameHandoverManifestRecord(currentManifest, manifest)) {
-                return false;
-              }
-              final currentSnapshot = await _readHandoverBindingSnapshotInTxn(
-                isar,
-                source,
-              );
-              final currentTargetSnapshot =
-                  await _readHandoverBindingSnapshotInTxn(isar, target);
-              if (!_sameHandoverBindingSnapshot(snapshot, currentSnapshot) ||
-                  !_sameHandoverBindingSnapshot(
-                    targetSnapshot,
-                    currentTargetSnapshot,
-                  )) {
-                return false;
-              }
-              await _validateHandoverManifestRowsInTxn(
-                isar,
-                manifest.identity,
-                source: source,
-                target: target,
-              );
-
-              final conversationsToCommit =
-                  <({ChatConversationEntity row, String targetCipher})>[];
-              for (final item in prepared.conversations) {
-                final row = await isar.chatConversationEntitys.get(
-                  item.source.id,
-                );
-                if (row == null ||
-                    !_sameConversationSource(item.source, row, source)) {
-                  return false;
-                }
-                conversationsToCommit.add((
-                  row: row,
-                  targetCipher: item.targetCipher,
-                ));
-              }
-              final messagesToCommit =
-                  <
-                    ({
-                      ChatMessageEntity row,
-                      String? targetCipher,
-                      List<String> targetTokens,
-                    })
-                  >[];
-              for (final item in prepared.messages) {
-                final row = await isar.chatMessageEntitys.get(item.source.id);
-                if (row == null ||
-                    !_sameMessageSource(item.source, row, source)) {
-                  return false;
-                }
-                messagesToCommit.add((
-                  row: row,
-                  targetCipher: item.targetCipher,
-                  targetTokens: item.targetTokens,
-                ));
-              }
-
-              // 全部 CAS 检查通过后才开始改行，任何 false 都不会提交半套迁移。
-              for (final item in conversationsToCommit) {
-                item.row
-                  ..bindingRevision = target.bindingRevision
-                  ..accountId = target.accountId
-                  ..lastMessageCipher = item.targetCipher;
-                await isar.chatConversationEntitys
-                    .putByOwnerUserIdConversationId(item.row);
-              }
-              for (final item in messagesToCommit) {
-                item.row
-                  ..bindingRevision = target.bindingRevision
-                  ..accountId = target.accountId
-                  ..plaintextCipher = item.targetCipher
-                  ..searchTokens = item.targetTokens;
-                await isar.chatMessageEntitys.putByOwnerUserIdMessageId(
-                  item.row,
-                );
-              }
-              final completedGeneration = _nextFenceGeneration(
-                fence.generation,
-              );
-              fence
-                ..bindingRevision = target.bindingRevision
-                ..accountId = target.accountId
-                ..keyDomain = target.keyDomain
-                ..generation = completedGeneration
-                ..fenceState = _fenceActive
-                ..pendingBindingRevision = null
-                ..pendingAccountId = null
-                ..pendingKeyDomain = null
-                ..completedSourceBindingRevision = source.bindingRevision
-                ..completedSourceAccountId = source.accountId
-                ..completedSourceKeyDomain = source.keyDomain
-                ..completedTargetBindingRevision = target.bindingRevision
-                ..completedTargetAccountId = target.accountId
-                ..completedTargetKeyDomain = target.keyDomain
-                ..completedGeneration = completedGeneration;
-              await isar.chatBindingFenceEntitys.put(fence);
-              await isar.chatAccountHandoverEntitys.delete(currentManifest!.id);
-              return true;
-            });
-            if (committed) return;
-          }
-          throw StateError('聊天换绑提交期间数据持续变化，交接清单已保留请重试');
-        } finally {
-          targetKeys.dispose();
-        }
-      } finally {
-        sourceKeys.dispose();
-      }
-    });
-  }
-
-  Future<void> discardAccountHandover(ChatDataBinding target) async {
-    target.validate();
-    await _serializeBindingMutation(target.userId, () async {
-      final key = _handoverKey(target);
-      await _chatIsar.writeTxn((isar) async {
-        final fence = await isar.chatBindingFenceEntitys.getByOwnerUserId(
-          target.userId,
-        );
-        if (fence == null) throw StateError('Chat 持久写入门闩缺失');
-        _validateFence(fence);
-        final row = await isar.chatAccountHandoverEntitys.getByHandoverKey(key);
-        if (row == null && !_hasPendingFence(fence)) return;
-        if (fence.fenceState != _fenceActive ||
-            !_isPendingFenceBinding(fence, target) ||
-            (row != null &&
-                (row.ownerUserId != target.userId ||
-                    row.targetBindingRevision != target.bindingRevision ||
-                    row.targetAccountId != target.accountId))) {
-          throw StateError('Chat 待丢弃交接与持久 fence 不一致');
-        }
-        if (row != null) {
-          await isar.chatAccountHandoverEntitys.delete(row.id);
-        }
-        fence
-          ..pendingBindingRevision = null
-          ..pendingAccountId = null
-          ..pendingKeyDomain = null;
-        await isar.chatBindingFenceEntitys.put(fence);
-      });
-    });
-  }
-
-  Future<_HandoverBindingSnapshot> _readHandoverBindingSnapshot(
-    ChatDataBinding binding,
-  ) => _chatIsar.read(
-    (isar) => _readHandoverBindingSnapshotInTxn(isar, binding),
-  );
-
-  static Future<_HandoverBindingSnapshot> _readHandoverBindingSnapshotInTxn(
-    Isar isar,
-    ChatDataBinding binding,
-  ) async {
-    final conversationRows =
-        (await isar.chatConversationEntitys
-                .filter()
-                .idGreaterThan(0, include: true)
-                .findAll())
-            .where(
-              (row) =>
-                  row.ownerUserId == binding.userId &&
-                  row.bindingRevision == binding.bindingRevision &&
-                  row.accountId == binding.accountId,
-            )
-            .toList(growable: false);
-    final messageRows =
-        (await isar.chatMessageEntitys
-                .filter()
-                .idGreaterThan(0, include: true)
-                .findAll())
-            .where(
-              (row) =>
-                  row.ownerUserId == binding.userId &&
-                  row.bindingRevision == binding.bindingRevision &&
-                  row.accountId == binding.accountId,
-            )
-            .toList(growable: false);
-    final conversations =
-        conversationRows
-            .map(
-              (row) => _HandoverConversationSource(
-                id: row.id,
-                conversationId: row.conversationId,
-                cipher: row.lastMessageCipher,
-              ),
-            )
-            .toList(growable: false)
-          ..sort((left, right) => left.id.compareTo(right.id));
-    final messages =
-        messageRows
-            .map(
-              (row) => _HandoverMessageSource(
-                id: row.id,
-                messageId: row.messageId,
-                cipher: row.plaintextCipher,
-                tokens: List<String>.unmodifiable(row.searchTokens),
-              ),
-            )
-            .toList(growable: false)
-          ..sort((left, right) => left.id.compareTo(right.id));
-    return _HandoverBindingSnapshot(
-      conversations: List<_HandoverConversationSource>.unmodifiable(
-        conversations,
-      ),
-      messages: List<_HandoverMessageSource>.unmodifiable(messages),
-    );
-  }
-
-  static bool _isEmptyHandoverBindingSnapshot(
-    _HandoverBindingSnapshot snapshot,
-  ) => snapshot.conversations.isEmpty && snapshot.messages.isEmpty;
-
-  /// 清单覆盖的旧行按 Isar 主键验真，不能只按当前 source/target 过滤结果判断。
-  ///
-  /// 主键行不存在才是交接窗口内的合法物理删除；仍存在的行必须保有清单里的稳定键，
-  /// 且精确属于本次 source 或 target。这样 owner、bindingRevision 或 accountId 被改到
-  /// 第三状态时不会从两份过滤快照中消失后被误当作删除。该检查在密码学准备前与最终
-  /// 写事务内各执行一次，事务内版本组成提交 CAS 的一部分。
-  static Future<void> _validateHandoverManifestRowsInTxn(
-    Isar isar,
-    _HandoverManifestIdentity manifest, {
-    required ChatDataBinding source,
-    required ChatDataBinding target,
-  }) async {
-    for (final identity in manifest.conversations) {
-      var row = await isar.chatConversationEntitys.get(identity.id);
-      row ??= await isar.chatConversationEntitys.getByOwnerUserIdConversationId(
-        source.userId,
-        identity.conversationId,
-      );
-      if (row == null) continue;
-      if (row.conversationId != identity.conversationId) {
-        throw const FormatException('聊天换绑清单会话主键与稳定键不一致');
-      }
-      final belongsToSource = _conversationBelongsToBinding(row, source);
-      final belongsToTarget = _conversationBelongsToBinding(row, target);
-      if (!belongsToSource && !belongsToTarget) {
-        throw const FormatException('聊天换绑清单会话已落入第三绑定状态');
-      }
-      final hasCipher = row.lastMessageCipher.isNotEmpty;
-      if (identity.sourceHasCipher && !hasCipher) {
-        throw const FormatException('聊天换绑清单中的非空会话摘要密文不得降级为空');
-      }
-    }
-    for (final identity in manifest.messages) {
-      var row = await isar.chatMessageEntitys.get(identity.id);
-      row ??= await isar.chatMessageEntitys.getByOwnerUserIdMessageId(
-        source.userId,
-        identity.messageId,
-      );
-      if (row == null) continue;
-      if (row.messageId != identity.messageId) {
-        throw const FormatException('聊天换绑清单消息主键与稳定键不一致');
-      }
-      final belongsToSource = _messageBelongsToBinding(row, source);
-      final belongsToTarget = _messageBelongsToBinding(row, target);
-      if (!belongsToSource && !belongsToTarget) {
-        throw const FormatException('聊天换绑清单消息已落入第三绑定状态');
-      }
-      final hasCipher = row.plaintextCipher?.isNotEmpty ?? false;
-      if (identity.sourceHasCipher && !hasCipher) {
-        throw const FormatException('聊天换绑清单中的非空正文密文不得降级为空');
-      }
-    }
-  }
-
-  Future<_PreparedHandoverSnapshot> _prepareHandoverSnapshot({
-    required ChatDataBinding source,
-    required ChatDataBinding target,
-    required ChatHandoverKeys sourceKeys,
-    required ChatHandoverKeys targetKeys,
-    required _HandoverBindingSnapshot snapshot,
-  }) async {
-    final conversations = <_PreparedHandoverConversation>[];
-    for (final row in snapshot.conversations) {
-      final plaintext = await _crypto.decryptForHandover(
-        binding: source,
-        keys: sourceKeys,
-        recordId: row.conversationId,
-        blob: row.cipher,
-      );
-      final targetCipher = await _crypto.encryptForHandover(
-        binding: target,
-        keys: targetKeys,
-        recordId: row.conversationId,
-        plaintext: plaintext,
-      );
-      final verified = await _crypto.decryptForHandover(
-        binding: target,
-        keys: targetKeys,
-        recordId: row.conversationId,
-        blob: targetCipher,
-      );
-      if (verified != plaintext) {
-        throw StateError('聊天会话摘要新账户密文回读不一致');
-      }
-      conversations.add(
-        _PreparedHandoverConversation(source: row, targetCipher: targetCipher),
-      );
-    }
-
-    final messages = <_PreparedHandoverMessage>[];
-    for (final row in snapshot.messages) {
-      final blob = row.cipher;
-      if (blob == null || blob.isEmpty) {
-        if (row.tokens.isNotEmpty) {
-          throw const FormatException('无正文的来源绑定聊天消息不得携带搜索 token');
-        }
-        messages.add(
-          _PreparedHandoverMessage(
-            source: row,
-            targetCipher: null,
-            targetTokens: const <String>[],
-          ),
-        );
-        continue;
-      }
-      final plaintext = await _crypto.decryptForHandover(
-        binding: source,
-        keys: sourceKeys,
-        recordId: row.messageId,
-        blob: blob,
-      );
-      final expectedSourceTokens = await _crypto.searchTokensForHandover(
-        keys: sourceKeys,
-        text: _messageSummary(plaintext),
-      );
-      if (!_sameStringList(expectedSourceTokens, row.tokens)) {
-        throw const FormatException('来源绑定聊天消息搜索 token 与正文不一致');
-      }
-      final targetCipher = await _crypto.encryptForHandover(
-        binding: target,
-        keys: targetKeys,
-        recordId: row.messageId,
-        plaintext: plaintext,
-      );
-      final verified = await _crypto.decryptForHandover(
-        binding: target,
-        keys: targetKeys,
-        recordId: row.messageId,
-        blob: targetCipher,
-      );
-      if (verified != plaintext) {
-        throw StateError('聊天正文新账户密文回读不一致');
-      }
-      messages.add(
-        _PreparedHandoverMessage(
-          source: row,
-          targetCipher: targetCipher,
-          targetTokens: await _crypto.searchTokensForHandover(
-            keys: targetKeys,
-            text: _messageSummary(plaintext),
-          ),
-        ),
-      );
-    }
-    return _PreparedHandoverSnapshot(
-      conversations: List<_PreparedHandoverConversation>.unmodifiable(
-        conversations,
-      ),
-      messages: List<_PreparedHandoverMessage>.unmodifiable(messages),
-    );
-  }
-
-  /// finalized 后可能已有新消息直接写入目标绑定；提交前同样认证其密文与搜索索引，
-  /// 禁止把伪造 binding 字段的损坏行当成已完成迁移后删除清单。
-  Future<void> _validateHandoverTargetSnapshot({
-    required ChatDataBinding target,
-    required ChatHandoverKeys targetKeys,
-    required _HandoverBindingSnapshot snapshot,
-  }) async {
-    for (final row in snapshot.conversations) {
-      await _crypto.decryptForHandover(
-        binding: target,
-        keys: targetKeys,
-        recordId: row.conversationId,
-        blob: row.cipher,
-      );
-    }
-    for (final row in snapshot.messages) {
-      final cipher = row.cipher;
-      if (cipher == null || cipher.isEmpty) {
-        if (row.tokens.isNotEmpty) {
-          throw const FormatException('无正文的目标绑定聊天消息不得携带搜索 token');
-        }
-        continue;
-      }
-      final plaintext = await _crypto.decryptForHandover(
-        binding: target,
-        keys: targetKeys,
-        recordId: row.messageId,
-        blob: cipher,
-      );
-      final expectedTokens = await _crypto.searchTokensForHandover(
-        keys: targetKeys,
-        text: _messageSummary(plaintext),
-      );
-      if (!_sameStringList(expectedTokens, row.tokens)) {
-        throw const FormatException('目标绑定聊天消息搜索 token 与正文不一致');
-      }
-    }
-  }
-
-  static String _encodeHandoverManifest({
-    required ChatDataBinding source,
-    required ChatDataBinding target,
-    required _HandoverBindingSnapshot snapshot,
-    required List<int> macKey,
-  }) {
-    final payloadJson = jsonEncode(<String, Object?>{
-      'source': source.toJson(),
-      'target': target.toJson(),
-      'conversations': <Map<String, Object?>>[
-        for (final row in snapshot.conversations)
-          <String, Object?>{
-            'id': row.id,
-            'conversation_id': row.conversationId,
-            'source_fingerprint': _conversationSourceFingerprint(row),
-            'source_has_cipher': row.cipher.isNotEmpty,
-          },
-      ],
-      'messages': <Map<String, Object?>>[
-        for (final row in snapshot.messages)
-          <String, Object?>{
-            'id': row.id,
-            'message_id': row.messageId,
-            'source_fingerprint': _messageSourceFingerprint(row),
-            'source_has_cipher': row.cipher != null && row.cipher!.isNotEmpty,
-          },
-      ],
-    });
-    return jsonEncode(<String, Object>{
-      'payload_json': payloadJson,
-      'mac': _handoverManifestMac(payloadJson, macKey),
-    });
-  }
-
-  Future<_HandoverManifestRecord?> _readValidatedHandoverManifest({
-    required String key,
-    required ChatDataBinding source,
-    required ChatDataBinding target,
-    required List<int> macKey,
-  }) async {
-    final row = await _chatIsar.read(
-      (isar) async => isar.chatAccountHandoverEntitys.getByHandoverKey(key),
-    );
-    if (row == null) return null;
-    if (row.ownerUserId != target.userId ||
-        row.sourceBindingRevision != source.bindingRevision ||
-        row.sourceAccountId != source.accountId ||
-        row.targetBindingRevision != target.bindingRevision ||
-        row.targetAccountId != target.accountId) {
-      throw const FormatException('聊天换绑交接清单与当前绑定不一致');
-    }
-    final identity = _validateHandoverManifestJson(
-      row.manifestJson,
-      source: source,
-      target: target,
-      macKey: macKey,
-    );
-    return _HandoverManifestRecord(
-      id: row.id,
-      handoverKey: row.handoverKey,
-      ownerUserId: row.ownerUserId,
-      sourceBindingRevision: row.sourceBindingRevision,
-      sourceAccountId: row.sourceAccountId,
-      targetBindingRevision: row.targetBindingRevision,
-      targetAccountId: row.targetAccountId,
-      manifestJson: row.manifestJson,
-      identity: identity,
-    );
-  }
-
-  static _HandoverManifestIdentity _validateHandoverManifestJson(
-    String raw, {
-    required ChatDataBinding source,
-    required ChatDataBinding target,
-    required List<int> macKey,
-  }) {
-    final outer = jsonDecode(raw);
-    if (outer is! Map<String, dynamic> ||
-        !_hasExactKeys(outer, const <String>{'payload_json', 'mac'})) {
-      throw const FormatException('聊天换绑交接清单顶层结构损坏');
-    }
-    final payloadJson = outer['payload_json'];
-    final mac = outer['mac'];
-    if (payloadJson is! String ||
-        payloadJson.isEmpty ||
-        mac is! String ||
-        !_handoverDigestPattern.hasMatch(mac) ||
-        !_constantTimeEquals(mac, _handoverManifestMac(payloadJson, macKey))) {
-      throw const FormatException('聊天换绑交接清单认证失败');
-    }
-    final value = jsonDecode(payloadJson);
-    if (value is! Map<String, dynamic> ||
-        !_hasExactKeys(value, const <String>{
-          'source',
-          'target',
-          'conversations',
-          'messages',
-        })) {
-      throw const FormatException('聊天换绑交接清单载荷结构损坏');
-    }
-    final sourceValue = value['source'];
-    final targetValue = value['target'];
-    const bindingKeys = <String>{
-      'key_domain',
-      'user_id',
-      'binding_revision',
-      'account_id',
-    };
-    if (sourceValue is! Map<String, dynamic> ||
-        targetValue is! Map<String, dynamic> ||
-        !_hasExactKeys(sourceValue, bindingKeys) ||
-        !_hasExactKeys(targetValue, bindingKeys)) {
-      throw const FormatException('聊天换绑交接清单绑定结构损坏');
-    }
-    final storedSource = ChatDataBinding.fromJson(jsonEncode(sourceValue));
-    final storedTarget = ChatDataBinding.fromJson(jsonEncode(targetValue));
-    if (!_sameBinding(storedSource, source) ||
-        !_sameBinding(storedTarget, target)) {
-      throw const FormatException('聊天换绑交接清单绑定事实损坏');
-    }
-
-    final conversationValues = value['conversations'];
-    final messageValues = value['messages'];
-    if (conversationValues is! List || messageValues is! List) {
-      throw const FormatException('聊天换绑交接清单记录列表损坏');
-    }
-    final conversationIds = <int>{};
-    final conversationStableIds = <String>{};
-    final conversations = <_HandoverManifestConversationIdentity>[];
-    for (final item in conversationValues) {
-      if (item is! Map<String, dynamic> ||
-          !_hasExactKeys(item, const <String>{
-            'id',
-            'conversation_id',
-            'source_fingerprint',
-            'source_has_cipher',
-          })) {
-        throw const FormatException('聊天会话交接项结构损坏');
-      }
-      final id = item['id'];
-      final conversationId = item['conversation_id'];
-      final sourceFingerprint = item['source_fingerprint'];
-      final sourceHasCipher = item['source_has_cipher'];
-      if (id is! int ||
-          id <= 0 ||
-          !conversationIds.add(id) ||
-          conversationId is! String ||
-          conversationId.isEmpty ||
-          !conversationStableIds.add(conversationId) ||
-          sourceFingerprint is! String ||
-          !_handoverDigestPattern.hasMatch(sourceFingerprint) ||
-          sourceHasCipher is! bool) {
-        throw const FormatException('聊天会话交接项损坏');
-      }
-      if (!sourceHasCipher &&
-          sourceFingerprint !=
-              _conversationSourceFingerprint(
-                _HandoverConversationSource(
-                  id: id,
-                  conversationId: conversationId,
-                  cipher: '',
-                ),
-              )) {
-        throw const FormatException('聊天会话交接项空密文指纹损坏');
-      }
-      conversations.add(
-        _HandoverManifestConversationIdentity(
-          id: id,
-          conversationId: conversationId,
-          sourceFingerprint: sourceFingerprint,
-          sourceHasCipher: sourceHasCipher,
-        ),
-      );
-    }
-
-    final messageIds = <int>{};
-    final messageStableIds = <String>{};
-    final messages = <_HandoverManifestMessageIdentity>[];
-    for (final item in messageValues) {
-      if (item is! Map<String, dynamic> ||
-          !_hasExactKeys(item, const <String>{
-            'id',
-            'message_id',
-            'source_fingerprint',
-            'source_has_cipher',
-          })) {
-        throw const FormatException('聊天消息交接项结构损坏');
-      }
-      final id = item['id'];
-      final messageId = item['message_id'];
-      final sourceFingerprint = item['source_fingerprint'];
-      final sourceHasCipher = item['source_has_cipher'];
-      if (id is! int ||
-          id <= 0 ||
-          !messageIds.add(id) ||
-          messageId is! String ||
-          messageId.isEmpty ||
-          !messageStableIds.add(messageId) ||
-          sourceFingerprint is! String ||
-          !_handoverDigestPattern.hasMatch(sourceFingerprint) ||
-          sourceHasCipher is! bool) {
-        throw const FormatException('聊天消息交接项损坏');
-      }
-      if (!sourceHasCipher &&
-          sourceFingerprint !=
-              _messageSourceFingerprint(
-                _HandoverMessageSource(
-                  id: id,
-                  messageId: messageId,
-                  cipher: null,
-                  tokens: const <String>[],
-                ),
-              )) {
-        throw const FormatException('聊天消息交接项空密文指纹损坏');
-      }
-      messages.add(
-        _HandoverManifestMessageIdentity(
-          id: id,
-          messageId: messageId,
-          sourceFingerprint: sourceFingerprint,
-          sourceHasCipher: sourceHasCipher,
-        ),
-      );
-    }
-    return _HandoverManifestIdentity(
-      conversations: List<_HandoverManifestConversationIdentity>.unmodifiable(
-        conversations,
-      ),
-      messages: List<_HandoverManifestMessageIdentity>.unmodifiable(messages),
-    );
-  }
-
-  static String _handoverManifestMac(String payloadJson, List<int> key) =>
-      crypto.Hmac(crypto.sha256, key)
-          .convert(utf8.encode('$_handoverManifestMacDomain$payloadJson'))
-          .toString();
-
-  static String _conversationSourceFingerprint(
-    _HandoverConversationSource row,
-  ) => crypto.sha256
-      .convert(
-        utf8.encode(
-          jsonEncode(<String, Object>{
-            'conversation_id': row.conversationId,
-            'cipher': row.cipher,
-          }),
-        ),
-      )
-      .toString();
-
-  static String _messageSourceFingerprint(_HandoverMessageSource row) => crypto
-      .sha256
-      .convert(
-        utf8.encode(
-          jsonEncode(<String, Object?>{
-            'message_id': row.messageId,
-            // null 与空串都是“无正文”，清单只保留一份规范化缺席指纹。
-            'cipher': row.cipher == null || row.cipher!.isEmpty
-                ? null
-                : row.cipher,
-            'tokens': row.tokens,
-          }),
-        ),
-      )
-      .toString();
-
-  static bool _constantTimeEquals(String left, String right) {
-    if (left.length != right.length) return false;
-    var difference = 0;
-    for (var i = 0; i < left.length; i += 1) {
-      difference |= left.codeUnitAt(i) ^ right.codeUnitAt(i);
-    }
-    return difference == 0;
-  }
-
-  static bool _hasExactKeys(Map<String, dynamic> value, Set<String> expected) =>
-      value.length == expected.length &&
-      value.keys.toSet().containsAll(expected);
-
-  static bool _sameHandoverManifestRecord(
-    ChatAccountHandoverEntity? row,
-    _HandoverManifestRecord expected,
-  ) =>
-      row != null &&
-      row.id == expected.id &&
-      row.handoverKey == expected.handoverKey &&
-      row.ownerUserId == expected.ownerUserId &&
-      row.sourceBindingRevision == expected.sourceBindingRevision &&
-      row.sourceAccountId == expected.sourceAccountId &&
-      row.targetBindingRevision == expected.targetBindingRevision &&
-      row.targetAccountId == expected.targetAccountId &&
-      row.manifestJson == expected.manifestJson;
-
-  static bool _sameHandoverBindingSnapshot(
-    _HandoverBindingSnapshot left,
-    _HandoverBindingSnapshot right,
-  ) {
-    if (left.conversations.length != right.conversations.length ||
-        left.messages.length != right.messages.length) {
-      return false;
-    }
-    for (var i = 0; i < left.conversations.length; i += 1) {
-      final expected = left.conversations[i];
-      final actual = right.conversations[i];
-      if (expected.id != actual.id ||
-          expected.conversationId != actual.conversationId ||
-          expected.cipher != actual.cipher) {
-        return false;
-      }
-    }
-    for (var i = 0; i < left.messages.length; i += 1) {
-      final expected = left.messages[i];
-      final actual = right.messages[i];
-      if (expected.id != actual.id ||
-          expected.messageId != actual.messageId ||
-          expected.cipher != actual.cipher ||
-          !_sameStringList(expected.tokens, actual.tokens)) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  static bool _sameConversationSource(
-    _HandoverConversationSource expected,
-    ChatConversationEntity actual,
-    ChatDataBinding binding,
-  ) =>
-      actual.id == expected.id &&
-      actual.conversationId == expected.conversationId &&
-      actual.lastMessageCipher == expected.cipher &&
-      _conversationBelongsToBinding(actual, binding);
-
-  static bool _sameMessageSource(
-    _HandoverMessageSource expected,
-    ChatMessageEntity actual,
-    ChatDataBinding binding,
-  ) =>
-      actual.id == expected.id &&
-      actual.messageId == expected.messageId &&
-      actual.plaintextCipher == expected.cipher &&
-      _sameStringList(expected.tokens, actual.searchTokens) &&
-      _messageBelongsToBinding(actual, binding);
-
-  static bool _conversationBelongsToBinding(
-    ChatConversationEntity row,
-    ChatDataBinding binding,
-  ) =>
-      row.ownerUserId == binding.userId &&
-      row.bindingRevision == binding.bindingRevision &&
-      row.accountId == binding.accountId;
-
-  static bool _messageBelongsToBinding(
-    ChatMessageEntity row,
-    ChatDataBinding binding,
-  ) =>
-      row.ownerUserId == binding.userId &&
-      row.bindingRevision == binding.bindingRevision &&
-      row.accountId == binding.accountId;
-
-  static bool _sameStringList(List<String> left, List<String> right) {
-    if (left.length != right.length) return false;
-    for (var i = 0; i < left.length; i += 1) {
-      if (left[i] != right[i]) return false;
-    }
-    return true;
-  }
-
-  static bool _sameBinding(ChatDataBinding? actual, ChatDataBinding expected) =>
-      actual != null &&
-      actual.keyDomain == expected.keyDomain &&
-      actual.userId == expected.userId &&
-      actual.bindingRevision == expected.bindingRevision &&
-      actual.accountId == expected.accountId;
-
-  static void _validateHandover(
-    ChatDataBinding source,
-    ChatDataBinding target,
-  ) {
-    source.validate();
-    target.validate();
-    if (source.keyDomain != target.keyDomain ||
-        source.userId != target.userId ||
-        target.bindingRevision != source.bindingRevision + 1 ||
-        source.accountId == target.accountId) {
-      throw const FormatException('聊天换绑交接上下文不合法');
-    }
-  }
-
-  static String _handoverKey(ChatDataBinding target) =>
-      '${target.userId}:${target.bindingRevision}:${target.accountId}';
-
-  Future<String?> _openMessage(
-    ChatMessageEntity row,
-    ChatCipherSession session,
-  ) async {
-    final cipher = row.plaintextCipher;
-    if (cipher == null || cipher.isEmpty) return null;
-    return session.decryptText(recordId: row.messageId, blob: cipher);
-  }
-
-  Future<String> _openSummary(
-    ChatConversationEntity row,
-    ChatCipherSession session,
-  ) => session.decryptText(
-    recordId: row.conversationId,
-    blob: row.lastMessageCipher,
-  );
+  Future<String> _prepareSummary({
+    required String ownerUserId, required String currentAccountId,
+    required String conversationId, required String? plaintext, required ChatBinding binding,
+  }) async => _messageSummary(plaintext);
 
   Future<List<ChatConversationPreview>> readConversationPreviews({
     required String ownerUserId,
     required String currentAccountId,
   }) async {
     // 空会话库是新用户的正常状态。先只读 ChatIsar；本 user ID 没有任何行时
-    // 直接返回，禁止为一个空列表启动 WalletIsar、硬件用途钥或解密会话。
+    // 直接返回，不启动任何钱包或网络操作。
     final candidates = await _chatIsar.read((isar) async {
       final rows = await isar.chatConversationEntitys
           .filter()
@@ -1675,10 +445,11 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
     if (candidates.isEmpty) {
       return const <ChatConversationPreview>[];
     }
-    final binding = await _crypto.resolveCipherBinding(
+    final binding = await _resolveBinding(
       ownerUserId: ownerUserId,
       currentAccountId: currentAccountId,
     );
+    final readToken = await captureBindingFenceToken(binding);
     final rows = candidates
         .where(
           (row) =>
@@ -1690,22 +461,15 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
       return const <ChatConversationPreview>[];
     }
     rows.sort((a, b) => b.lastUpdatedAtMillis.compareTo(a.lastUpdatedAtMillis));
-    final session = await _crypto.openCipherSession(
-      ownerUserId: ownerUserId,
-      currentAccountId: currentAccountId,
-      binding: binding,
-    );
-    try {
+
       final out = <ChatConversationPreview>[];
       for (final row in rows) {
         out.add(
-          _conversationPreviewFromEntity(row, await _openSummary(row, session)),
+          _conversationPreviewFromEntity(row, row.lastMessageSummary),
         );
       }
+      await validateBindingFenceToken(readToken);
       return List<ChatConversationPreview>.unmodifiable(out);
-    } finally {
-      session.dispose();
-    }
   }
 
   Future<List<ChatRouteRecord>> readRouteRecords(String ownerUserId) {
@@ -1768,8 +532,8 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
     required String currentAccountId,
     required String conversationId,
   }) async {
-    // 先用现有 conversationId 索引复制当前会话密文快照；禁止每次打开会话都扫描
-    // 整张消息表。空会话在这里直接结束，也不触碰钱包绑定或设备用途钥。
+    // 先用现有 conversationId 索引复制当前会话记录快照；禁止每次打开会话都扫描
+    // 整张消息表。空会话在这里直接结束，也不触发钱包或网络操作。
     final conversationRows = await _chatIsar.read((isar) async {
       final rows = await isar.chatMessageEntitys
           .where()
@@ -1781,10 +545,11 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
     });
     if (conversationRows.isEmpty) return const <ChatStoredMessage>[];
 
-    final binding = await _crypto.resolveCipherBinding(
+    final binding = await _resolveBinding(
       ownerUserId: ownerUserId,
       currentAccountId: currentAccountId,
     );
+    final readToken = await captureBindingFenceToken(binding);
     final rows =
         conversationRows
             .where(
@@ -1796,30 +561,22 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
           ..sort((a, b) => a.createdAtMillis.compareTo(b.createdAtMillis));
     if (rows.isEmpty) return const <ChatStoredMessage>[];
 
-    final session = await _crypto.openCipherSession(
-      ownerUserId: ownerUserId,
-      currentAccountId: currentAccountId,
-      binding: binding,
-    );
-    try {
+
       final out = <ChatStoredMessage>[];
       for (final row in rows) {
-        out.add(_messageFromEntity(row, await _openMessage(row, session)));
+        out.add(_messageFromEntity(row, row.payloadJson));
       }
+      await validateBindingFenceToken(readToken);
       return List<ChatStoredMessage>.unmodifiable(out);
-    } finally {
-      session.dispose();
-    }
   }
 
-  /// 聊天窗口专用读取：严格接口首次发现认证失败后，仅隔离损坏行并继续返回其余
-  /// 已通过认证的记录。密文不会降级解密、不会伪造明文，也不会自动删除本机数据。
+  /// 展示读取逐行校验本地载荷，损坏行只隔离显示并计数，不伪造正文或删除记录。
   Future<ChatMessageDisplayBatch> readMessagesForDisplay({
     required String ownerUserId,
     required String currentAccountId,
     required String conversationId,
   }) async {
-    // 展示读取只复制一次当前会话快照、打开一次用途钥，再逐条验真。单条密文或
+    // 展示读取只复制一次当前会话快照，再逐条校验。单条载荷或
     // 载荷异常不得触发第二次整批查询，也不得阻断同会话其余有效历史消息。
     final conversationRows = await _chatIsar.read((isar) async {
       final rows = await isar.chatMessageEntitys
@@ -1837,10 +594,11 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
       );
     }
 
-    final binding = await _crypto.resolveCipherBinding(
+    final binding = await _resolveBinding(
       ownerUserId: ownerUserId,
       currentAccountId: currentAccountId,
     );
+    final readToken = await captureBindingFenceToken(binding);
     final rows =
         conversationRows
             .where(
@@ -1856,24 +614,13 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
         integrityFailureCount: 0,
       );
     }
-    final session = await _crypto.openCipherSession(
-      ownerUserId: ownerUserId,
-      currentAccountId: currentAccountId,
-      binding: binding,
-    );
-    try {
-      final decrypted = <ChatStoredMessage>[];
+
+      final storedMessages = <ChatStoredMessage>[];
       var integrityFailureCount = 0;
       for (final row in rows) {
         try {
-          decrypted.add(
-            _messageFromEntity(row, await _openMessage(row, session)),
-          );
-        } on ChatLocalCipherException catch (error) {
-          integrityFailureCount += 1;
-          debugPrint(
-            '[ChatStore] display_row_rejected message_id=${row.messageId} '
-            'stage=local_cipher error=${error.runtimeType}',
+          storedMessages.add(
+            _messageFromEntity(row, row.payloadJson),
           );
         } on FormatException catch (error) {
           // UTF-8、消息类型与投递状态都属于本机记录完整性边界；只隔离该行，
@@ -1885,13 +632,11 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
           );
         }
       }
+      await validateBindingFenceToken(readToken);
       return filterChatMessagesForDisplay(
-        decrypted,
+        storedMessages,
         initialIntegrityFailureCount: integrityFailureCount,
       );
-    } finally {
-      session.dispose();
-    }
   }
 
   /// 判断入站应用消息是否已经在当前绑定下落库。实时链路可能因设备确认丢失而
@@ -1917,20 +662,7 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
     });
   }
 
-  /// 跨会话搜索本机聊天记录（聊天搜索页的「聊天记录」段）。
-  ///
-  /// 正文已在磁盘上加密，无法再做明文子串匹配，改为**两段式**：
-  /// 1. 用 `ChatStorageKeyPurpose.chatIndex` 子钥把查询串切成 HMAC bigram token，
-  ///    经 `searchTokens` 多值索引取出**同时命中全部 token** 的候选；
-  /// 2. 只对候选解密，再验一次真实子串。
-  ///
-  /// 第 2 步不可省：token 是 HMAC **截断值**，存在假阳性；且 bigram 命中不等于
-  /// 原串顺序命中（查 "abc" 会命中含 "ab"、"bc" 但实为 "bcab" 的记录）。
-  /// 复验保证结果与此前明文 `contains` 语义完全一致。
-  ///
-  /// 匹配口径仍是**摘要**（文本取正文，媒体/贴纸取类型化占位），与建索引时一致；
-  /// 大小写不敏感。查询不足 2 字符时无 bigram 可用，回落到按属主 user ID 收窄后
-  /// 解密扫描——单字符查询在中文里很常见，不能直接拒绝。
+  /// 搜索系统保护数据库的 bigram 索引，再复核实际子串顺序。
   Future<List<ChatStoredMessage>> searchMessages({
     required String ownerUserId,
     required String currentAccountId,
@@ -1941,21 +673,13 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
     if (needle.isEmpty || ownerUserId.isEmpty || currentAccountId.isEmpty) {
       return const <ChatStoredMessage>[];
     }
-    final binding = await _crypto.resolveCipherBinding(
+    final binding = await _resolveBinding(
       ownerUserId: ownerUserId,
       currentAccountId: currentAccountId,
     );
-    final tokenSession = await _crypto.openCipherSession(
-      ownerUserId: ownerUserId,
-      currentAccountId: currentAccountId,
-      binding: binding,
-    );
-    late final List<String> tokens;
-    try {
-      tokens = await tokenSession.buildSearchTokens(needle);
-    } finally {
-      tokenSession.dispose();
-    }
+    final readToken = await captureBindingFenceToken(binding);
+
+    final tokens = _searchTokens(needle);
     final candidates = await _chatIsar.read((isar) async {
       List<ChatMessageEntity> candidates;
       if (tokens.isEmpty) {
@@ -1983,25 +707,18 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
           )
           .toList(growable: false);
     });
-    final session = await _crypto.openCipherSession(
-      ownerUserId: ownerUserId,
-      currentAccountId: currentAccountId,
-      binding: binding,
-    );
-    try {
+
       final hits = <ChatStoredMessage>[];
       for (final row in candidates) {
         if (hits.length >= limit) break;
-        final plaintext = await _openMessage(row, session);
+        final plaintext = row.payloadJson;
         if (!_messageSummary(plaintext).toLowerCase().contains(needle)) {
           continue; // 索引假阳性，复验滤掉
         }
         hits.add(_messageFromEntity(row, plaintext));
       }
+      await validateBindingFenceToken(readToken);
       return List<ChatStoredMessage>.unmodifiable(hits);
-    } finally {
-      session.dispose();
-    }
   }
 
   /// 当前页面成功展示到 [readThroughMillis] 后原子清零该会话未读数。
@@ -2093,65 +810,17 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
               ..ownerUserId = userId
               ..bindingRevision = null
               ..accountId = null
-              ..keyDomain = null
+              ..bindingScope = null
               ..generation = 1
-              ..fenceState = _fenceCleared
-              ..pendingBindingRevision = null
-              ..pendingAccountId = null
-              ..pendingKeyDomain = null,
+              ..fenceState = _fenceCleared,
           );
           return;
         }
         _validateFence(existing);
         existing
           ..generation = _nextFenceGeneration(existing.generation)
-          ..fenceState = _fenceCleared
-          ..pendingBindingRevision = null
-          ..pendingAccountId = null
-          ..pendingKeyDomain = null;
-        _clearCompletedHandoverReceipt(existing);
+          ..fenceState = _fenceCleared;
         await isar.chatBindingFenceEntitys.put(existing);
-      });
-    });
-  }
-
-  /// 无私有数据交接的新绑定只清理不可安全续用的瞬时/派生状态。
-  ///
-  /// 聊天正文与会话摘要密文继续保留在 Isar，读取时由当前账户认证失败而保持不可见；
-  /// 出站队列、入站乱序缓冲、媒体补发、路由和群镜像必须清理，禁止新账户自动发送或
-  /// 继续处理此前 MLS 上下文产生的任务。
-  Future<void> isolateInaccessibleBinding({
-    required ChatDataBinding previous,
-    required ChatDataBinding current,
-  }) {
-    _validateHandover(previous, current);
-    return _serializeBindingMutation(previous.userId, () async {
-      await _chatIsar.writeTxn((isar) async {
-        final fence = await isar.chatBindingFenceEntitys.getByOwnerUserId(
-          previous.userId,
-        );
-        if (fence == null) throw StateError('Chat 持久写入门闩缺失');
-        _validateFence(fence);
-        if (fence.fenceState == _fenceCleared) return;
-        if (_isActiveCurrentFence(fence, current) && !_hasPendingFence(fence)) {
-          return;
-        }
-        if (!_isActiveCurrentFence(fence, previous) ||
-            _hasPendingFence(fence)) {
-          throw StateError('Chat 隔离来源 binding 与持久 fence 不一致');
-        }
-        await _clearTransientChatStateInTxn(isar, previous.userId);
-        _clearCompletedHandoverReceipt(fence);
-        fence
-          ..bindingRevision = current.bindingRevision
-          ..accountId = current.accountId
-          ..keyDomain = current.keyDomain
-          ..generation = _nextFenceGeneration(fence.generation)
-          ..fenceState = _fenceActive
-          ..pendingBindingRevision = null
-          ..pendingAccountId = null
-          ..pendingKeyDomain = null;
-        await isar.chatBindingFenceEntitys.put(fence);
       });
     });
   }
@@ -2227,19 +896,12 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
     for (final row in commits) {
       await isar.chatGroupPendingCommitEntitys.delete(row.id);
     }
-    final handovers = await isar.chatAccountHandoverEntitys
-        .filter()
-        .ownerUserIdEqualTo(userId)
-        .findAll();
-    for (final row in handovers) {
-      await isar.chatAccountHandoverEntitys.delete(row.id);
-    }
   }
 
   /// 先把用户操作保存为本机密文消息，再异步取得接收设备 KeyPackage 并生成 MLS 消息。
   ///
   /// 本行已经是会话与消息列表的真值，不是 UI 临时气泡。`messageBytesHex` 为空
-  /// 明确表示“尚未转换为 MLS Message”；正文继续使用现有 chat/chatIndex 用途钥，
+  /// 明确表示“尚未转换为 MLS Message”；正文保存于系统保护数据库，
   /// TataChatServer 与系统推送均看不到本行。
   Future<void> savePendingOutgoingMessage({
     required ChatBindingFenceToken bindingToken,
@@ -2262,20 +924,20 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
     }
     ChatPayloadCodec.decode(payload);
     await _serializeBindingMutation(ownerUserId, () async {
-      final binding = await _crypto.resolveCipherBinding(
+      final binding = await _resolveBinding(
         ownerUserId: ownerUserId,
         currentAccountId: currentAccountId,
-        expectedKeyDomain: bindingToken.keyDomain,
+        expectedBindingScope: bindingToken.bindingScope,
       );
       _requireResolvedBinding(bindingToken: bindingToken, binding: binding);
-      final sealed = await _sealMessage(
+      final prepared = await _prepareMessage(
         ownerUserId: ownerUserId,
         currentAccountId: currentAccountId,
         messageId: localMessageId,
         plaintext: payload,
         binding: binding,
       );
-      final summaryCipher = await _sealSummary(
+      final summary = await _prepareSummary(
         ownerUserId: ownerUserId,
         currentAccountId: currentAccountId,
         conversationId: conversationId,
@@ -2292,7 +954,7 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
           conversationId: conversationId,
           peerUserId: recipientUserId,
           title: recipientUserId,
-          lastMessageCipher: summaryCipher,
+          lastMessageSummary: summary,
           lastUpdatedAtMillis: createdAtMillis,
           unreadDelta: 0,
           deliveryState: ChatMessageDeliveryState.queued,
@@ -2310,8 +972,8 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
             ..senderDeviceId = ''
             ..messageKind = messageKind.name
             ..deliveryState = ChatMessageDeliveryState.queued.name
-            ..plaintextCipher = sealed.cipher
-            ..searchTokens = sealed.tokens
+            ..payloadJson = prepared.payload
+            ..searchTokens = prepared.tokens
             ..messageBytesHex = ''
             ..createdAtMillis = createdAtMillis,
         );
@@ -2360,21 +1022,16 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
         );
     });
     if (rows.isEmpty) return const <ChatPendingOutgoingMessage>[];
-    final binding = await _crypto.resolveCipherBinding(
+    final binding = await _resolveBinding(
       ownerUserId: ownerUserId,
       currentAccountId: currentAccountId,
-      expectedKeyDomain: bindingToken.keyDomain,
+      expectedBindingScope: bindingToken.bindingScope,
     );
     _requireResolvedBinding(bindingToken: bindingToken, binding: binding);
-    final session = await _crypto.openCipherSession(
-      ownerUserId: ownerUserId,
-      currentAccountId: currentAccountId,
-      binding: binding,
-    );
-    try {
+
       final pending = <ChatPendingOutgoingMessage>[];
       for (final row in rows) {
-        final payload = await _openMessage(row, session);
+        final payload = row.payloadJson;
         if (payload == null || payload.isEmpty) {
           throw StateError('Chat 本地待发送消息正文缺失');
         }
@@ -2390,10 +1047,8 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
           ),
         );
       }
+      await validateBindingFenceToken(bindingToken);
       return List<ChatPendingOutgoingMessage>.unmodifiable(pending);
-    } finally {
-      session.dispose();
-    }
   }
 
   /// 本机待发消息超过云端统一 7 天存活期后保留为失败历史，但不再进入补发队列。
@@ -2440,21 +1095,21 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
       currentAccountId: currentAccountId,
     );
     await _serializeBindingMutation(ownerUserId, () async {
-      final binding = await _crypto.resolveCipherBinding(
+      final binding = await _resolveBinding(
         ownerUserId: ownerUserId,
         currentAccountId: currentAccountId,
-        expectedKeyDomain: bindingToken.keyDomain,
+        expectedBindingScope: bindingToken.bindingScope,
       );
       _requireResolvedBinding(bindingToken: bindingToken, binding: binding);
-      // 加解密在事务外完成，避免密码学运算占住 Isar 写事务。
-      final sealed = await _sealMessage(
+      // 载荷校验在事务外完成，最终写入仍须复核持久绑定代次。
+      final prepared = await _prepareMessage(
         ownerUserId: ownerUserId,
         currentAccountId: currentAccountId,
         messageId: message.messageId,
         plaintext: plaintext,
         binding: binding,
       );
-      final summaryCipher = await _sealSummary(
+      final summary = await _prepareSummary(
         ownerUserId: ownerUserId,
         currentAccountId: currentAccountId,
         conversationId: message.conversationId,
@@ -2490,7 +1145,7 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
           conversationId: message.conversationId,
           peerUserId: message.recipientUserId,
           title: message.recipientUserId,
-          lastMessageCipher: summaryCipher,
+          lastMessageSummary: summary,
           lastUpdatedAtMillis: conversationUpdatedAtMillis,
           unreadDelta: 0,
           deliveryState: deliveryState,
@@ -2505,8 +1160,8 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
             direction: 'outgoing',
             messageKind: messageKind,
             deliveryState: deliveryState,
-            plaintextCipher: sealed.cipher,
-            searchTokens: sealed.tokens,
+            payloadJson: prepared.payload,
+            searchTokens: prepared.tokens,
           ),
         );
         await isar.chatOutboundQueueEntitys.putByOwnerUserIdMessageId(
@@ -2609,20 +1264,20 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
       currentAccountId: currentAccountId,
     );
     await _serializeBindingMutation(ownerUserId, () async {
-      final binding = await _crypto.resolveCipherBinding(
+      final binding = await _resolveBinding(
         ownerUserId: ownerUserId,
         currentAccountId: currentAccountId,
-        expectedKeyDomain: bindingToken.keyDomain,
+        expectedBindingScope: bindingToken.bindingScope,
       );
       _requireResolvedBinding(bindingToken: bindingToken, binding: binding);
-      final sealed = await _sealMessage(
+      final prepared = await _prepareMessage(
         ownerUserId: ownerUserId,
         currentAccountId: currentAccountId,
         messageId: message.messageId,
         plaintext: plaintext,
         binding: binding,
       );
-      final summaryCipher = await _sealSummary(
+      final summary = await _prepareSummary(
         ownerUserId: ownerUserId,
         currentAccountId: currentAccountId,
         conversationId: message.conversationId,
@@ -2647,7 +1302,7 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
           conversationId: message.conversationId,
           peerUserId: message.senderUserId,
           title: message.senderUserId,
-          lastMessageCipher: summaryCipher,
+          lastMessageSummary: summary,
           lastUpdatedAtMillis: message.createdAtMillis.toInt(),
           unreadDelta: 1,
           deliveryState: ChatMessageDeliveryState.receivedByDevice,
@@ -2662,8 +1317,8 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
             direction: 'incoming',
             messageKind: messageKind,
             deliveryState: ChatMessageDeliveryState.receivedByDevice,
-            plaintextCipher: sealed.cipher,
-            searchTokens: sealed.tokens,
+            payloadJson: prepared.payload,
+            searchTokens: prepared.tokens,
           ),
         );
       });
@@ -2961,10 +1616,10 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
       currentAccountId: currentAccountId,
     );
     await _serializeBindingMutation(ownerUserId, () async {
-      final binding = await _crypto.resolveCipherBinding(
+      final binding = await _resolveBinding(
         ownerUserId: ownerUserId,
         currentAccountId: currentAccountId,
-        expectedKeyDomain: bindingToken.keyDomain,
+        expectedBindingScope: bindingToken.bindingScope,
       );
       _requireResolvedBinding(bindingToken: bindingToken, binding: binding);
       await _chatIsar.writeTxn((isar) async {
@@ -2998,7 +1653,7 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
           ..peerUserId = creatorUserId
           ..title = groupName
           ..conversationKind = 'group'
-          ..lastMessageCipher = conversation?.lastMessageCipher ?? ''
+          ..lastMessageSummary = conversation?.lastMessageSummary ?? ''
           ..lastUpdatedAtMillis = conversation?.lastUpdatedAtMillis ?? now
           ..unreadCount = conversation?.unreadCount ?? 0
           ..lastDeliveryState =
@@ -3238,20 +1893,20 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
       currentAccountId: currentAccountId,
     );
     await _serializeBindingMutation(ownerUserId, () async {
-      final binding = await _crypto.resolveCipherBinding(
+      final binding = await _resolveBinding(
         ownerUserId: ownerUserId,
         currentAccountId: currentAccountId,
-        expectedKeyDomain: bindingToken.keyDomain,
+        expectedBindingScope: bindingToken.bindingScope,
       );
       _requireResolvedBinding(bindingToken: bindingToken, binding: binding);
-      final sealed = await _sealMessage(
+      final prepared = await _prepareMessage(
         ownerUserId: ownerUserId,
         currentAccountId: currentAccountId,
         messageId: logicalMessageId,
         plaintext: payload,
         binding: binding,
       );
-      final summaryCipher = await _sealSummary(
+      final summary = await _prepareSummary(
         ownerUserId: ownerUserId,
         currentAccountId: currentAccountId,
         conversationId: groupId,
@@ -3284,7 +1939,7 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
           bindingRevision: binding.bindingRevision,
           accountId: binding.accountId,
           groupId: groupId,
-          lastMessageCipher: summaryCipher,
+          lastMessageSummary: summary,
           lastUpdatedAtMillis: createdAtMillis,
           unreadDelta: 0,
           deliveryState: ChatMessageDeliveryState.queued,
@@ -3302,8 +1957,8 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
             ..senderDeviceId = senderDeviceId
             ..messageKind = messageKind.name
             ..deliveryState = ChatMessageDeliveryState.queued.name
-            ..plaintextCipher = sealed.cipher
-            ..searchTokens = sealed.tokens
+            ..payloadJson = prepared.payload
+            ..searchTokens = prepared.tokens
             ..messageBytesHex = ''
             ..createdAtMillis = createdAtMillis,
         );
@@ -3349,20 +2004,20 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
       currentAccountId: currentAccountId,
     );
     await _serializeBindingMutation(ownerUserId, () async {
-      final binding = await _crypto.resolveCipherBinding(
+      final binding = await _resolveBinding(
         ownerUserId: ownerUserId,
         currentAccountId: currentAccountId,
-        expectedKeyDomain: bindingToken.keyDomain,
+        expectedBindingScope: bindingToken.bindingScope,
       );
       _requireResolvedBinding(bindingToken: bindingToken, binding: binding);
-      final sealed = await _sealMessage(
+      final prepared = await _prepareMessage(
         ownerUserId: ownerUserId,
         currentAccountId: currentAccountId,
         messageId: message.messageId,
         plaintext: plaintext,
         binding: binding,
       );
-      final summaryCipher = await _sealSummary(
+      final summary = await _prepareSummary(
         ownerUserId: ownerUserId,
         currentAccountId: currentAccountId,
         conversationId: message.conversationId,
@@ -3383,7 +2038,7 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
           bindingRevision: binding.bindingRevision,
           accountId: binding.accountId,
           groupId: message.conversationId,
-          lastMessageCipher: summaryCipher,
+          lastMessageSummary: summary,
           lastUpdatedAtMillis: message.createdAtMillis.toInt(),
           unreadDelta: 1,
           deliveryState: ChatMessageDeliveryState.receivedByDevice,
@@ -3398,8 +2053,8 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
             direction: 'incoming',
             messageKind: messageKind,
             deliveryState: ChatMessageDeliveryState.receivedByDevice,
-            plaintextCipher: sealed.cipher,
-            searchTokens: sealed.tokens,
+            payloadJson: prepared.payload,
+            searchTokens: prepared.tokens,
           ),
         );
       });
@@ -3413,7 +2068,7 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
     required int bindingRevision,
     required String accountId,
     required String groupId,
-    required String lastMessageCipher,
+    required String lastMessageSummary,
     required int lastUpdatedAtMillis,
     required int unreadDelta,
     required ChatMessageDeliveryState deliveryState,
@@ -3435,9 +2090,9 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
       ..peerUserId = existing?.peerUserId ?? (group?.creatorUserId ?? '')
       ..title = group?.groupName ?? existing?.title ?? groupId
       ..conversationKind = 'group'
-      ..lastMessageCipher = replacesLatest
-          ? lastMessageCipher
-          : existing.lastMessageCipher
+      ..lastMessageSummary = replacesLatest
+          ? lastMessageSummary
+          : existing.lastMessageSummary
       ..lastUpdatedAtMillis = replacesLatest
           ? lastUpdatedAtMillis
           : existing.lastUpdatedAtMillis
@@ -3477,7 +2132,7 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
     required String conversationId,
     required String peerUserId,
     required String title,
-    required String lastMessageCipher,
+    required String lastMessageSummary,
     required int lastUpdatedAtMillis,
     required int unreadDelta,
     required ChatMessageDeliveryState deliveryState,
@@ -3497,9 +2152,9 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
       ..conversationId = conversationId
       ..peerUserId = peerUserId
       ..title = title
-      ..lastMessageCipher = replacesLatest
-          ? lastMessageCipher
-          : existing.lastMessageCipher
+      ..lastMessageSummary = replacesLatest
+          ? lastMessageSummary
+          : existing.lastMessageSummary
       ..lastUpdatedAtMillis = replacesLatest
           ? lastUpdatedAtMillis
           : existing.lastUpdatedAtMillis
@@ -3544,7 +2199,7 @@ ChatMessageDisplayBatch filterChatMessagesForDisplay(
   );
 }
 
-/// [lastMessage] 由 `ChatStore` 解密后传入——本函数不接触密钥。
+/// [lastMessage] 来自当前CID所属的系统保护记录。
 ChatConversationPreview _conversationPreviewFromEntity(
   ChatConversationEntity row,
   String lastMessage,
@@ -3561,7 +2216,7 @@ ChatConversationPreview _conversationPreviewFromEntity(
   );
 }
 
-/// [plaintext] 由 `ChatStore` 解密后传入——本函数不接触密钥。
+/// [plaintext] 是MLS接收后保存在当前CID所属系统保护记录中的消息内容。
 ChatStoredMessage _messageFromEntity(ChatMessageEntity row, String? plaintext) {
   return ChatStoredMessage(
     messageId: row.messageId,
@@ -3610,7 +2265,7 @@ ChatMessageEntity _messageEntity({
   required String direction,
   required ChatMessageKind messageKind,
   required ChatMessageDeliveryState deliveryState,
-  String? plaintextCipher,
+  String? payloadJson,
   List<String> searchTokens = const <String>[],
 }) {
   return ChatMessageEntity()
@@ -3625,7 +2280,7 @@ ChatMessageEntity _messageEntity({
     ..senderDeviceId = message.senderDeviceId
     ..messageKind = messageKind.name
     ..deliveryState = deliveryState.name
-    ..plaintextCipher = plaintextCipher
+    ..payloadJson = payloadJson
     ..searchTokens = searchTokens
     ..messageBytesHex = _bytesToHex(messageBytes)
     ..createdAtMillis = message.createdAtMillis.toInt();
@@ -3670,146 +2325,18 @@ List<int> _hexToBytes(String value) {
   return bytes;
 }
 
-/// 一条消息落盘所需的密文与搜索索引。
-class _SealedMessage {
-  const _SealedMessage({required this.cipher, required this.tokens});
-
-  /// 正文密文；正文为空时为 null。
-  final String? cipher;
-
-  /// HMAC 分词索引（去重后的 bigram token）。
+/// 一条消息的系统保护存储正文与明文索引。
+class _StoredMessageContent {
+  const _StoredMessageContent({required this.payload, required this.tokens});
+  final String? payload;
   final List<String> tokens;
 }
 
-/// 一次交接 CAS 使用的来源会话密文指纹。
-class _HandoverConversationSource {
-  const _HandoverConversationSource({
-    required this.id,
-    required this.conversationId,
-    required this.cipher,
-  });
-
-  final int id;
-  final String conversationId;
-  final String cipher;
-}
-
-/// 一次交接 CAS 使用的来源消息密文与索引指纹。
-class _HandoverMessageSource {
-  const _HandoverMessageSource({
-    required this.id,
-    required this.messageId,
-    required this.cipher,
-    required this.tokens,
-  });
-
-  final int id;
-  final String messageId;
-  final String? cipher;
-  final List<String> tokens;
-}
-
-class _HandoverBindingSnapshot {
-  const _HandoverBindingSnapshot({
-    required this.conversations,
-    required this.messages,
-  });
-
-  final List<_HandoverConversationSource> conversations;
-  final List<_HandoverMessageSource> messages;
-}
-
-class _PreparedHandoverConversation {
-  const _PreparedHandoverConversation({
-    required this.source,
-    required this.targetCipher,
-  });
-
-  final _HandoverConversationSource source;
-  final String targetCipher;
-}
-
-class _PreparedHandoverMessage {
-  const _PreparedHandoverMessage({
-    required this.source,
-    required this.targetCipher,
-    required this.targetTokens,
-  });
-
-  final _HandoverMessageSource source;
-  final String? targetCipher;
-  final List<String> targetTokens;
-}
-
-class _PreparedHandoverSnapshot {
-  const _PreparedHandoverSnapshot({
-    required this.conversations,
-    required this.messages,
-  });
-
-  final List<_PreparedHandoverConversation> conversations;
-  final List<_PreparedHandoverMessage> messages;
-}
-
-/// 清单行的不可变副本；CAS 必须确认读取后没有被另一轮 stage 替换。
-class _HandoverManifestRecord {
-  const _HandoverManifestRecord({
-    required this.id,
-    required this.handoverKey,
-    required this.ownerUserId,
-    required this.sourceBindingRevision,
-    required this.sourceAccountId,
-    required this.targetBindingRevision,
-    required this.targetAccountId,
-    required this.manifestJson,
-    required this.identity,
-  });
-
-  final int id;
-  final String handoverKey;
-  final String ownerUserId;
-  final int sourceBindingRevision;
-  final String sourceAccountId;
-  final int targetBindingRevision;
-  final String targetAccountId;
-  final String manifestJson;
-  final _HandoverManifestIdentity identity;
-}
-
-class _HandoverManifestConversationIdentity {
-  const _HandoverManifestConversationIdentity({
-    required this.id,
-    required this.conversationId,
-    required this.sourceFingerprint,
-    required this.sourceHasCipher,
-  });
-
-  final int id;
-  final String conversationId;
-  final String sourceFingerprint;
-  final bool sourceHasCipher;
-}
-
-class _HandoverManifestMessageIdentity {
-  const _HandoverManifestMessageIdentity({
-    required this.id,
-    required this.messageId,
-    required this.sourceFingerprint,
-    required this.sourceHasCipher,
-  });
-
-  final int id;
-  final String messageId;
-  final String sourceFingerprint;
-  final bool sourceHasCipher;
-}
-
-class _HandoverManifestIdentity {
-  const _HandoverManifestIdentity({
-    required this.conversations,
-    required this.messages,
-  });
-
-  final List<_HandoverManifestConversationIdentity> conversations;
-  final List<_HandoverManifestMessageIdentity> messages;
+List<String> _searchTokens(String text) {
+  final runes = text.trim().toLowerCase().runes.toList(growable: false);
+  final tokens = <String>{};
+  for (var index = 0; index + 2 <= runes.length; index += 1) {
+    tokens.add(String.fromCharCodes(runes.sublist(index, index + 2)));
+  }
+  return tokens.toList(growable: false);
 }

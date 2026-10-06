@@ -12,15 +12,19 @@ import {
   realpathSync,
   renameSync,
   rmSync,
+  writeFileSync,
 } from 'node:fs';
 import { chmod } from 'node:fs/promises';
 import { isAbsolute, join, resolve } from 'node:path';
 import { pipeline } from 'node:stream/promises';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const scripts = fileURLToPath(new URL('.', import.meta.url));
 const product = realpathSync(join(scripts, '..'));
 const contract = JSON.parse(readFileSync(join(scripts, 'dependencies.json'), 'utf8'));
+// 离线只读取已交付原件；非法开关必须在创建工作目录前拒绝。
+const offlineValue = process.env.TATACHATSDK_PROTOCOL_OFFLINE;
+const offline = offlineValue === '1';
 const protocVersion = '35.0';
 const protocSource = 'https://github.com/protocolbuffers/protobuf/releases/tag/v35.0';
 const pluginVersion = '25.0.0';
@@ -96,6 +100,15 @@ function fileInventory(root) {
 }
 
 async function verifiedArchive(entry, archive, hosts) {
+  if (offline) {
+    if (!existsSync(archive)) fail('TataChatSDK离线工具原件缺失');
+    const status = lstatSync(archive);
+    if (!status.isFile() || status.isSymbolicLink()) {
+      fail('TataChatSDK离线工具原件必须为普通文件');
+    }
+    if (sha256(archive) !== entry.sha256) fail('TataChatSDK离线工具原件摘要不符');
+    return;
+  }
   if (existsSync(archive) && sha256(archive) !== entry.sha256) rmSync(archive, { force: true });
   if (!existsSync(archive)) await download(entry.url, archive, hosts);
   if (sha256(archive) !== entry.sha256) {
@@ -120,8 +133,8 @@ async function prepareProtoc(platform, workValue) {
   const work = safeWork(workValue);
   const archive = join(work, archiveName);
   const payload = join(work, 'payload');
-  rmSync(payload, { recursive: true, force: true });
   await verifiedArchive(entry, archive, ['github.com', 'release-assets.githubusercontent.com']);
+  rmSync(payload, { recursive: true, force: true });
   mkdirSync(payload, { mode: 0o700 });
   const unpacked = spawnSync('unzip', ['-q', archive, '-d', payload], { stdio: 'inherit' });
   if (unpacked.error || unpacked.status !== 0) {
@@ -168,27 +181,39 @@ async function preparePlugin(platform, workValue) {
     PUB_CACHE: pubCache,
     PUB_HOSTED_URL: 'https://pub.dev',
   };
-  const activated = spawnSync(
-    'dart',
-    ['pub', 'global', 'activate', 'protoc_plugin', pluginVersion, '--overwrite'],
-    { encoding: 'utf8', env: environment },
-  );
-  if (activated.error || activated.status !== 0) fail('TataChatSDK protoc_plugin准备失败');
-  const listed = spawnSync('dart', ['pub', 'global', 'list'], { encoding: 'utf8', env: environment });
-  if (listed.error || listed.status !== 0
-      || listed.stdout.split(/\r?\n/u).filter(Boolean).join('\n') !== `protoc_plugin ${pluginVersion}`) {
-    fail('TataChatSDK protoc_plugin版本验真失败');
+  // 固定消费者只引用官方插件；Pub离线解析后直接编译同一验真源码，不使用全局激活。
+  const consumer = join(work, 'consumer');
+  rmSync(consumer, { recursive: true, force: true });
+  mkdirSync(consumer, { mode: 0o700 });
+  writeFileSync(join(consumer, 'pubspec.yaml'),
+    'name: protoc_plugin_runner\npublish_to: none\nenvironment:\n  sdk: ^3.7.0\ndependencies:\n  protoc_plugin: ' + pluginVersion + '\n',
+    { flag: 'wx', mode: 0o600 });
+  for (const locked of [false, true]) {
+    const resolved = spawnSync('dart',
+      ['pub', 'get', ...(offline ? ['--offline'] : []), ...(locked ? ['--enforce-lockfile'] : [])],
+      { encoding: 'utf8', cwd: consumer, env: environment });
+    if (resolved.error || resolved.status !== 0) fail('TataChatSDK protoc_plugin固定依赖准备失败');
   }
-  const activatedSource = join(pubCache, 'hosted', 'pub.dev', `protoc_plugin-${pluginVersion}`);
-  if (!existsSync(activatedSource) || !lstatSync(activatedSource).isDirectory()
-      || realpathSync(activatedSource) !== activatedSource
-      || JSON.stringify(fileInventory(activatedSource)) !== JSON.stringify(fileInventory(verifiedSource))) {
-    fail('TataChatSDK protoc_plugin激活源码与官方归档不一致');
+  const packageConfig = join(consumer, '.dart_tool', 'package_config.json');
+  const configuration = JSON.parse(readFileSync(packageConfig, 'utf8'));
+  const pluginPackages = configuration.packages?.filter(value => value.name === 'protoc_plugin');
+  const preparedSource = join(pubCache, 'hosted', 'pub.dev', 'protoc_plugin-' + pluginVersion);
+  if (configuration.configVersion !== 2 || pluginPackages?.length !== 1
+      || fileURLToPath(new URL(pluginPackages[0].rootUri, pathToFileURL(packageConfig))) !== preparedSource
+      || !existsSync(preparedSource) || !lstatSync(preparedSource).isDirectory()
+      || realpathSync(preparedSource) !== preparedSource
+      || JSON.stringify(fileInventory(preparedSource)) !== JSON.stringify(fileInventory(verifiedSource))) {
+    fail('TataChatSDK protoc_plugin准备源码与官方归档不一致');
   }
-  const executable = join(pubCache, 'bin', process.platform === 'win32'
-    ? 'protoc-gen-dart.bat' : 'protoc-gen-dart');
+  // 显式使用本轮Pub配置，输出官方插件的宿主可执行文件，不包装Dart命令。
+  const executable = join(work, process.platform === 'win32' ? 'protoc-gen-dart.exe' : 'protoc-gen-dart');
+  rmSync(executable, { force: true });
+  const compiled = spawnSync('dart', ['compile', 'exe',
+    join(preparedSource, 'bin', 'protoc_plugin.dart'), '--packages=' + packageConfig, '-o', executable],
+    { encoding: 'utf8', cwd: consumer, env: environment });
+  if (compiled.error || compiled.status !== 0) fail('TataChatSDK protoc_plugin官方源码编译失败');
   if (!existsSync(executable) || !lstatSync(executable).isFile()
-      || !realpathSync(executable).startsWith(work + '/')) {
+      || lstatSync(executable).isSymbolicLink() || realpathSync(executable) !== executable) {
     fail('TataChatSDK protoc_plugin可执行文件无效');
   }
   if (process.platform !== 'win32') await chmod(executable, 0o700);
@@ -196,6 +221,9 @@ async function preparePlugin(platform, workValue) {
 }
 
 async function main() {
+  if (offlineValue !== undefined && offlineValue !== '1') {
+    fail('TataChatSDK协议生成离线参数仅接受1');
+  }
   const [command, toolName, platform, workValue] = process.argv.slice(2);
   if (contract.schema !== 1 || command !== 'prepare' || !workValue
       || process.argv.length !== 6) fail('TataChatSDK工具参数无效');

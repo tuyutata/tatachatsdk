@@ -17,7 +17,7 @@ import 'package:protobuf/protobuf.dart' as $pb;
 
 export 'package:protobuf/protobuf.dart' show GeneratedMessageGenericExtensions;
 
-/// Encrypted attachment metadata carried inside the MLS mailbox.
+/// 普通MLS聊天消息内的附件公开协议描述，不携带应用密钥。
 class MediaDescriptor extends $pb.GeneratedMessage {
   factory MediaDescriptor({
     $core.String? attachmentId,
@@ -28,9 +28,15 @@ class MediaDescriptor extends $pb.GeneratedMessage {
     $core.int? height,
     $core.int? durationMs,
     $core.String? blurhash,
-    $core.List<$core.int>? cipherKey,
     $fixnum.Int64? cipherByteSize,
     $core.List<$core.int>? cipherSha256,
+    $core.String? attachmentGroupId,
+    $core.List<$core.int>? attachmentWelcome,
+    $core.Iterable<$core.String>? attachmentMemberIdentities,
+    $core.String? attachmentSenderMemberIdentity,
+    $core.int? attachmentChunkCount,
+    $core.List<$core.int>? plainSha256,
+    $fixnum.Int64? attachmentChatEpoch,
   }) {
     final result = create();
     if (attachmentId != null) result.attachmentId = attachmentId;
@@ -41,9 +47,19 @@ class MediaDescriptor extends $pb.GeneratedMessage {
     if (height != null) result.height = height;
     if (durationMs != null) result.durationMs = durationMs;
     if (blurhash != null) result.blurhash = blurhash;
-    if (cipherKey != null) result.cipherKey = cipherKey;
     if (cipherByteSize != null) result.cipherByteSize = cipherByteSize;
     if (cipherSha256 != null) result.cipherSha256 = cipherSha256;
+    if (attachmentGroupId != null) result.attachmentGroupId = attachmentGroupId;
+    if (attachmentWelcome != null) result.attachmentWelcome = attachmentWelcome;
+    if (attachmentMemberIdentities != null)
+      result.attachmentMemberIdentities.addAll(attachmentMemberIdentities);
+    if (attachmentSenderMemberIdentity != null)
+      result.attachmentSenderMemberIdentity = attachmentSenderMemberIdentity;
+    if (attachmentChunkCount != null)
+      result.attachmentChunkCount = attachmentChunkCount;
+    if (plainSha256 != null) result.plainSha256 = plainSha256;
+    if (attachmentChatEpoch != null)
+      result.attachmentChatEpoch = attachmentChatEpoch;
     return result;
   }
 
@@ -70,13 +86,23 @@ class MediaDescriptor extends $pb.GeneratedMessage {
     ..aI(6, _omitFieldNames ? '' : 'height', fieldType: $pb.PbFieldType.OU3)
     ..aI(7, _omitFieldNames ? '' : 'durationMs', fieldType: $pb.PbFieldType.OU3)
     ..aOS(8, _omitFieldNames ? '' : 'blurhash')
-    ..a<$core.List<$core.int>>(
-        9, _omitFieldNames ? '' : 'cipherKey', $pb.PbFieldType.OY)
     ..a<$fixnum.Int64>(
         10, _omitFieldNames ? '' : 'cipherByteSize', $pb.PbFieldType.OU6,
         defaultOrMaker: $fixnum.Int64.ZERO)
     ..a<$core.List<$core.int>>(
         11, _omitFieldNames ? '' : 'cipherSha256', $pb.PbFieldType.OY)
+    ..aOS(12, _omitFieldNames ? '' : 'attachmentGroupId')
+    ..a<$core.List<$core.int>>(
+        13, _omitFieldNames ? '' : 'attachmentWelcome', $pb.PbFieldType.OY)
+    ..pPS(14, _omitFieldNames ? '' : 'attachmentMemberIdentities')
+    ..aOS(15, _omitFieldNames ? '' : 'attachmentSenderMemberIdentity')
+    ..aI(16, _omitFieldNames ? '' : 'attachmentChunkCount',
+        fieldType: $pb.PbFieldType.OU3)
+    ..a<$core.List<$core.int>>(
+        17, _omitFieldNames ? '' : 'plainSha256', $pb.PbFieldType.OY)
+    ..a<$fixnum.Int64>(
+        18, _omitFieldNames ? '' : 'attachmentChatEpoch', $pb.PbFieldType.OU6,
+        defaultOrMaker: $fixnum.Int64.ZERO)
     ..hasRequiredFields = false;
 
   @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
@@ -170,38 +196,86 @@ class MediaDescriptor extends $pb.GeneratedMessage {
   @$pb.TagNumber(8)
   void clearBlurhash() => $_clearField(8);
 
-  @$pb.TagNumber(9)
-  $core.List<$core.int> get cipherKey => $_getN(8);
-  @$pb.TagNumber(9)
-  set cipherKey($core.List<$core.int> value) => $_setBytes(8, value);
-  @$pb.TagNumber(9)
-  $core.bool hasCipherKey() => $_has(8);
-  @$pb.TagNumber(9)
-  void clearCipherKey() => $_clearField(9);
-
   @$pb.TagNumber(10)
-  $fixnum.Int64 get cipherByteSize => $_getI64(9);
+  $fixnum.Int64 get cipherByteSize => $_getI64(8);
   @$pb.TagNumber(10)
-  set cipherByteSize($fixnum.Int64 value) => $_setInt64(9, value);
+  set cipherByteSize($fixnum.Int64 value) => $_setInt64(8, value);
   @$pb.TagNumber(10)
-  $core.bool hasCipherByteSize() => $_has(9);
+  $core.bool hasCipherByteSize() => $_has(8);
   @$pb.TagNumber(10)
   void clearCipherByteSize() => $_clearField(10);
 
   @$pb.TagNumber(11)
-  $core.List<$core.int> get cipherSha256 => $_getN(10);
+  $core.List<$core.int> get cipherSha256 => $_getN(9);
   @$pb.TagNumber(11)
-  set cipherSha256($core.List<$core.int> value) => $_setBytes(10, value);
+  set cipherSha256($core.List<$core.int> value) => $_setBytes(9, value);
   @$pb.TagNumber(11)
-  $core.bool hasCipherSha256() => $_has(10);
+  $core.bool hasCipherSha256() => $_has(9);
   @$pb.TagNumber(11)
   void clearCipherSha256() => $_clearField(11);
+
+  @$pb.TagNumber(12)
+  $core.String get attachmentGroupId => $_getSZ(10);
+  @$pb.TagNumber(12)
+  set attachmentGroupId($core.String value) => $_setString(10, value);
+  @$pb.TagNumber(12)
+  $core.bool hasAttachmentGroupId() => $_has(10);
+  @$pb.TagNumber(12)
+  void clearAttachmentGroupId() => $_clearField(12);
+
+  @$pb.TagNumber(13)
+  $core.List<$core.int> get attachmentWelcome => $_getN(11);
+  @$pb.TagNumber(13)
+  set attachmentWelcome($core.List<$core.int> value) => $_setBytes(11, value);
+  @$pb.TagNumber(13)
+  $core.bool hasAttachmentWelcome() => $_has(11);
+  @$pb.TagNumber(13)
+  void clearAttachmentWelcome() => $_clearField(13);
+
+  @$pb.TagNumber(14)
+  $pb.PbList<$core.String> get attachmentMemberIdentities => $_getList(12);
+
+  @$pb.TagNumber(15)
+  $core.String get attachmentSenderMemberIdentity => $_getSZ(13);
+  @$pb.TagNumber(15)
+  set attachmentSenderMemberIdentity($core.String value) =>
+      $_setString(13, value);
+  @$pb.TagNumber(15)
+  $core.bool hasAttachmentSenderMemberIdentity() => $_has(13);
+  @$pb.TagNumber(15)
+  void clearAttachmentSenderMemberIdentity() => $_clearField(15);
+
+  @$pb.TagNumber(16)
+  $core.int get attachmentChunkCount => $_getIZ(14);
+  @$pb.TagNumber(16)
+  set attachmentChunkCount($core.int value) => $_setUnsignedInt32(14, value);
+  @$pb.TagNumber(16)
+  $core.bool hasAttachmentChunkCount() => $_has(14);
+  @$pb.TagNumber(16)
+  void clearAttachmentChunkCount() => $_clearField(16);
+
+  @$pb.TagNumber(17)
+  $core.List<$core.int> get plainSha256 => $_getN(15);
+  @$pb.TagNumber(17)
+  set plainSha256($core.List<$core.int> value) => $_setBytes(15, value);
+  @$pb.TagNumber(17)
+  $core.bool hasPlainSha256() => $_has(15);
+  @$pb.TagNumber(17)
+  void clearPlainSha256() => $_clearField(17);
+
+  @$pb.TagNumber(18)
+  $fixnum.Int64 get attachmentChatEpoch => $_getI64(16);
+  @$pb.TagNumber(18)
+  set attachmentChatEpoch($fixnum.Int64 value) => $_setInt64(16, value);
+  @$pb.TagNumber(18)
+  $core.bool hasAttachmentChatEpoch() => $_has(16);
+  @$pb.TagNumber(18)
+  void clearAttachmentChatEpoch() => $_clearField(18);
 }
 
 enum MediaPayload_Content { image, video, file, audio, notSet }
 
-/// Fields 16-19 do not overlap BasicPayload fields 1-3. Receivers can reject
-/// the wrong payload family without a parallel version or discriminator field.
+/// 媒体oneof使用16至19，与基本载荷1至3互斥；未知字段与非规范编码必须拒绝。
 class MediaPayload extends $pb.GeneratedMessage {
   factory MediaPayload({
     MediaDescriptor? image,

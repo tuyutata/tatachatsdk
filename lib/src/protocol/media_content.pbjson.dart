@@ -27,9 +27,54 @@ const MediaDescriptor$json = {
     {'1': 'height', '3': 6, '4': 1, '5': 13, '10': 'height'},
     {'1': 'duration_ms', '3': 7, '4': 1, '5': 13, '10': 'durationMs'},
     {'1': 'blurhash', '3': 8, '4': 1, '5': 9, '10': 'blurhash'},
-    {'1': 'cipher_key', '3': 9, '4': 1, '5': 12, '10': 'cipherKey'},
     {'1': 'cipher_byte_size', '3': 10, '4': 1, '5': 4, '10': 'cipherByteSize'},
     {'1': 'cipher_sha256', '3': 11, '4': 1, '5': 12, '10': 'cipherSha256'},
+    {
+      '1': 'attachment_group_id',
+      '3': 12,
+      '4': 1,
+      '5': 9,
+      '10': 'attachmentGroupId'
+    },
+    {
+      '1': 'attachment_welcome',
+      '3': 13,
+      '4': 1,
+      '5': 12,
+      '10': 'attachmentWelcome'
+    },
+    {
+      '1': 'attachment_member_identities',
+      '3': 14,
+      '4': 3,
+      '5': 9,
+      '10': 'attachmentMemberIdentities'
+    },
+    {
+      '1': 'attachment_sender_member_identity',
+      '3': 15,
+      '4': 1,
+      '5': 9,
+      '10': 'attachmentSenderMemberIdentity'
+    },
+    {
+      '1': 'attachment_chunk_count',
+      '3': 16,
+      '4': 1,
+      '5': 13,
+      '10': 'attachmentChunkCount'
+    },
+    {'1': 'plain_sha256', '3': 17, '4': 1, '5': 12, '10': 'plainSha256'},
+    {
+      '1': 'attachment_chat_epoch',
+      '3': 18,
+      '4': 1,
+      '5': 4,
+      '10': 'attachmentChatEpoch'
+    },
+  ],
+  '9': [
+    {'1': 9, '2': 10},
   ],
 };
 
@@ -39,9 +84,15 @@ final $typed_data.Uint8List mediaDescriptorDescriptor = $convert.base64Decode(
     'sKCWZpbGVfbmFtZRgCIAEoCVIIZmlsZU5hbWUSEgoEbWltZRgDIAEoCVIEbWltZRIbCglieXRl'
     'X3NpemUYBCABKARSCGJ5dGVTaXplEhQKBXdpZHRoGAUgASgNUgV3aWR0aBIWCgZoZWlnaHQYBi'
     'ABKA1SBmhlaWdodBIfCgtkdXJhdGlvbl9tcxgHIAEoDVIKZHVyYXRpb25NcxIaCghibHVyaGFz'
-    'aBgIIAEoCVIIYmx1cmhhc2gSHQoKY2lwaGVyX2tleRgJIAEoDFIJY2lwaGVyS2V5EigKEGNpcG'
-    'hlcl9ieXRlX3NpemUYCiABKARSDmNpcGhlckJ5dGVTaXplEiMKDWNpcGhlcl9zaGEyNTYYCyAB'
-    'KAxSDGNpcGhlclNoYTI1Ng==');
+    'aBgIIAEoCVIIYmx1cmhhc2gSKAoQY2lwaGVyX2J5dGVfc2l6ZRgKIAEoBFIOY2lwaGVyQnl0ZV'
+    'NpemUSIwoNY2lwaGVyX3NoYTI1NhgLIAEoDFIMY2lwaGVyU2hhMjU2Ei4KE2F0dGFjaG1lbnRf'
+    'Z3JvdXBfaWQYDCABKAlSEWF0dGFjaG1lbnRHcm91cElkEi0KEmF0dGFjaG1lbnRfd2VsY29tZR'
+    'gNIAEoDFIRYXR0YWNobWVudFdlbGNvbWUSQAocYXR0YWNobWVudF9tZW1iZXJfaWRlbnRpdGll'
+    'cxgOIAMoCVIaYXR0YWNobWVudE1lbWJlcklkZW50aXRpZXMSSQohYXR0YWNobWVudF9zZW5kZX'
+    'JfbWVtYmVyX2lkZW50aXR5GA8gASgJUh5hdHRhY2htZW50U2VuZGVyTWVtYmVySWRlbnRpdHkS'
+    'NAoWYXR0YWNobWVudF9jaHVua19jb3VudBgQIAEoDVIUYXR0YWNobWVudENodW5rQ291bnQSIQ'
+    'oMcGxhaW5fc2hhMjU2GBEgASgMUgtwbGFpblNoYTI1NhIyChVhdHRhY2htZW50X2NoYXRfZXBv'
+    'Y2gYEiABKARSE2F0dGFjaG1lbnRDaGF0RXBvY2hKBAgJEAo=');
 
 @$core.Deprecated('Use mediaPayloadDescriptor instead')
 const MediaPayload$json = {

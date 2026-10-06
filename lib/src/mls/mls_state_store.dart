@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:crypto/crypto.dart' as crypto_hash;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
@@ -107,6 +108,69 @@ class MlsStateStore {
     return identity;
   }
 
+  /// 复用已有MLS身份签固定认证证明；缺状态永不初始化，不写聊天快照。
+  Future<MlsAuthenticationProof> signAuthentication({
+    required String accountId,
+    required int bindingRevision,
+    required MlsAuthenticationRequest request,
+  }) async {
+    request.validate();
+    if (!RegExp(r'^0x[0-9a-f]{64}$').hasMatch(accountId) ||
+        bindingRevision < 0 ||
+        bindingRevision > MlsAuthenticationRequest.maxJsonInteger) {
+      throw ArgumentError('MLS认证账户事实无效');
+    }
+    final identity = await readIdentity();
+    if (identity.deviceId != identity.publicKey!.substring(2)) {
+      throw StateError('MLS认证公开身份不一致');
+    }
+    request.validate();
+    final response = _call(true, {
+      'state_store_dir': path,
+      'user_id': ownerUserId,
+      'action': 'sign_authentication',
+      'account_id': accountId,
+      'binding_revision': bindingRevision,
+      'request': request.toJson(),
+    });
+    final bodySha256 = '0x${crypto_hash.sha256.convert(request.bodyBytes)}';
+    final expected = <String, Object>{
+      'user_id': ownerUserId,
+      'device_id': identity.deviceId,
+      'public_key': identity.publicKey!,
+      'account_id': accountId,
+      'binding_revision': bindingRevision,
+      'service_origin': request.serviceOrigin,
+      'challenge': request.challenge,
+      'expires_at_millis': request.expiresAtMillis,
+      'method': request.method,
+      'request_target': request.requestTarget,
+      'body_sha256': bodySha256,
+    };
+    final signature = response['signature'];
+    if (response.length != expected.length + 1 ||
+        expected.entries.any((entry) => response[entry.key] != entry.value) ||
+        signature is! String ||
+        !RegExp(r'^0x[0-9a-f]{128}$').hasMatch(signature)) {
+      throw StateError('MLS认证证明结果无效');
+    }
+    MlsAuthenticationRequest.validateExpiry(request.expiresAtMillis);
+    return MlsAuthenticationProof(
+      userId: ownerUserId,
+      deviceId: identity.deviceId,
+      publicKey: identity.publicKey!,
+      accountId: accountId,
+      bindingRevision: bindingRevision,
+      serviceOrigin: request.serviceOrigin,
+      challenge: request.challenge,
+      expiresAtMillis: request.expiresAtMillis,
+      method: request.method,
+      requestTarget: request.requestTarget,
+      bodySha256: bodySha256,
+      signature: signature,
+    );
+  }
+
   Map<String, dynamic> _call(bool identity, Map<String, Object?> request) {
     final fixture = debugCallJson;
     if (fixture != null) {
@@ -126,8 +190,6 @@ class MlsStateStore {
     String action, {
     String? messageId,
     Map<String, Object?>? pending,
-    String? handoverId,
-    String? payloadJson,
   }) {
     return _call(false, {
       'state_store_dir': path,
@@ -135,27 +197,18 @@ class MlsStateStore {
       'action': action,
       'message_id': ?messageId,
       'pending_inbound': ?pending,
-      'handover_id': ?handoverId,
-      'payload_json': ?payloadJson,
     });
   }
 
-  /// 交接收据使用同一系统保护存储，不另设MAC钥或签名钥。
-  Future<void> writeReceipt(String id, String payload) async {
+  /// 附件协议动作使用现有store FFI，只有公开组合同与持久游标可越过边界。
+  Future<Map<String, dynamic>> attachmentAction(
+    String action, Map<String, Object?> attachment,
+  ) async {
     await ensureReady();
-    _store('write_receipt', handoverId: id, payloadJson: payload);
-  }
-
-  Future<List<String>> readReceipt(String id) async {
-    await ensureReady();
-    return (_store('read_receipt', handoverId: id)['payload_json'] as List?)
-            ?.cast<String>() ??
-        [];
-  }
-
-  Future<void> deleteReceipt(String id) async {
-    await ensureReady();
-    _store('delete_receipt', handoverId: id);
+    return _call(false, {
+      'state_store_dir': path, 'user_id': ownerUserId,
+      'action': action, 'attachment': attachment,
+    });
   }
 
   Future<void> acknowledge(String messageId) async {

@@ -7,8 +7,8 @@ const _ownerUserId = 'CN220-CTZN2-100000001-2026';
 const _peerUserId = 'CN220-CTZN2-100000002-2026';
 const _accountId =
     '0x1111111111111111111111111111111111111111111111111111111111111111';
-const _binding = ChatDataBinding(
-  keyDomain:
+const _binding = ChatBinding(
+  bindingScope:
       '0x4242424242424242424242424242424242424242424242424242424242424242',
   userId: _ownerUserId,
   bindingRevision: 1,

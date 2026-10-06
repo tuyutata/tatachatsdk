@@ -51,7 +51,7 @@ class NativeMlsCrypto implements MlsGroupCrypto, MlsPersistentCrypto {
   @override
   Future<MlsKeyPackage> createKeyPackage(
     ChatDevice identity, {
-    bool lastResort = false,
+    bool lastResort = true,
   }) async {
     final error = identity.validate();
     if (error != null) {
@@ -112,6 +112,7 @@ class NativeMlsCrypto implements MlsGroupCrypto, MlsPersistentCrypto {
       'user_id': identity.userId,
       'device_id': identity.deviceId,
       'group_id': groupId,
+      'expected_member_identities': keyPackages.map((package) => package.userId + ':' + package.deviceId).toList(),
       'key_packages_hex': keyPackages
           .map((keyPackage) => keyPackage.keyPackageHex)
           .toList(),
@@ -137,7 +138,7 @@ class NativeMlsCrypto implements MlsGroupCrypto, MlsPersistentCrypto {
   @override
   Future<GroupCommitBundle> removeMembers(
     String groupId,
-    List<String> memberUserIds,
+    List<String> memberIdentities,
   ) async {
     final identity = _requireIdentity();
     final stateStore = _requireStateStore();
@@ -148,10 +149,10 @@ class NativeMlsCrypto implements MlsGroupCrypto, MlsPersistentCrypto {
       'user_id': identity.userId,
       'device_id': identity.deviceId,
       'group_id': groupId,
-      'member_user_ids': memberUserIds,
+      'member_identities': memberIdentities,
     });
     final removed =
-        (response['removed_user_ids'] as List?)
+        (response['removed_member_identities'] as List?)
             ?.map((item) => item.toString())
             .toList() ??
         const <String>[];
@@ -163,7 +164,7 @@ class NativeMlsCrypto implements MlsGroupCrypto, MlsPersistentCrypto {
         (response['commit_wire_hex'] ?? '').toString(),
         MlsMessageKind.commit,
       ),
-      removedUserIds: removed,
+      removedMemberIdentities: removed,
       priorMemberIdentities: (response['prior_member_identities'] as List)
           .cast<String>(),
       createdAtMillis: (response['created_at_millis'] as num).toInt(),
@@ -210,6 +211,12 @@ class NativeMlsCrypto implements MlsGroupCrypto, MlsPersistentCrypto {
     final members = (response['member_identities'] as List?)
         ?.map((item) => item.toString())
         .toList();
+    final sender = response['sender_member_identity'] as String?;
+    if (response['status'] == 'applied' && response['message_kind'] != 'unknown') {
+      if (sender == null || !RegExp(r'^[^:]+:[0-9a-f]{64}$').hasMatch(sender)) {
+        throw StateError('OpenMLS实际发送者缺失或无效');
+      }
+    }
     return GroupInbound(
       groupId: (response['group_id'] ?? wire.conversationId).toString(),
       kind: GroupInboundKind.fromWireName(
@@ -225,6 +232,7 @@ class NativeMlsCrypto implements MlsGroupCrypto, MlsPersistentCrypto {
           ? null
           : _hexToBytes(plaintextHex),
       memberIdentities: members,
+      senderMemberIdentity: sender,
       committed: response['committed'] == true,
     );
   }

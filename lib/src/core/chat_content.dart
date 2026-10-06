@@ -4,7 +4,7 @@ import 'basic_content.dart';
 import 'chat_message.dart';
 import 'media_content.dart';
 
-/// TataChatSDK display-neutral content model. Wire encoding and validation are owned here.
+/// SDK展示无关内容；唯一媒体合同由严格MLS描述编解码验证。
 final class ChatContent {
   const ChatContent({
     required this.kind,
@@ -19,7 +19,13 @@ final class ChatContent {
     this.blurhash,
     this.packId,
     this.stickerId,
-    this.cipherKey,
+    this.attachmentChatEpoch,
+    this.attachmentGroupId,
+    this.attachmentWelcome,
+    this.attachmentMemberIdentities,
+    this.attachmentSenderMemberIdentity,
+    this.attachmentChunkCount,
+    this.plainSha256,
     this.cipherByteSize,
     this.cipherSha256,
   });
@@ -42,7 +48,13 @@ final class ChatContent {
     required String fileName,
     required String mime,
     required int byteSize,
-    required String cipherKey,
+    required int attachmentChatEpoch,
+    required String attachmentGroupId,
+    required String attachmentWelcome,
+    required List<String> attachmentMemberIdentities,
+    required String attachmentSenderMemberIdentity,
+    required int attachmentChunkCount,
+    required String plainSha256,
     required int cipherByteSize,
     required String cipherSha256,
     int? width,
@@ -59,7 +71,13 @@ final class ChatContent {
     height: height,
     durationMs: durationMs,
     blurhash: blurhash,
-    cipherKey: cipherKey,
+    attachmentChatEpoch: attachmentChatEpoch,
+    attachmentGroupId: attachmentGroupId,
+    attachmentWelcome: attachmentWelcome,
+    attachmentMemberIdentities: attachmentMemberIdentities,
+    attachmentSenderMemberIdentity: attachmentSenderMemberIdentity,
+    attachmentChunkCount: attachmentChunkCount,
+    plainSha256: plainSha256,
     cipherByteSize: cipherByteSize,
     cipherSha256: cipherSha256,
   );
@@ -76,7 +94,13 @@ final class ChatContent {
   final String? blurhash;
   final String? packId;
   final String? stickerId;
-  final String? cipherKey;
+  final int? attachmentChatEpoch;
+  final String? attachmentGroupId;
+  final String? attachmentWelcome;
+  final List<String>? attachmentMemberIdentities;
+  final String? attachmentSenderMemberIdentity;
+  final int? attachmentChunkCount;
+  final String? plainSha256;
   final int? cipherByteSize;
   final String? cipherSha256;
 
@@ -114,11 +138,13 @@ final class ChatPayloadCodec {
         height: content.height,
         durationMs: content.durationMs,
         blurhash: content.blurhash,
-        cipherKey: _decodeFixedBase64Url(
-          content.cipherKey ?? '',
-          field: 'cipher_key',
-          expectedBytes: 32,
-        ),
+        attachmentChatEpoch: content.attachmentChatEpoch ?? -1,
+        attachmentGroupId: content.attachmentGroupId ?? '',
+        attachmentWelcome: _decodeWire(content.attachmentWelcome ?? ''),
+        attachmentMemberIdentities: content.attachmentMemberIdentities ?? const [],
+        attachmentSenderMemberIdentity: content.attachmentSenderMemberIdentity ?? '',
+        attachmentChunkCount: content.attachmentChunkCount ?? 0,
+        plainSha256: _decodeHex(content.plainSha256 ?? '', field: 'plain_sha256', expectedBytes: 32),
         cipherByteSize: content.cipherByteSize ?? 0,
         cipherSha256: _decodeHex(
           content.cipherSha256 ?? '',
@@ -176,7 +202,13 @@ final class ChatPayloadCodec {
     height: content.height,
     durationMs: content.durationMs,
     blurhash: content.blurhash,
-    cipherKey: _encodeWire(content.cipherKey),
+    attachmentChatEpoch: content.attachmentChatEpoch,
+    attachmentGroupId: content.attachmentGroupId,
+    attachmentWelcome: _encodeWire(content.attachmentWelcome),
+    attachmentMemberIdentities: content.attachmentMemberIdentities,
+    attachmentSenderMemberIdentity: content.attachmentSenderMemberIdentity,
+    attachmentChunkCount: content.attachmentChunkCount,
+    plainSha256: _encodeHex(content.plainSha256),
     cipherByteSize: content.cipherByteSize,
     cipherSha256: _encodeHex(content.cipherSha256),
   );
@@ -225,18 +257,6 @@ List<int> _decodeWire(String encoded) {
   } on Object {
     throw const FormatException('chat payload is not valid base64url');
   }
-}
-
-List<int> _decodeFixedBase64Url(
-  String encoded, {
-  required String field,
-  required int expectedBytes,
-}) {
-  final bytes = _decodeWire(encoded);
-  if (bytes.length != expectedBytes) {
-    throw FormatException('$field has an invalid length');
-  }
-  return bytes;
 }
 
 List<int> _decodeHex(

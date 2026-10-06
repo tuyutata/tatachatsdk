@@ -75,7 +75,7 @@ void main() {
     account.complete(
       const ChatRuntimeAccount(
         hostIndex: 0,
-        keyDomain: 'example',
+        bindingScope: 'example',
         userId: 'user',
         bindingRevision: 1,
         accountId: 'account',
@@ -148,8 +148,6 @@ class _Host implements ChatRuntimeHost {
   final Completer<ChatRuntimeAccount?>? account;
   int reads = 0;
   @override
-  ChatStorageKeyProvider get keyProvider => _Keys();
-  @override
   Future<ChatRuntimeAccount?> currentAccount({
     String? expectedAccountId,
   }) async {
@@ -162,8 +160,3 @@ class _Host implements ChatRuntimeHost {
       throw StateError('unexpected host operation');
 }
 
-class _Keys implements ChatStorageKeyProvider {
-  @override
-  dynamic noSuchMethod(Invocation invocation) =>
-      throw StateError('unexpected key operation');
-}

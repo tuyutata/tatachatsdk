@@ -38,7 +38,6 @@ dependencies:
   saver_gallery: 5.1.0
   shared_preferences: ^2.5.5
   crypto: 3.0.7
-  cryptography: ^2.9.0
   fixnum: ^1.1.1
   ffi: 2.2.0
   flutter:

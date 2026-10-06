@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package chat.protocol;
 
-// Encrypted attachment metadata carried inside the MLS mailbox.
+// 普通MLS聊天消息内的附件公开协议描述，不携带应用密钥。
 message MediaDescriptor {
   string attachment_id = 1;
   string file_name = 2;
@@ -12,13 +12,19 @@ message MediaDescriptor {
   uint32 height = 6;
   uint32 duration_ms = 7;
   string blurhash = 8;
-  bytes cipher_key = 9;
+  reserved 9;
   uint64 cipher_byte_size = 10;
   bytes cipher_sha256 = 11;
+  string attachment_group_id = 12;
+  bytes attachment_welcome = 13;
+  repeated string attachment_member_identities = 14;
+  string attachment_sender_member_identity = 15;
+  uint32 attachment_chunk_count = 16;
+  bytes plain_sha256 = 17;
+  uint64 attachment_chat_epoch = 18;
 }
 
-// Fields 16-19 do not overlap BasicPayload fields 1-3. Receivers can reject
-// the wrong payload family without a parallel version or discriminator field.
+// 媒体oneof使用16至19，与基本载荷1至3互斥；未知字段与非规范编码必须拒绝。
 message MediaPayload {
   oneof content {
     MediaDescriptor image = 16;

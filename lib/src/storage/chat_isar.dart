@@ -1,7 +1,6 @@
+import 'system_protected_storage.dart';
 import 'dart:async';
-import 'dart:io';
 
-import 'package:flutter/services.dart';
 import 'package:isar_community/isar.dart';
 
 import 'isar_core_bootstrap.dart';
@@ -24,11 +23,10 @@ class ChatConversationEntity {
   )
   late String ownerUserId;
 
-  /// 只标识该条密文由哪个 finalized 绑定版本产生，不参与会话归属或唯一键。
-  /// 钱包换绑但没有此前账户签名时，新账户据此跳过无法认证的此前密文。
+  /// 标识当前 finalized 授权绑定版本，不参与会话归属或唯一键。
   late int bindingRevision;
 
-  /// 加密该条密文时 user ID 链上绑定的账户；不是聊天身份主键。
+  /// 当前 user ID 链上绑定的账户；不是聊天身份主键。
   late String accountId;
 
   /// 会话 ID，对应 MLS group id。
@@ -40,9 +38,8 @@ class ChatConversationEntity {
 
   late String title;
 
-  /// 会话摘要**密文**(AES-256-GCM,`ChatStorageKeyPurpose.chat` 子钥,AAD 绑 conversationId)。
-  /// 手机磁盘上不得出现聊天明文;解密边界收敛在 `ChatStore` 一层。
-  late String lastMessageCipher;
+  /// 系统保护数据库内的会话摘要，不另设应用加密密钥。
+  late String lastMessageSummary;
 
   @Index()
   late int lastUpdatedAtMillis;
@@ -54,14 +51,8 @@ class ChatConversationEntity {
   String? conversationKind;
 }
 
-/// Chat 消息本地记录。
-///
-/// `messageBytesHex` 保存完整 EncryptedMessage Protobuf bytes(其正文本身已由 MLS
-/// 端到端加密,故不再叠一层本地加密),便于重试和排查;**解出来的正文只以
-/// [plaintextCipher] 密文形式落盘**,绝不上传 TataChatServer 或近场 transport。
-/// 用户刚点击发送、尚未取得网络/MLS 上下文时也复用本表：`messageId` 以
-/// `pending:` 开头且 `messageBytesHex` 为空，正文仍由 [plaintextCipher] 加密；
-/// 生成正式消息后在同一事务中用正式行替换，禁止恢复仅存在内存的消息真值。
+/// Chat 消息本地记录。正文及索引保存于 SDK 系统保护数据库；网络仅传 MLS 密文。
+/// pending 行在发送前保存真实载荷，正式 MLS 消息和重试队列在同一事务提交。
 @collection
 class ChatMessageEntity {
   Id id = Isar.autoIncrement;
@@ -70,10 +61,10 @@ class ChatMessageEntity {
   @Index(composite: [CompositeIndex('messageId')], unique: true, replace: true)
   late String ownerUserId;
 
-  /// 只标识该条密文由哪个 finalized 绑定版本产生，不参与消息归属或唯一键。
+  /// 标识当前 finalized 授权绑定版本，不参与消息归属或唯一键。
   late int bindingRevision;
 
-  /// 加密该条密文时 user ID 链上绑定的账户；不是聊天身份主键。
+  /// 当前 user ID 链上绑定的账户；不是聊天身份主键。
   late String accountId;
 
   late String messageId;
@@ -88,15 +79,10 @@ class ChatMessageEntity {
   late String messageKind;
   late String deliveryState;
 
-  /// 正文**密文**(AES-256-GCM,`ChatStorageKeyPurpose.chat` 子钥,AAD 绑 messageId)。
-  /// 解密边界收敛在 `ChatStore`,UI 与业务层拿到的仍是明文对象。
-  String? plaintextCipher;
+  /// 唯一目标载荷 JSON，由系统文件保护边界保护。
+  String? payloadJson;
 
-  /// 搜索用 **HMAC 分词索引**(`ChatStorageKeyPurpose.chatIndex` 子钥)。
-  ///
-  /// 存的是去重后的字符 bigram 的 HMAC-SHA256 截断值,**绝不保存明文 token**。
-  /// 截断会带来假阳性,故索引只负责收窄候选,`ChatStore` 解密后必须再验一次
-  /// 真实子串,保证搜索结果正确。
+  /// 去重字符 bigram；命中后必须复核真实子串顺序。
   @Index(type: IndexType.value)
   List<String> searchTokens = const <String>[];
 
@@ -283,29 +269,6 @@ class ChatGroupPendingCommitEntity {
   late int createdAtMillis;
 }
 
-/// 聊天账户换绑时使用的一次性交接清单。
-///
-/// 清单与聊天密文同属 Chat 域，禁止放回钱包数据库或通用 KV。提交成功后立即删除。
-@collection
-class ChatAccountHandoverEntity {
-  Id id = Isar.autoIncrement;
-
-  @Index(unique: true, replace: true)
-  late String handoverKey;
-
-  @Index()
-  late String ownerUserId;
-
-  late int sourceBindingRevision;
-  late String sourceAccountId;
-  late int targetBindingRevision;
-  late String targetAccountId;
-
-  /// 由 ChatStore 生成的规范 JSON：只含绑定事实、稳定标识、本地行 ID、来源密文
-  /// 指纹及目标 chatIndex 子钥 MAC；不得保存明文、目标密文或搜索 token。
-  late String manifestJson;
-}
-
 /// Chat 当前 finalized 绑定的持久写入门闩。
 ///
 /// 本表只保存公开绑定事实和单调代次，不保存任何私钥、明文或密文。所有 Chat 写入都必须
@@ -322,7 +285,7 @@ class ChatBindingFenceEntity {
   /// 当前 active binding；cleared 且从未激活时允许为空。
   int? bindingRevision;
   String? accountId;
-  String? keyDomain;
+  String? bindingScope;
 
   /// 单调代次。任何 binding 切换或终态清除都必须在同一事务内推进。
   late int generation;
@@ -330,21 +293,7 @@ class ChatBindingFenceEntity {
   /// `active` 或 `cleared`。普通写入只接受 active。
   late String fenceState;
 
-  /// 已完成 stage、尚未 commit 的目标 binding。generation 与当前 binding 共用。
-  int? pendingBindingRevision;
-  String? pendingAccountId;
-  String? pendingKeyDomain;
 
-  /// 最近一次真正完成的 handover 收据。只有 commit 推进 fence 的同一事务能写入；
-  /// 重复 commit 必须精确命中 source/target/generation，不能把直接 activate target
-  /// 或普通 converge 误判为已完成交接。
-  int? completedSourceBindingRevision;
-  String? completedSourceAccountId;
-  String? completedSourceKeyDomain;
-  int? completedTargetBindingRevision;
-  String? completedTargetAccountId;
-  String? completedTargetKeyDomain;
-  int? completedGeneration;
 }
 
 enum _ChatIsarLifecycle { active, closing, closed }
@@ -403,7 +352,6 @@ class ChatIsar {
         ChatGroupEntitySchema,
         ChatGroupMemberEntitySchema,
         ChatGroupPendingCommitEntitySchema,
-        ChatAccountHandoverEntitySchema,
         ChatBindingFenceEntitySchema,
       ];
 
@@ -444,6 +392,7 @@ class ChatIsar {
   Future<T> read<T>(Future<T> Function(Isar isar) action) {
     return _enqueue(() async {
       final isar = await db();
+      await _verifySystemProtection();
       return action(isar);
     });
   }
@@ -454,7 +403,10 @@ class ChatIsar {
   Future<T> writeTxn<T>(Future<T> Function(Isar isar) action) {
     return _enqueue(() async {
       final isar = await db();
-      return isar.writeTxn<T>(() => action(isar));
+      await _verifySystemProtection();
+      final result = await isar.writeTxn<T>(() => action(isar));
+      await _verifySystemProtection();
+      return result;
     });
   }
 
@@ -567,6 +519,9 @@ class ChatIsar {
   Future<Isar> _open() async {
     await IsarCoreBootstrap.ensureTestCoreInitialized();
 
+    final directory = IsarCoreBootstrap.isFlutterTest
+        ? await IsarCoreBootstrap.resolveDirectory()
+        : (await ChatSystemProtectedStorage.prepare()).path;
     final existing = Isar.getInstance('tatachat_sdk_chat');
     if (existing != null && existing.isOpen) {
       try {
@@ -579,27 +534,26 @@ class ChatIsar {
         existing.chatGroupEntitys;
         existing.chatGroupMemberEntitys;
         existing.chatGroupPendingCommitEntitys;
-        existing.chatAccountHandoverEntitys;
         existing.chatBindingFenceEntitys;
       } catch (error) {
         // 同名实例只能来自当前目标 schema。禁止关闭后重开来掩盖不完整集合，
         // 否则其它持有者仍可能继续使用另一套 collection 视图。
         throw StateError('已打开的 ChatIsar 不是当前完整 schema：$error');
       }
-      await _excludeIosChatFilesFromBackup();
+      await _verifySystemProtection();
       return existing;
     }
 
     final opened = await Isar.open(
       _schemas,
       name: 'tatachat_sdk_chat',
-      directory: await IsarCoreBootstrap.resolveDirectory(),
+      directory: directory,
     );
     try {
       // Isar文件创建后由SDK自有iOS插件设置并回读备份排除属性；宿主不注册该方法。
       // 失败时不能把
       // 可能进入 iCloud Backup 的数据库作为可用 Chat 状态返回。
-      await _excludeIosChatFilesFromBackup();
+      await _verifySystemProtection();
       return opened;
     } catch (_) {
       await opened.close();
@@ -607,13 +561,9 @@ class ChatIsar {
     }
   }
 
-  static const MethodChannel _securityChannel = MethodChannel(
-    'tatachat_sdk/security',
-  );
-
-  static Future<void> _excludeIosChatFilesFromBackup() async {
-    if (!Platform.isIOS || IsarCoreBootstrap.isFlutterTest) return;
-    await _securityChannel.invokeMethod<void>('excludeChatDataFromBackup');
+  static Future<void> _verifySystemProtection() async {
+    if (IsarCoreBootstrap.isFlutterTest) return;
+    await ChatSystemProtectedStorage.prepare();
   }
 
   Future<void> resetForTest() async {

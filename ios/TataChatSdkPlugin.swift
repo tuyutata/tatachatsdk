@@ -40,17 +40,9 @@ public final class TataChatSdkPlugin: NSObject, FlutterPlugin,
         catch { result(FlutterError(code: "mls_storage_unavailable", message: "MLS安全存储不可用", details: nil)) }
         return
       }
-      guard call.method == "excludeChatDataFromBackup" else {
-        result(FlutterMethodNotImplemented)
-        return
-      }
-      do {
-        try Self.excludeChatDataFromBackup()
-        result(nil)
-      } catch {
-        result(FlutterError(
-          code: "chat_backup_exclusion_failed", message: "聊天数据备份排除失败", details: nil))
-      }
+      guard call.method == "prepareDataStorage" else { result(FlutterMethodNotImplemented); return }
+      do { result(try Self.prepareDataStorage()) }
+      catch { result(FlutterError(code: "data_storage_unavailable", message: "SDK系统保护存储不可用", details: nil)) }
     }
   }
 
@@ -119,30 +111,62 @@ public final class TataChatSdkPlugin: NSObject, FlutterPlugin,
     return ["path": target.path, "created": created]
   }
 
-  /// 只处理SDK拥有的聊天路径；设置后回读属性，不能以调用成功替代安全结果。
-  private static func excludeChatDataFromBackup() throws {
+  /// SDK 唯一数据目录；首次解锁后可后台使用，不引入应用包装密钥。
+  private static func prepareDataStorage() throws -> String {
     let manager = FileManager.default
-    guard let support = manager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first,
-          let documents = manager.urls(for: .documentDirectory, in: .userDomainMask).first else {
+    guard let support = manager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
       throw CocoaError(.fileNoSuchFile)
     }
-    let files = try manager.contentsOfDirectory(
-      at: support, includingPropertiesForKeys: [.isSymbolicLinkKey])
-    var paths = files.filter {
-      $0.lastPathComponent == "tatachat_sdk_chat.isar" ||
-        $0.lastPathComponent.hasPrefix("tatachat_sdk_chat.isar.")
+    // 只删除旧 SDK 明确拥有的数据；新目录不迁移旧结构。
+    for name in ["tatachat_sdk_chat.isar", "tatachat_sdk_chat.isar.lock"] {
+      let old = support.resolvingSymlinksInPath().appendingPathComponent(name)
+      try eraseOwnedData(old)
     }
-    guard !paths.isEmpty else { throw CocoaError(.fileNoSuchFile) }
-    let attachments = documents.appendingPathComponent("chat", isDirectory: true)
-    if manager.fileExists(atPath: attachments.path) { paths.append(attachments) }
-    for var path in paths {
-      let resource = try path.resourceValues(forKeys: [.isSymbolicLinkKey])
-      guard resource.isSymbolicLink != true else { throw CocoaError(.fileReadInvalidFileName) }
-      var values = URLResourceValues()
-      values.isExcludedFromBackup = true
-      try path.setResourceValues(values)
-      guard try path.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup == true else {
-        throw CocoaError(.fileWriteUnknown)
+    guard let documents = manager.urls(for: .documentDirectory, in: .userDomainMask).first else {
+      throw CocoaError(.fileNoSuchFile)
+    }
+    try eraseOwnedData(documents.resolvingSymlinksInPath().appendingPathComponent("chat", isDirectory: true))
+    let root = support.resolvingSymlinksInPath().appendingPathComponent("tatachat_sdk_data", isDirectory: true)
+    if !manager.fileExists(atPath: root.path) {
+      try manager.createDirectory(at: root, withIntermediateDirectories: false,
+        attributes: [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication, .posixPermissions: 0o700])
+    }
+    try protectOwnedData(root)
+    return root.path
+  }
+
+  private static func eraseOwnedData(_ url: URL) throws {
+    let manager = FileManager.default
+    guard url.resolvingSymlinksInPath().path == url.path else { throw CocoaError(.fileReadInvalidFileName) }
+    if manager.fileExists(atPath: url.path) {
+      try protectOwnedData(url)
+      try manager.removeItem(at: url)
+    }
+    if manager.fileExists(atPath: url.path) { throw CocoaError(.fileWriteUnknown) }
+  }
+
+  private static func protectOwnedData(_ url: URL) throws {
+    let manager = FileManager.default
+    let resource = try url.resourceValues(forKeys: [.isSymbolicLinkKey, .isDirectoryKey, .isRegularFileKey])
+    guard resource.isSymbolicLink != true, url.resolvingSymlinksInPath().path == url.path,
+          resource.isDirectory == true || resource.isRegularFile == true else {
+      throw CocoaError(.fileReadInvalidFileName)
+    }
+    let permissions = resource.isDirectory == true ? 0o700 : 0o600
+    try manager.setAttributes([.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication,
+        .posixPermissions: permissions], ofItemAtPath: url.path)
+    var protected = url
+    var values = URLResourceValues(); values.isExcludedFromBackup = true
+    try protected.setResourceValues(values)
+    let attributes = try manager.attributesOfItem(atPath: url.path)
+    guard attributes[.protectionKey] as? FileProtectionType == .completeUntilFirstUserAuthentication,
+          (attributes[.posixPermissions] as? NSNumber)?.intValue == permissions,
+          try url.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup == true else {
+      throw CocoaError(.fileWriteUnknown)
+    }
+    if resource.isDirectory == true {
+      for child in try manager.contentsOfDirectory(at: url, includingPropertiesForKeys: nil) {
+        try protectOwnedData(child)
       }
     }
   }

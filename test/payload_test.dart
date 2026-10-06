@@ -61,7 +61,14 @@ void main() {
           height: visual ? 1920 : null,
           durationMs: entry.value.duration,
           blurhash: visual ? 'L6Pj0' : null,
-          cipherKey: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+
+      attachmentChatEpoch: 1,
+      attachmentGroupId: 'attachment:CID-A:' + '11' * 32 + ':' + 'att-1',
+      attachmentWelcome: 'AQID',
+      attachmentMemberIdentities: ['CID-A:' + '11' * 32, 'CID-B:' + '22' * 32],
+      attachmentSenderMemberIdentity: 'CID-A:' + '11' * 32,
+      attachmentChunkCount: ((2048) + 1024 * 1024 - 1) ~/ (1024 * 1024),
+      plainSha256: '00' * 32,
           cipherByteSize: 2084,
           cipherSha256:
               '0000000000000000000000000000000000000000000000000000000000000000',
@@ -80,7 +87,7 @@ void main() {
     }
   });
 
-  test('media metadata and legacy JSON fail closed', () {
+  test('媒体非法描述与非协议JSON拒绝', () {
     expect(
       () => ChatPayloadCodec.encode(
         ChatContent.media(
@@ -90,7 +97,14 @@ void main() {
           mime: 'video/mp4',
           byteSize: 1,
           durationMs: 1000,
-          cipherKey: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+
+      attachmentChatEpoch: 1,
+      attachmentGroupId: 'attachment:CID-A:' + '11' * 32 + ':' + 'voice-1',
+      attachmentWelcome: 'AQID',
+      attachmentMemberIdentities: ['CID-A:' + '11' * 32, 'CID-B:' + '22' * 32],
+      attachmentSenderMemberIdentity: 'CID-A:' + '11' * 32,
+      attachmentChunkCount: ((1) + 1024 * 1024 - 1) ~/ (1024 * 1024),
+      plainSha256: '00' * 32,
           cipherByteSize: 21,
           cipherSha256:
               '1111111111111111111111111111111111111111111111111111111111111111',
@@ -143,7 +157,14 @@ void main() {
       mime: mime,
       byteSize: 1,
       durationMs: durationMs,
-      cipherKey: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+
+      attachmentChatEpoch: 1,
+      attachmentGroupId: 'attachment:CID-A:' + '11' * 32 + ':' + 'a',
+      attachmentWelcome: 'AQID',
+      attachmentMemberIdentities: ['CID-A:' + '11' * 32, 'CID-B:' + '22' * 32],
+      attachmentSenderMemberIdentity: 'CID-A:' + '11' * 32,
+      attachmentChunkCount: ((1) + 1024 * 1024 - 1) ~/ (1024 * 1024),
+      plainSha256: '00' * 32,
       cipherByteSize: 21,
       cipherSha256:
           '2222222222222222222222222222222222222222222222222222222222222222',

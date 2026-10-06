@@ -5,7 +5,6 @@ import 'package:tatachat_sdk/tatachat_sdk.dart';
 
 const _aliceUserId = 'CN220-CTZN2-100000001-2026';
 const _bobUserId = 'CN220-CTZN2-100000002-2026';
-const _cipherKey = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
 const _cipherSha256 =
     '0000000000000000000000000000000000000000000000000000000000000000';
 
@@ -79,8 +78,15 @@ void main() {
           fileName: 'p.jpg',
           mime: 'image/jpeg',
           byteSize: 2048,
-          cipherKey: _cipherKey,
-          cipherByteSize: 16384,
+
+      attachmentChatEpoch: 1,
+      attachmentGroupId: 'attachment:CID-A:' + '11' * 32 + ':' + 'att-1',
+      attachmentWelcome: 'AQID',
+      attachmentMemberIdentities: ['CID-A:' + '11' * 32, 'CID-B:' + '22' * 32],
+      attachmentSenderMemberIdentity: 'CID-A:' + '11' * 32,
+      attachmentChunkCount: ((2048) + 1024 * 1024 - 1) ~/ (1024 * 1024),
+      plainSha256: '00' * 32,
+          cipherByteSize: (2048) + 512,
           cipherSha256: _cipherSha256,
           width: 800,
           height: 600,
@@ -119,8 +125,15 @@ void main() {
           fileName: 'p.jpg',
           mime: 'image/jpeg',
           byteSize: 2048,
-          cipherKey: _cipherKey,
-          cipherByteSize: 16384,
+
+      attachmentChatEpoch: 1,
+      attachmentGroupId: 'attachment:CID-A:' + '11' * 32 + ':' + 'att-2',
+      attachmentWelcome: 'AQID',
+      attachmentMemberIdentities: ['CID-A:' + '11' * 32, 'CID-B:' + '22' * 32],
+      attachmentSenderMemberIdentity: 'CID-A:' + '11' * 32,
+      attachmentChunkCount: ((2048) + 1024 * 1024 - 1) ~/ (1024 * 1024),
+      plainSha256: '00' * 32,
+          cipherByteSize: (2048) + 512,
           cipherSha256: _cipherSha256,
         ),
       );
@@ -149,8 +162,15 @@ void main() {
           fileName: 'clip.mp4',
           mime: 'video/mp4',
           byteSize: 8192,
-          cipherKey: _cipherKey,
-          cipherByteSize: 16384,
+
+      attachmentChatEpoch: 1,
+      attachmentGroupId: 'attachment:CID-A:' + '11' * 32 + ':' + 'att-v',
+      attachmentWelcome: 'AQID',
+      attachmentMemberIdentities: ['CID-A:' + '11' * 32, 'CID-B:' + '22' * 32],
+      attachmentSenderMemberIdentity: 'CID-A:' + '11' * 32,
+      attachmentChunkCount: ((8192) + 1024 * 1024 - 1) ~/ (1024 * 1024),
+      plainSha256: '00' * 32,
+          cipherByteSize: (8192) + 512,
           cipherSha256: _cipherSha256,
           width: 1920,
           height: 1080,
@@ -191,8 +211,15 @@ void main() {
         fileName: 'doc.pdf',
         mime: 'application/pdf',
         byteSize: 4096,
-        cipherKey: _cipherKey,
-        cipherByteSize: 16384,
+
+      attachmentChatEpoch: 1,
+      attachmentGroupId: 'attachment:CID-A:' + '11' * 32 + ':' + 'att-3',
+      attachmentWelcome: 'AQID',
+      attachmentMemberIdentities: ['CID-A:' + '11' * 32, 'CID-B:' + '22' * 32],
+      attachmentSenderMemberIdentity: 'CID-A:' + '11' * 32,
+      attachmentChunkCount: ((4096) + 1024 * 1024 - 1) ~/ (1024 * 1024),
+      plainSha256: '00' * 32,
+        cipherByteSize: (4096) + 512,
         cipherSha256: _cipherSha256,
       ),
     );
@@ -221,8 +248,15 @@ void main() {
         fileName: 'voice.m4a',
         mime: 'audio/mp4',
         byteSize: 2048,
-        cipherKey: _cipherKey,
-        cipherByteSize: 16384,
+
+      attachmentChatEpoch: 1,
+      attachmentGroupId: 'attachment:CID-A:' + '11' * 32 + ':' + 'att-audio',
+      attachmentWelcome: 'AQID',
+      attachmentMemberIdentities: ['CID-A:' + '11' * 32, 'CID-B:' + '22' * 32],
+      attachmentSenderMemberIdentity: 'CID-A:' + '11' * 32,
+      attachmentChunkCount: ((2048) + 1024 * 1024 - 1) ~/ (1024 * 1024),
+      plainSha256: '00' * 32,
+        cipherByteSize: (2048) + 512,
         cipherSha256: _cipherSha256,
         durationMs: 9200,
       ),
@@ -273,7 +307,14 @@ void main() {
         fileName: 'big.jpg',
         mime: 'image/jpeg',
         byteSize: _TestMediaLimitPolicy.maxBytes + 1,
-        cipherKey: _cipherKey,
+
+      attachmentChatEpoch: 1,
+      attachmentGroupId: 'attachment:CID-A:' + '11' * 32 + ':' + 'att-big',
+      attachmentWelcome: 'AQID',
+      attachmentMemberIdentities: ['CID-A:' + '11' * 32, 'CID-B:' + '22' * 32],
+      attachmentSenderMemberIdentity: 'CID-A:' + '11' * 32,
+      attachmentChunkCount: ((_TestMediaLimitPolicy.maxBytes + 1) + 1024 * 1024 - 1) ~/ (1024 * 1024),
+      plainSha256: '00' * 32,
         cipherByteSize: _TestMediaLimitPolicy.maxBytes + 1024,
         cipherSha256: _cipherSha256,
       ),

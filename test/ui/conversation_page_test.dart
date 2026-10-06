@@ -29,14 +29,8 @@ void main() {
 }
 
 class _Host implements ChatRuntimeHost {
-  @override
-  final ChatStorageKeyProvider keyProvider = _StorageKeyProvider();
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
-class _StorageKeyProvider implements ChatStorageKeyProvider {
-  @override
-  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
-}

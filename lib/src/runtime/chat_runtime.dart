@@ -5,7 +5,6 @@ import 'dart:math';
 
 import 'package:crypto/crypto.dart' as crypto_hash;
 import 'package:flutter/foundation.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../attachment/vault.dart';
@@ -14,11 +13,13 @@ import '../core/chat_message.dart';
 import '../core/chat_scope.dart';
 import '../group/model.dart';
 import '../mls/mls_boundary.dart';
+import '../mls/mls_attachment.dart';
 import '../mls/mls_group_boundary.dart';
+import '../mls/mls_contact_sync.dart';
 import '../mls/mls_native.dart';
 import '../mls/mls_state_store.dart';
 import '../protocol/message.dart';
-import '../storage/chat_crypto.dart';
+import '../storage/system_protected_storage.dart';
 import '../storage/chat_store.dart';
 import '../storage/models.dart';
 import '../storage/records.dart';
@@ -33,11 +34,16 @@ typedef MlsStateStoreFactory = Future<MlsStateStore> Function(String userId);
 
 enum ChatPersistentWipeState { none, pending, complete }
 
+/// 原附件受众失效是本次动作终态，不进入网络重试或重新加密。
+class _AttachmentAudienceChanged implements Exception {
+  const _AttachmentAudienceChanged();
+}
+
 /// TataChatSDK 使用的中性宿主账户快照。
 class ChatRuntimeAccount {
   const ChatRuntimeAccount({
     required this.hostIndex,
-    required this.keyDomain,
+    required this.bindingScope,
     required this.userId,
     required this.bindingRevision,
     required this.accountId,
@@ -45,16 +51,15 @@ class ChatRuntimeAccount {
   });
 
   final int hostIndex;
-  final String keyDomain;
+  final String bindingScope;
   final String userId;
   final int bindingRevision;
   final String accountId;
   final String displayName;
 }
 
-/// 宿主只注入身份、用途钥、权益、平台推送和短期 TataChatServer 凭证。
+/// 宿主只注入公开身份、权益、平台推送和短期 TataChatServer 凭证。
 abstract interface class ChatRuntimeHost {
-  ChatStorageKeyProvider get keyProvider;
   ChatPushBridge get push;
   ChatMediaLimitPolicy get mediaLimits;
 
@@ -1189,13 +1194,14 @@ class _ChatBindingFencedMlsCrypto
   final ChatRuntimeCore _runtime;
   final ChatBindingFenceToken _bindingToken;
   final MlsGroupCrypto _delegate;
+  static final Object _messageGuardZoneKey=Object();
 
   Future<T> _run<T>(Future<T> Function() operation) =>
       _runtime._runBindingFileMutation(_bindingToken, operation);
 
   @override
   Future<T> withMessage<T>(String messageId, Future<T> Function() operation) =>
-      _delegate.withMessage(messageId, operation);
+      runZoned(()=>_delegate.withMessage(messageId,operation),zoneValues:{_messageGuardZoneKey:messageId});
   @override
   Future<void> acknowledgeMessage(String messageId) =>
       _run(() => _delegate.acknowledgeMessage(messageId));
@@ -1228,14 +1234,35 @@ class _ChatBindingFencedMlsCrypto
   @override
   Future<GroupCommitBundle> removeMembers(
     String groupId,
-    List<String> memberUserIds,
-  ) => _run(() => _delegate.removeMembers(groupId, memberUserIds));
+    List<String> memberIdentities,
+  ) => _run(() => _delegate.removeMembers(groupId, memberIdentities));
 
   @override
   Future<MlsWireMessage> groupCreateMessage(
     String groupId,
     List<int> plaintext,
-  ) => _run(() => _delegate.groupCreateMessage(groupId, plaintext));
+  ) => _run(() async {
+    // 正常聊天媒体控制的名册复核与密文生成在同一当前绑定短屏障内。
+    // 附件二进制块归独立组，不能把其头部当作普通聊天载荷解析。
+    if(!groupId.startsWith('attachment:')) {
+      ChatContent? content;
+      try { content=ChatPayloadCodec.decode(utf8.decode(plaintext)); } on FormatException { }
+      if(content?.isMedia==true) {
+        final id=Zone.current[_messageGuardZoneKey] as String?;
+        if(id==null) throw StateError('附件控制缺少事务标识');
+        final saved=await _delegate.pendingMessageResults(id);
+        if(saved.any((r)=>(r['result'] as Map)['application_wire_hex'] is String)) {
+          return _delegate.groupCreateMessage(groupId,plaintext);
+        }
+        final state=await _delegate.groupState(groupId);
+        if(state.epoch!=content!.attachmentChatEpoch ||
+            jsonEncode([...state.memberIdentities]..sort())!=jsonEncode(content.attachmentMemberIdentities)) {
+          throw const _AttachmentAudienceChanged();
+        }
+      }
+    }
+    return _delegate.groupCreateMessage(groupId,plaintext);
+  });
 
   @override
   Future<GroupInbound> groupProcess(MlsWireMessage wire) =>
@@ -1308,6 +1335,7 @@ class ChatRuntimeAccountContext {
     required this.bindingToken,
     required this.deviceId,
     required this.localKeyPackage,
+    this.stateStore,
     required this.crypto,
     required this.transport,
   });
@@ -1316,6 +1344,7 @@ class ChatRuntimeAccountContext {
   final ChatBindingFenceToken bindingToken;
   final String deviceId;
   final MlsKeyPackage localKeyPackage;
+  final MlsStateStore? stateStore;
   final MlsGroupCrypto crypto;
   final ChatServiceTransport transport;
   late final _RetryableAsyncDisposer _disposer = _RetryableAsyncDisposer(
@@ -1358,7 +1387,7 @@ class _ChatSignalContext {
 ///
 /// 页面层不直接操作 OpenMLS、TataChatServer 瞬时转发、近场通道和 Isar。
 /// 读取宿主账户事实，先离线准备SDK自有MLS身份，再建立聊天连接。
-/// 连接时请求宿主短期服务凭证；其余存储用途钥的移除由后续步骤处理。
+/// 连接时请求宿主短期服务凭证，本地文件由SDK自己的系统保护存储承载。
 class ChatRuntimeCore {
   ChatRuntimeCore({
     required ChatRuntimeHost host,
@@ -1372,7 +1401,7 @@ class ChatRuntimeCore {
     bool receiveOnly = false,
     @visibleForTesting bool debugUseIndependentUserMutationGate = false,
   }) : _host = host,
-       _store = store ?? ChatStore(crypto: ChatCrypto(host.keyProvider)),
+       _store = store ?? ChatStore(),
        _preferences = preferences,
        _stateStoreFactory = stateStoreFactory,
        _cryptoFactory = cryptoFactory,
@@ -1390,7 +1419,7 @@ class ChatRuntimeCore {
            ? _ChatUserMutationGate()
            : _sharedUserMutationGate,
        _documentsDirectoryProvider =
-           documentsDirectoryProvider ?? getApplicationDocumentsDirectory {
+           documentsDirectoryProvider ?? ChatSystemProtectedStorage.prepare {
     if ((stateStoreFactory != null || cryptoFactory != null) &&
         !Platform.environment.containsKey('FLUTTER_TEST')) {
       throw UnsupportedError('MLS存储与密码替身仅允许合成测试');
@@ -1619,47 +1648,19 @@ class ChatRuntimeCore {
   static Future<void> _purgePlainAttachmentsInUserDirectory(
     Directory userDirectory,
   ) async {
-    final byBinding = Directory(
-      '${userDirectory.path}${Platform.pathSeparator}by_binding',
+    final plain = Directory(
+      '${userDirectory.path}${Platform.pathSeparator}attachments'
+      '${Platform.pathSeparator}${AttachmentVault.plainDirName}',
     );
-    final byBindingType = await FileSystemEntity.type(
-      byBinding.path,
-      followLinks: false,
-    );
-    if (byBindingType == FileSystemEntityType.notFound) return;
-    if (byBindingType != FileSystemEntityType.directory) {
-      throw StateError('Chat 明文清扫 binding 根路径类型异常');
+    final type = await FileSystemEntity.type(plain.path, followLinks: false);
+    if (type == FileSystemEntityType.notFound) return;
+    if (type != FileSystemEntityType.directory ||
+        await plain.resolveSymbolicLinks() != plain.absolute.path) {
+      throw StateError('Chat 临时附件路径类型异常');
     }
-    await for (final revision in byBinding.list(followLinks: false)) {
-      if (await FileSystemEntity.type(revision.path, followLinks: false) !=
-          FileSystemEntityType.directory) {
-        throw StateError('Chat 明文清扫发现非目录 binding revision');
-      }
-      await for (final account in Directory(
-        revision.path,
-      ).list(followLinks: false)) {
-        if (await FileSystemEntity.type(account.path, followLinks: false) !=
-            FileSystemEntityType.directory) {
-          throw StateError('Chat 明文清扫发现非目录 account binding');
-        }
-        final plain = Directory(
-          '${account.path}${Platform.pathSeparator}attachments'
-          '${Platform.pathSeparator}${AttachmentVault.plainDirName}',
-        );
-        final plainType = await FileSystemEntity.type(
-          plain.path,
-          followLinks: false,
-        );
-        if (plainType == FileSystemEntityType.notFound) continue;
-        if (plainType != FileSystemEntityType.directory) {
-          throw StateError('Chat 明文附件路径类型异常');
-        }
-        await plain.delete(recursive: true);
-        if (await FileSystemEntity.type(plain.path, followLinks: false) !=
-            FileSystemEntityType.notFound) {
-          throw StateError('Chat 明文附件目录清除失败');
-        }
-      }
+    await plain.delete(recursive: true);
+    if (await FileSystemEntity.type(plain.path, followLinks: false) != FileSystemEntityType.notFound) {
+      throw StateError('Chat 临时附件目录清除失败');
     }
   }
 
@@ -1682,7 +1683,7 @@ class ChatRuntimeCore {
     Future<Directory> Function()? documentsDirectoryProvider,
   ) {
     return _ChatCrossIsolateCoordinator.resolveDocumentsRoot(
-      documentsDirectoryProvider ?? getApplicationDocumentsDirectory,
+      documentsDirectoryProvider ?? ChatSystemProtectedStorage.prepare,
     );
   }
 
@@ -1698,7 +1699,7 @@ class ChatRuntimeCore {
     if (running != null) return running;
 
     final provider =
-        documentsDirectoryProvider ?? getApplicationDocumentsDirectory;
+        documentsDirectoryProvider ?? ChatSystemProtectedStorage.prepare;
     final instances = <ChatRuntimeCore>[];
     for (final reference in _liveInstances) {
       final instance = reference.target;
@@ -2010,7 +2011,7 @@ class ChatRuntimeCore {
     ]);
 
     // 第三阶段才关闭 context：此时没有 action 会继续使用 NativeMlsCrypto、
-    // state key。flight 晚到 context 与此前失败的 pending 一并重试。
+    // 运行资源。flight 晚到 context 与此前失败的 pending 一并重试。
     final contexts = <ChatRuntimeAccountContext>{
       ...initialContexts,
       ..._contextsPendingDisposal,
@@ -2156,11 +2157,14 @@ class ChatRuntimeCore {
           await _ChatCrossIsolateCoordinator.resolveDocumentsRoot(
             _documentsDirectoryProvider,
           );
+      if (!Platform.environment.containsKey('FLUTTER_TEST')) {
+        await ChatSystemProtectedStorage.verify(documentsRoot);
+      }
       final lease = await _ChatCrossIsolateCoordinator.acquireUserMutationLease(
         documentsRoot,
-        // 文件目录本身按 safe path 分区；跨 isolate lease 必须使用同一物理分区键，
+        // 文件目录本身按 CID 的 UTF-8 十六进制分区；跨 isolate lease 必须使用同一物理分区键，
         // 否则启动静态清扫无法从目录名恢复原 user ID，也无法与运行态互斥。
-        _safePath(userId),
+        _ownerPath(userId),
       );
       final scope = _ChatUserLeaseScope(userId, bindingToken);
       try {
@@ -2178,6 +2182,9 @@ class ChatRuntimeCore {
         scope.stopAccepting();
         if (bindingToken != null && validateTokenAfter) {
           await _store.validateBindingFenceToken(bindingToken);
+        }
+        if (!Platform.environment.containsKey('FLUTTER_TEST')) {
+          await ChatSystemProtectedStorage.verify(documentsRoot);
         }
         await lease.validateHealthy();
         return result;
@@ -2198,7 +2205,7 @@ class ChatRuntimeCore {
       left.ownerUserId == right.ownerUserId &&
       left.bindingRevision == right.bindingRevision &&
       left.accountId == right.accountId &&
-      left.keyDomain == right.keyDomain &&
+      left.bindingScope == right.bindingScope &&
       left.generation == right.generation;
 
   Future<ChatBindingFenceToken> _convergeBindingFence(
@@ -2405,26 +2412,7 @@ class ChatRuntimeCore {
     return (accountId: account.accountId, userId: account.userId);
   }
 
-  Future<List<int>> _attachmentKeyForBinding(
-    ChatBindingFenceToken bindingToken,
-  ) async {
-    if (bindingToken.accountId.isEmpty) {
-      throw StateError('无身份账户，无法读取附件加密密钥');
-    }
-    return (await _host.keyProvider.readDataKeysForBinding(
-      ChatDataBinding(
-        keyDomain: bindingToken.keyDomain,
-        userId: bindingToken.ownerUserId,
-        bindingRevision: bindingToken.bindingRevision,
-        accountId: bindingToken.accountId,
-      ),
-      const <({ChatStorageKeyPurpose purpose, String? context})>[
-        (purpose: ChatStorageKeyPurpose.attachment, context: null),
-      ],
-    )).single;
-  }
-
-  /// 短命明文目录：解密出来的附件只落这里，与密文缓存物理分开。
+  /// 系统保护的短命明文工作目录；最终缓存位于同CID附件目录。
   Future<Directory> _plainDirectoryForBinding(
     ChatBindingFenceToken bindingToken,
   ) async {
@@ -2436,7 +2424,7 @@ class ChatRuntimeCore {
     );
   }
 
-  /// 附件密文缓存以 user ID 为属主，并按 finalized 绑定版本与账户隔离加密上下文。
+  /// 系统保护附件缓存只归当前user_id；公开绑定围栏复核文件读写，不重加密。
   Future<Directory> _attachmentDirectoryForToken(
     ChatBindingFenceToken bindingToken,
   ) {
@@ -2476,417 +2464,9 @@ class ChatRuntimeCore {
     );
   }
 
-  /// 在 user ID 宿主账户换绑签名前预演全部 Chat 私有数据交接。
-  ///
-  /// 聊天正文暂存在 Isar 的目标密文清单；附件逐块重加密；MLS 状态由 Rust 原生
-  /// 加密边界重封。三者都保留正式的此前密文，且不会生成任何明文文件。
-  Future<void> stageAccountHandover({
-    required ChatDataBinding source,
-    required ChatDataBinding target,
-  }) async {
-    _validateHandover(source, target);
-    await _invalidateAccountContext(source.accountId);
-    await _invalidateAccountContext(target.accountId);
-    ChatBindingFenceToken sourceToken;
-    try {
-      sourceToken = await _store.captureBindingFenceToken(source);
-    } on StateError {
-      // stage 返回前崩溃会留下 pending 但没有文件完成收据；明确重试必须复用
-      // 同一 source/target generation 的 handover 专属能力。
-      sourceToken = await _store.captureStagedAccountHandoverFenceToken(
-        source: source,
-        target: target,
-      );
-    }
-    return _runUserFileMutation(
-      userId: source.userId,
-      operation: () async {
-        await _stageAccountHandover(source: source, target: target);
-        await _store.validateStagedAccountHandoverFence(
-          source: source,
-          target: target,
-          sourceToken: sourceToken,
-        );
-      },
-    );
-  }
-
-  Future<void> _stageAccountHandover({
-    required ChatDataBinding source,
-    required ChatDataBinding target,
-  }) async {
-    _ensureActive();
-    _validateHandover(source, target);
-    List<Uint8List>? sourceKeys;
-    List<Uint8List>? targetKeys;
-    try {
-      sourceKeys = await _host.keyProvider.deriveDataKeysForBindingHandover(
-        source,
-        const <({ChatStorageKeyPurpose purpose, String? context})>[
-          (purpose: ChatStorageKeyPurpose.attachment, context: null),
-        ],
-      );
-      targetKeys = await _host.keyProvider.deriveDataKeysForBindingHandover(
-        target,
-        const <({ChatStorageKeyPurpose purpose, String? context})>[
-          (purpose: ChatStorageKeyPurpose.attachment, context: null),
-        ],
-      );
-      if (sourceKeys.length != 1 || targetKeys.length != 1) {
-        throw StateError('Chat 文件交接用途密钥数量不完整');
-      }
-      _ensureActive();
-      await _store.stageAccountHandover(source: source, target: target);
-      final sourceDirectory = await _bindingDirectory(
-        userId: source.userId,
-        bindingRevision: source.bindingRevision,
-        accountId: source.accountId,
-      );
-      final targetDirectory = await _bindingDirectory(
-        userId: target.userId,
-        bindingRevision: target.bindingRevision,
-        accountId: target.accountId,
-      );
-      final sourceExists = await sourceDirectory.exists();
-      final targetExists = await targetDirectory.exists();
-      if (sourceExists && targetExists) {
-        throw StateError('Chat 新旧绑定目录同时存在，禁止重试 stage');
-      }
-      final existingReceipt = await _locateFileHandoverReceipt(
-        sourceDirectory: sourceDirectory,
-        targetDirectory: targetDirectory,
-        target: target,
-      );
-      if (existingReceipt != null) {
-        final receipt = await _readFileHandoverReceipt(
-          marker: existingReceipt,
-          source: source,
-          target: target,
-        );
-        if (receipt.state == _ChatFileHandoverState.committing) {
-          throw StateError('Chat 文件交接已经进入 committing，只能重试 commit');
-        }
-        if (!sourceExists ||
-            targetExists ||
-            existingReceipt.parent.path != sourceDirectory.path) {
-          throw StateError('Chat staged 文件 receipt 不在来源 binding 目录');
-        }
-        // 模糊重试只能认证并复核此前完成快照，绝不再次运行文件重封、覆盖 receipt
-        // 或把 committing 状态降回 staged。
-        await _requireStagedFileHandoverSnapshot(
-          sourceDirectory: sourceDirectory,
-          source: source,
-          target: target,
-          receipt: receipt,
-        );
-        return;
-      }
-      if (targetExists) {
-        throw StateError('Chat 目标 binding 目录已存在但缺少 committing receipt');
-      }
-      final attachmentDirectory = await _attachmentDirectoryForBinding(
-        userId: source.userId,
-        bindingRevision: source.bindingRevision,
-        accountId: source.accountId,
-      );
-      // Store pending 已经形成跨实例阻断；写完成收据前严格清除全部明文与 `.part`。
-      await AttachmentVault.purgeTransientDirectoriesForHandover(
-        attachmentDirectory,
-      );
-      await AttachmentVault.stageAccountHandover(
-        attachmentDirectory: attachmentDirectory,
-        handoverId: _handoverId(target),
-        currentKey: sourceKeys[0],
-        newKey: targetKeys[0],
-      );
-      await AttachmentVault.requireNoTransientDirectoriesForHandover(
-        attachmentDirectory,
-      );
-      await _writeFileHandoverReceipt(
-        sourceDirectory: sourceDirectory,
-        source: source,
-        target: target,
-
-        state: _ChatFileHandoverState.staged,
-      );
-    } finally {
-      for (final key in <Uint8List>[...?sourceKeys, ...?targetKeys]) {
-        key.fillRange(0, key.length, 0);
-      }
-    }
-  }
-
-  /// finalized 后提交全部 Chat 目标密文；每个子步骤均可幂等重试。
-  Future<void> commitAccountHandover({
-    required ChatDataBinding source,
-    required ChatDataBinding target,
-  }) async {
-    _validateHandover(source, target);
-    await _invalidateAccountContext(source.accountId);
-    await _invalidateAccountContext(target.accountId);
-    ChatBindingFenceToken fenceToken;
-    var alreadyCompleted = false;
-    try {
-      fenceToken = await _store.captureStagedAccountHandoverFenceToken(
-        source: source,
-        target: target,
-      );
-    } on StateError {
-      // 崩溃可能发生在 Store 已推进 target fence、调用者尚未收到成功之后。
-      // 只有精确 target token 能进入幂等复核，任意其它状态仍会直接失败。
-      fenceToken = await _store.captureCompletedAccountHandoverFenceToken(
-        source: source,
-        target: target,
-      );
-      alreadyCompleted = true;
-    }
-    return _runUserFileMutation(
-      userId: source.userId,
-      operation: () async {
-        if (alreadyCompleted) {
-          await _store.validateCompletedAccountHandoverFence(
-            source: source,
-            target: target,
-            targetToken: fenceToken,
-          );
-        } else {
-          await _store.validateStagedAccountHandoverFence(
-            source: source,
-            target: target,
-            sourceToken: fenceToken,
-          );
-        }
-        await _commitAccountHandover(
-          source: source,
-          target: target,
-          alreadyCompleted: alreadyCompleted,
-        );
-      },
-    );
-  }
-
-  Future<void> _commitAccountHandover({
-    required ChatDataBinding source,
-    required ChatDataBinding target,
-    required bool alreadyCompleted,
-  }) async {
-    _ensureActive();
-    _validateHandover(source, target);
-    final sourceDirectory = await _bindingDirectory(
-      userId: source.userId,
-      bindingRevision: source.bindingRevision,
-      accountId: source.accountId,
-    );
-    final targetDirectory = await _bindingDirectory(
-      userId: target.userId,
-      bindingRevision: target.bindingRevision,
-      accountId: target.accountId,
-    );
-    {
-      final sourceExists = await sourceDirectory.exists();
-      final targetExists = await targetDirectory.exists();
-      if (sourceExists && targetExists) {
-        throw StateError('Chat 新旧绑定目录同时存在，禁止猜测覆盖');
-      }
-      final marker = await _locateFileHandoverReceipt(
-        sourceDirectory: sourceDirectory,
-        targetDirectory: targetDirectory,
-        target: target,
-      );
-      if (marker == null && !alreadyCompleted) {
-        throw StateError('Chat 文件域缺少认证 stage-complete receipt，禁止提交');
-      }
-      if (marker != null) {
-        final receipt = await _readFileHandoverReceipt(
-          marker: marker,
-          source: source,
-          target: target,
-        );
-        if (receipt.state == _ChatFileHandoverState.staged) {
-          if (marker.parent.path != sourceDirectory.path || !sourceExists) {
-            throw StateError('Chat staged 文件 receipt 不在来源 binding 目录');
-          }
-          await _requireStagedFileHandoverSnapshot(
-            sourceDirectory: sourceDirectory,
-            source: source,
-            target: target,
-            receipt: receipt,
-          );
-          await _writeFileHandoverReceiptFromSnapshot(
-            directory: sourceDirectory,
-            source: source,
-            target: target,
-            receipt: receipt,
-
-            state: _ChatFileHandoverState.committing,
-          );
-        }
-        final activeDirectory = sourceExists
-            ? sourceDirectory
-            : targetDirectory;
-        await AttachmentVault.requireNoTransientDirectoriesForHandover(
-          Directory('${activeDirectory.path}/attachments'),
-        );
-      }
-      if (sourceExists) {
-        await AttachmentVault.commitAccountHandover(
-          attachmentDirectory: Directory('${sourceDirectory.path}/attachments'),
-          handoverId: _handoverId(target),
-        );
-        await _moveBindingDirectory(source, target);
-      }
-      // 文件域先完整切到 target，最后一个 Store 事务才迁移全部密文、删除 manifest
-      // 并推进 fence generation。此前任何失败都保留 committing receipt 供明确重试。
-      await _store.commitAccountHandover(source: source, target: target);
-      final targetToken = await _store.captureBindingFenceToken(target);
-      await _store.validateBindingFenceToken(targetToken);
-      await _deleteFileHandoverReceipt(
-        directory: targetDirectory,
-        target: target,
-      );
-      await _deleteFileHandoverReceipt(
-        directory: sourceDirectory,
-        target: target,
-      );
-      _blockedAccountIds.remove(target.accountId);
-    }
-  }
-
-  Future<void> discardAccountHandover({
-    required ChatDataBinding source,
-    required ChatDataBinding target,
-  }) async {
-    _validateHandover(source, target);
-    await _invalidateAccountContext(source.accountId);
-    await _invalidateAccountContext(target.accountId);
-    ChatBindingFenceToken sourceToken;
-    var alreadyDiscarded = false;
-    try {
-      sourceToken = await _store.captureStagedAccountHandoverFenceToken(
-        source: source,
-        target: target,
-      );
-    } on StateError {
-      sourceToken = await _store.captureBindingFenceToken(source);
-      alreadyDiscarded = true;
-    }
-    return _runUserFileMutation(
-      userId: source.userId,
-      operation: () async {
-        if (!alreadyDiscarded) {
-          await _store.validateStagedAccountHandoverFence(
-            source: source,
-            target: target,
-            sourceToken: sourceToken,
-          );
-        } else {
-          // 重复 discard 只允许 source 已恢复为普通 active/no-pending。
-          await _store.validateBindingFenceToken(sourceToken);
-        }
-        await _discardAccountHandover(source: source, target: target);
-      },
-    );
-  }
-
-  Future<void> _discardAccountHandover({
-    required ChatDataBinding source,
-    required ChatDataBinding target,
-  }) async {
-    _ensureActive();
-    _validateHandover(source, target);
-    final sourceDirectory = await _bindingDirectory(
-      userId: source.userId,
-      bindingRevision: source.bindingRevision,
-      accountId: source.accountId,
-    );
-    final targetDirectory = await _bindingDirectory(
-      userId: target.userId,
-      bindingRevision: target.bindingRevision,
-      accountId: target.accountId,
-    );
-    if (await targetDirectory.exists()) {
-      throw StateError('Chat 文件交接已经进入目标目录，只能重试 commit');
-    }
-    {
-      final marker = await _locateFileHandoverReceipt(
-        sourceDirectory: sourceDirectory,
-        targetDirectory: targetDirectory,
-        target: target,
-      );
-      if (marker != null) {
-        final receipt = await _readFileHandoverReceipt(
-          marker: marker,
-          source: source,
-          target: target,
-        );
-        if (receipt.state == _ChatFileHandoverState.committing) {
-          throw StateError('Chat 文件交接已开始 commit，禁止回退为 source');
-        }
-        await _requireStagedFileHandoverSnapshot(
-          sourceDirectory: sourceDirectory,
-          source: source,
-          target: target,
-          receipt: receipt,
-        );
-      }
-      await AttachmentVault.discardAccountHandover(
-        attachmentDirectory: Directory('${sourceDirectory.path}/attachments'),
-        handoverId: _handoverId(target),
-      );
-      await _deleteFileHandoverReceipt(
-        directory: sourceDirectory,
-        target: target,
-      );
-      // pending fence 必须覆盖全部文件回滚窗口；文件域清理成功后才与 manifest
-      // 在同一 Store 事务中一并清除。
-      await _store.discardAccountHandover(target);
-      _blockedAccountIds.remove(source.accountId);
-      _blockedAccountIds.remove(target.accountId);
-    }
-  }
-
-  /// 没有当前账户签名的换绑完成后隔离不可继承的 Chat 状态。
-  ///
-  /// 绑定分区隔离附件和历史正文；MLS身份始终属于同一用户设备。
-  /// 本方法清理不能跨绑定续用的队列和镜像，不重置MLS身份。
-  Future<void> isolateInaccessibleBinding({
-    required ChatDataBinding previous,
-    required ChatDataBinding current,
-  }) async {
-    _validateHandover(previous, current);
-    await _invalidateAccountContext(previous.accountId);
-    await _invalidateAccountContext(current.accountId);
-    ChatBindingFenceToken fenceToken;
-    var alreadyIsolated = false;
-    try {
-      fenceToken = await _store.captureBindingFenceToken(previous);
-    } on StateError {
-      fenceToken = await _store.captureBindingFenceToken(current);
-      alreadyIsolated = true;
-    }
-    await _runUserFileMutation(
-      userId: previous.userId,
-      operation: () async {
-        _ensureActive();
-        await _store.validateBindingFenceToken(fenceToken);
-        if (alreadyIsolated &&
-            (fenceToken.bindingRevision != current.bindingRevision ||
-                fenceToken.accountId != current.accountId)) {
-          throw StateError('Chat 隔离完成 token 与 current binding 不一致');
-        }
-        await _store.isolateInaccessibleBinding(
-          previous: previous,
-          current: current,
-        );
-        final currentToken = await _store.captureBindingFenceToken(current);
-        await _store.validateBindingFenceToken(currentToken);
-        _blockedAccountIds.remove(current.accountId);
-      },
-    );
-  }
-
-  /// finalized 当前绑定完成端内交接后，关闭非当前账户上下文并建立当前 Chat 设备。
-  Future<void> convergeFinalizedBinding(ChatDataBinding current) async {
+  /// finalized 后收口旧账户上下文，推进公开绑定代次并保留同CID历史。
+  /// MLS身份与状态不因账户换绑而重建，附件文件继续归同一CID。
+  Future<void> convergeFinalizedBinding(ChatBinding current) async {
     current.validate();
     final accountIds = <String>{
       current.accountId,
@@ -2917,401 +2497,8 @@ class ChatRuntimeCore {
     final root = await _documentsDirectoryProvider();
     _ensureActive();
     return Directory(
-      '${root.path}/chat/by_user/${_safePath(userId)}/by_binding/'
-      '$bindingRevision/${_safePath(accountId)}',
+      '${root.path}/chat/by_user/${_ownerPath(userId)}',
     );
-  }
-
-  /// 交接密文全部提交后，原子把文件树切换到新绑定目录。
-  Future<void> _moveBindingDirectory(
-    ChatDataBinding source,
-    ChatDataBinding target,
-  ) async {
-    final sourceDirectory = await _bindingDirectory(
-      userId: source.userId,
-      bindingRevision: source.bindingRevision,
-      accountId: source.accountId,
-    );
-    final targetDirectory = await _bindingDirectory(
-      userId: target.userId,
-      bindingRevision: target.bindingRevision,
-      accountId: target.accountId,
-    );
-    if (!await sourceDirectory.exists()) return;
-    if (await targetDirectory.exists()) {
-      throw StateError('Chat 新绑定目录已存在，禁止覆盖');
-    }
-    await targetDirectory.parent.create(recursive: true);
-    await sourceDirectory.rename(targetDirectory.path);
-  }
-
-  static void _validateHandover(
-    ChatDataBinding source,
-    ChatDataBinding target,
-  ) {
-    source.validate();
-    target.validate();
-    if (source.keyDomain != target.keyDomain ||
-        source.userId != target.userId ||
-        target.bindingRevision != source.bindingRevision + 1 ||
-        source.accountId == target.accountId) {
-      throw const FormatException('Chat 换绑交接上下文不合法');
-    }
-  }
-
-  static String _handoverId(ChatDataBinding target) =>
-      '${target.bindingRevision}-${target.accountId.substring(2)}';
-
-  static File _fileHandoverReceiptFile(
-    Directory bindingDirectory,
-    ChatDataBinding target,
-  ) {
-    final identity = jsonEncode(<String, Object>{
-      'genesis_hash': target.keyDomain,
-      'user_number': target.userId,
-      'binding_revision': target.bindingRevision,
-      'account_id': target.accountId,
-    });
-    final digest = crypto_hash.sha256.convert(utf8.encode(identity)).toString();
-    return File(
-      '${bindingDirectory.path}${Platform.pathSeparator}'
-      '.account-handover-$digest.json',
-    );
-  }
-
-  static File _fileHandoverReceiptTempFile(File marker) =>
-      File('${marker.path}.writing');
-
-  @visibleForTesting
-  static String debugFileHandoverReceiptPathForTest({
-    required Directory bindingDirectory,
-    required ChatDataBinding target,
-  }) {
-    if (!Platform.environment.containsKey('FLUTTER_TEST')) {
-      throw UnsupportedError('仅 Flutter 测试允许读取 Chat 文件交接 receipt 路径');
-    }
-    return _fileHandoverReceiptFile(bindingDirectory, target).path;
-  }
-
-  static Map<String, Object> _fileHandoverBindingJson(
-    ChatDataBinding binding,
-  ) => <String, Object>{
-    'genesis_hash': binding.keyDomain,
-    'user_number': binding.userId,
-    'binding_revision': binding.bindingRevision,
-    'account_id': binding.accountId,
-  };
-
-  static String _fileHandoverPayloadJson({
-    required _ChatFileHandoverState state,
-    required ChatDataBinding source,
-    required ChatDataBinding target,
-    required List<_ChatFileHandoverInventoryItem> files,
-  }) => jsonEncode(<String, Object>{
-    'state': state.name,
-    'source': _fileHandoverBindingJson(source),
-    'target': _fileHandoverBindingJson(target),
-    'files': files.map((item) => item.toJson()).toList(growable: false),
-  });
-
-  static String _relativeFileHandoverPath(Directory root, String path) {
-    final prefix = '${root.path}${Platform.pathSeparator}';
-    if (!path.startsWith(prefix)) {
-      throw StateError('Chat 文件交接清单路径越界');
-    }
-    final relative = path
-        .substring(prefix.length)
-        .replaceAll(Platform.pathSeparator, '/');
-    if (relative.isEmpty ||
-        relative.startsWith('/') ||
-        relative
-            .split('/')
-            .any((segment) => segment.isEmpty || segment == '..')) {
-      throw StateError('Chat 文件交接清单相对路径非法');
-    }
-    return relative;
-  }
-
-  static Future<List<_ChatFileHandoverInventoryItem>> _fileHandoverInventory({
-    required Directory bindingDirectory,
-    required ChatDataBinding target,
-  }) async {
-    if (!await bindingDirectory.exists()) {
-      return const <_ChatFileHandoverInventoryItem>[];
-    }
-    final marker = _fileHandoverReceiptFile(bindingDirectory, target);
-    final markerTemp = _fileHandoverReceiptTempFile(marker);
-    final files = <_ChatFileHandoverInventoryItem>[];
-    await for (final entity in bindingDirectory.list(
-      recursive: true,
-      followLinks: false,
-    )) {
-      final type = await FileSystemEntity.type(entity.path, followLinks: false);
-      if (type == FileSystemEntityType.link) {
-        throw StateError('Chat binding 目录含符号链接，禁止账户交接');
-      }
-      if (type != FileSystemEntityType.file) continue;
-      if (entity.path == marker.path || entity.path == markerTemp.path) {
-        continue;
-      }
-      final name = entity.path.split(Platform.pathSeparator).last;
-      if (name.startsWith('.account-handover-') &&
-          (name.endsWith('.json') || name.endsWith('.json.writing'))) {
-        throw StateError('Chat binding 目录存在其它文件交接 receipt');
-      }
-      final file = File(entity.path);
-      final before = await file.stat();
-      final digest = await crypto_hash.sha256.bind(file.openRead()).first;
-      final after = await file.stat();
-      if (before.type != FileSystemEntityType.file ||
-          after.type != FileSystemEntityType.file ||
-          before.size != after.size ||
-          before.modified != after.modified) {
-        throw StateError('Chat 文件交接清单生成期间文件发生变化');
-      }
-      files.add(
-        _ChatFileHandoverInventoryItem(
-          relativePath: _relativeFileHandoverPath(bindingDirectory, file.path),
-          byteSize: after.size,
-          sha256: digest.toString(),
-        ),
-      );
-    }
-    files.sort(
-      (left, right) => left.relativePath.compareTo(right.relativePath),
-    );
-    return List<_ChatFileHandoverInventoryItem>.unmodifiable(files);
-  }
-
-  static Future<void> _writeFileHandoverReceiptBytes({
-    required File marker,
-    required String payloadJson,
-    required ChatDataBinding target,
-  }) async {
-    final temp = _fileHandoverReceiptTempFile(marker);
-    await marker.parent.create(recursive: true);
-    final markerType = await FileSystemEntity.type(
-      marker.path,
-      followLinks: false,
-    );
-    if (markerType != FileSystemEntityType.notFound &&
-        markerType != FileSystemEntityType.file) {
-      throw StateError('Chat 文件交接 receipt 路径类型异常');
-    }
-    final tempType = await FileSystemEntity.type(temp.path, followLinks: false);
-    if (tempType == FileSystemEntityType.file) {
-      await temp.delete();
-    } else if (tempType != FileSystemEntityType.notFound) {
-      throw StateError('Chat 文件交接临时 receipt 路径类型异常');
-    }
-    final protectedStore = await _receiptStore(target.userId);
-    await protectedStore.writeReceipt(_handoverId(target), payloadJson);
-    final bytes = utf8.encode(
-      jsonEncode(<String, String>{'payload_json': payloadJson}),
-    );
-    await temp.create(exclusive: true);
-    if (await FileSystemEntity.type(temp.path, followLinks: false) !=
-        FileSystemEntityType.file) {
-      throw StateError('Chat 文件交接临时 receipt 创建后类型异常');
-    }
-    final handle = await temp.open(mode: FileMode.write);
-    try {
-      await handle.writeFrom(bytes);
-      await handle.flush();
-    } finally {
-      await handle.close();
-    }
-    // 同目录 rename 是唯一发布点：不得先删正式 marker。平台无法替换时直接失败，
-    // 此前正式 marker 仍完整保留，下一次明确重试只清真实 file 类型的 `.writing`。
-    await temp.rename(marker.path);
-    if (await FileSystemEntity.type(marker.path, followLinks: false) !=
-            FileSystemEntityType.file ||
-        await FileSystemEntity.type(temp.path, followLinks: false) !=
-            FileSystemEntityType.notFound) {
-      throw StateError('Chat 文件交接 receipt 原子发布失败');
-    }
-  }
-
-  Future<void> _writeFileHandoverReceipt({
-    required Directory sourceDirectory,
-    required ChatDataBinding source,
-    required ChatDataBinding target,
-    required _ChatFileHandoverState state,
-  }) async {
-    await sourceDirectory.create(recursive: true);
-    final files = await _fileHandoverInventory(
-      bindingDirectory: sourceDirectory,
-      target: target,
-    );
-    final payloadJson = _fileHandoverPayloadJson(
-      state: state,
-      source: source,
-      target: target,
-      files: files,
-    );
-    await _writeFileHandoverReceiptBytes(
-      marker: _fileHandoverReceiptFile(sourceDirectory, target),
-      payloadJson: payloadJson,
-      target: target,
-    );
-  }
-
-  static Future<File?> _locateFileHandoverReceipt({
-    required Directory sourceDirectory,
-    required Directory targetDirectory,
-    required ChatDataBinding target,
-  }) async {
-    final sourceMarker = _fileHandoverReceiptFile(sourceDirectory, target);
-    final targetMarker = _fileHandoverReceiptFile(targetDirectory, target);
-    final sourceType = await FileSystemEntity.type(
-      sourceMarker.path,
-      followLinks: false,
-    );
-    final targetType = await FileSystemEntity.type(
-      targetMarker.path,
-      followLinks: false,
-    );
-    if ((sourceType != FileSystemEntityType.notFound &&
-            sourceType != FileSystemEntityType.file) ||
-        (targetType != FileSystemEntityType.notFound &&
-            targetType != FileSystemEntityType.file)) {
-      throw StateError('Chat 文件交接 receipt 类型异常');
-    }
-    if (sourceType == FileSystemEntityType.file &&
-        targetType == FileSystemEntityType.file) {
-      throw StateError('Chat 新旧绑定目录同时存在文件交接 receipt');
-    }
-    if (sourceType == FileSystemEntityType.file) return sourceMarker;
-    if (targetType == FileSystemEntityType.file) return targetMarker;
-    return null;
-  }
-
-  static Future<_ChatFileHandoverReceipt> _readFileHandoverReceipt({
-    required File marker,
-    required ChatDataBinding source,
-    required ChatDataBinding target,
-  }) async {
-    if (await FileSystemEntity.type(marker.path, followLinks: false) !=
-        FileSystemEntityType.file) {
-      throw StateError('Chat 文件交接 receipt 路径类型异常');
-    }
-    final raw = jsonDecode(await marker.readAsString());
-    if (raw is! Map<String, dynamic> ||
-        raw.keys.toSet().difference(<String>{'payload_json'}).isNotEmpty ||
-        raw.length != 1 ||
-        raw['payload_json'] is! String) {
-      throw const FormatException('Chat 文件交接 receipt 外层结构损坏');
-    }
-    final payloadJson = raw['payload_json'] as String;
-    final protectedStore = await _receiptStore(target.userId);
-    if (!(await protectedStore.readReceipt(
-      _handoverId(target),
-    )).contains(payloadJson)) {
-      throw const FormatException('Chat文件交接收据与受保护记录不一致');
-    }
-    final decoded = jsonDecode(payloadJson);
-    if (decoded is! Map<String, dynamic> ||
-        decoded.length != 4 ||
-        decoded.keys.toSet().difference(<String>{
-          'state',
-          'source',
-          'target',
-          'files',
-        }).isNotEmpty ||
-        jsonEncode(decoded['source']) !=
-            jsonEncode(_fileHandoverBindingJson(source)) ||
-        jsonEncode(decoded['target']) !=
-            jsonEncode(_fileHandoverBindingJson(target))) {
-      throw const FormatException('Chat 文件交接 receipt 绑定结构损坏');
-    }
-    final state = _ChatFileHandoverState.fromName(decoded['state']);
-    final rawFiles = decoded['files'];
-    if (rawFiles is! List) {
-      throw const FormatException('Chat 文件交接 receipt 清单结构损坏');
-    }
-    final files = rawFiles
-        .map((value) => _ChatFileHandoverInventoryItem.fromJson(value))
-        .toList(growable: false);
-    final sortedFiles = List<_ChatFileHandoverInventoryItem>.from(files)
-      ..sort((left, right) => left.relativePath.compareTo(right.relativePath));
-    if (files.map((item) => item.relativePath).toSet().length != files.length ||
-        !listEquals(
-          files.map((item) => item.relativePath).toList(growable: false),
-          sortedFiles.map((item) => item.relativePath).toList(growable: false),
-        )) {
-      throw const FormatException('Chat 文件交接 receipt 清单顺序或唯一性损坏');
-    }
-    return _ChatFileHandoverReceipt(
-      state: state,
-      payloadJson: payloadJson,
-      files: List<_ChatFileHandoverInventoryItem>.unmodifiable(files),
-    );
-  }
-
-  Future<void> _requireStagedFileHandoverSnapshot({
-    required Directory sourceDirectory,
-    required ChatDataBinding source,
-    required ChatDataBinding target,
-    required _ChatFileHandoverReceipt receipt,
-  }) async {
-    if (receipt.state != _ChatFileHandoverState.staged) {
-      throw StateError('Chat 文件交接 receipt 已不是 staged 状态');
-    }
-    final files = await _fileHandoverInventory(
-      bindingDirectory: sourceDirectory,
-      target: target,
-    );
-    final expected = _fileHandoverPayloadJson(
-      state: _ChatFileHandoverState.staged,
-      source: source,
-      target: target,
-      files: files,
-    );
-    if (expected != receipt.payloadJson) {
-      throw StateError('Chat 文件域在 stage-complete receipt 后发生变化');
-    }
-  }
-
-  static Future<void> _writeFileHandoverReceiptFromSnapshot({
-    required Directory directory,
-    required ChatDataBinding source,
-    required ChatDataBinding target,
-    required _ChatFileHandoverReceipt receipt,
-    required _ChatFileHandoverState state,
-  }) {
-    final payloadJson = _fileHandoverPayloadJson(
-      state: state,
-      source: source,
-      target: target,
-      files: receipt.files,
-    );
-    return _writeFileHandoverReceiptBytes(
-      marker: _fileHandoverReceiptFile(directory, target),
-      payloadJson: payloadJson,
-      target: target,
-    );
-  }
-
-  static Future<void> _deleteFileHandoverReceipt({
-    required Directory directory,
-    required ChatDataBinding target,
-  }) async {
-    final marker = _fileHandoverReceiptFile(directory, target);
-    final temp = _fileHandoverReceiptTempFile(marker);
-    for (final file in <File>[marker, temp]) {
-      final type = await FileSystemEntity.type(file.path, followLinks: false);
-      if (type == FileSystemEntityType.notFound) continue;
-      if (type != FileSystemEntityType.file) {
-        throw StateError('Chat 文件交接 receipt 路径类型异常');
-      }
-      await file.delete();
-      if (await FileSystemEntity.type(file.path, followLinks: false) !=
-          FileSystemEntityType.notFound) {
-        throw StateError('Chat 文件交接 receipt 删除后仍存在');
-      }
-    }
-    final protectedStore = await _receiptStore(target.userId);
-    await protectedStore.deleteReceipt(_handoverId(target));
   }
 
   /// 页面、轮询、WebSocket 和发送入口共享的唯一就绪入口。
@@ -3449,7 +2636,7 @@ class ChatRuntimeCore {
     return const <ChatDeliveryResult>[];
   }
 
-  /// 用户点击发送后的第一持久边界。这里只依赖当前 finalized 账户和本机用途钥，
+  /// 用户点击发送后的第一持久边界。这里只依赖当前 finalized 账户和系统保护存储，
   /// 不等待 Firebase、Worker 登录、系统唤醒端点、设备公开钥或 WebSocket。
   Future<String> _savePendingDirectPayload({
     required String peerUserId,
@@ -3611,6 +2798,7 @@ class ChatRuntimeCore {
       conversationId: conversationId,
       attachmentId: attachmentId,
       media: media,
+      peerUserId: peerUserId,
     );
     try {
       await _savePendingDirectPayload(
@@ -3636,52 +2824,145 @@ class ChatRuntimeCore {
         conversationId,
         attachmentId,
       );
-      if (await staged.exists()) await staged.delete();
+      await _runBindingFileMutation(bindingToken, () async {
+        if (await staged.exists()) await staged.delete();
+      });
       rethrow;
     }
   }
 
-  /// 用户点击发送时只生成持久待上传密文，不等待 TataChatServer、encrypted object storage 或接收设备。
-  /// 随机密钥进入本机加密 payload；Worker 与 encrypted object storage 永远收不到明文密钥。
+  /// 按当前聊天设备叶子建立独立附件组；MLS状态和每块文件持久化分开取得短屏障。
   Future<ChatContent> _prepareEncryptedMedia({
     required ChatBindingFenceToken bindingToken,
     required String conversationId,
     required String attachmentId,
     required ChatMediaDraft media,
-  }) async {
-    final random = Random.secure();
-    final transferKey = List<int>.generate(32, (_) => random.nextInt(256));
-    final cipherTarget = await _pendingAttachmentUploadFile(
-      bindingToken,
-      conversationId,
-      attachmentId,
-    );
-    await cipherTarget.parent.create(recursive: true);
+    String? peerUserId,
+  }) => _runRuntimeOperation(() async {
+    final account = await _readAccount(expectedAccountId:bindingToken.accountId);
+    final context = await _readyContext(account);
+    if(context.bindingToken != bindingToken) {
+      await _runBindingFileMutation(bindingToken,() async {});
+    }
+    GroupState audience;
+    if(conversationId.startsWith('grp:')) {
+      audience = await context.crypto.groupState(conversationId);
+    } else {
+      final peer = peerUserId;
+      if(peer==null) throw StateError('附件私聊收件人缺失');
+      final packages = await _resolveKeyPackages(context,peer);
+      audience = await _messageFlow(context).prepareAttachmentAudience(
+        conversationId:conversationId,recipientUserId:peer,
+        senderDeviceId:context.deviceId,keyPackages:packages,messageId:attachmentId,
+      );
+    }
+    final roster=[...audience.memberIdentities]..sort();
+    final self='${context.account.userId}:${context.deviceId}';
+    final packages=<MlsKeyPackage>[];
+    for(final user in userIdsFromMemberIdentities(roster)) {
+      final available = await _resolveKeyPackages(context,user);
+      for(final member in roster.where((m)=>userIdFromMemberIdentity(m)==user && m!=self)) {
+        final matching=available.where((p)=>'${p.userId}:${p.deviceId}'==member).toList();
+        if(matching.length!=1 || !matching.single.lastResort) throw StateError('附件当前设备资格已失效');
+        packages.add(matching.single);
+      }
+    }
+    final engine = await _attachmentEngine(context, requireAudience:() async {
+      final state=await context.crypto.groupState(conversationId);
+      if(state.epoch!=audience.epoch || jsonEncode([...state.memberIdentities]..sort())!=jsonEncode(roster)) {
+        throw StateError('附件创建期间聊天名册已变化');
+      }
+    });
+    final target=await _pendingAttachmentUploadFile(bindingToken,conversationId,attachmentId);
     try {
-      final cipher = await AttachmentVault.sealForTransport(
-        plainSource: File(media.sourcePath),
-        cipherTarget: cipherTarget,
-        key: transferKey,
+      return await engine.seal(
+        attachmentId:attachmentId,byteSize:media.byteSize,source:File(media.sourcePath),
+        target:target,members:roster,keyPackages:packages,
+        contentBuilder:(d)=>ChatContent.media(
+          kind:media.kind,attachmentId:attachmentId,fileName:media.fileName,mime:media.contentType,
+          byteSize:media.byteSize,width:media.width,height:media.height,durationMs:media.durationMs,blurhash:media.blurhash,
+          attachmentChatEpoch:audience.epoch,attachmentGroupId:d.groupId,
+          attachmentWelcome:base64UrlEncode(d.welcome).replaceAll('=',''),
+          attachmentMemberIdentities:d.members,attachmentSenderMemberIdentity:d.sender,
+          attachmentChunkCount:d.chunkCount,plainSha256:d.plainSha256,
+          cipherByteSize:d.cipherByteSize,cipherSha256:d.cipherSha256,
+        ),
       );
-      return ChatContent.media(
-        kind: media.kind,
-        attachmentId: attachmentId,
-        fileName: media.fileName,
-        mime: media.contentType,
-        byteSize: media.byteSize,
-        width: media.width,
-        height: media.height,
-        durationMs: media.durationMs,
-        blurhash: media.blurhash,
-        cipherKey: base64UrlEncode(transferKey).replaceAll('=', ''),
-        cipherByteSize: cipher.byteSize,
-        cipherSha256: cipher.sha256,
-      );
-    } catch (_) {
-      if (await cipherTarget.exists()) await cipherTarget.delete();
-      rethrow;
-    } finally {
-      transferKey.fillRange(0, transferKey.length, 0);
+    } catch(error, stackTrace) {
+      // 名册失效后的清理只复核当前绑定，不再要求已经失效的原聊天名册。
+      // 身份失效则禁止旧令牌写入，准确协议状态仍受七天过期清理约束。
+      try {
+        final cleanup = await _attachmentEngine(context);
+        await cleanup.abort(MlsAttachment.groupId(self,attachmentId));
+      } catch(_) {
+        debugPrint('[ChatTrace] direction=attachment stage=cleanup code=attachment_cleanup_deferred');
+      }
+      try {
+        await _runBindingFileMutation(bindingToken,() async {
+          if(await target.exists()) await target.delete();
+        });
+      } catch(_) {
+        debugPrint('[ChatTrace] direction=attachment stage=cleanup code=attachment_cleanup_deferred');
+      }
+      Error.throwWithStackTrace(error, stackTrace);
+    }
+  });
+
+  Future<MlsAttachment> _attachmentEngine(
+    ChatRuntimeAccountContext context, {Future<void> Function()? requireAudience}
+  ) async => MlsAttachment(
+    crypto:context.crypto,store:context.stateStore ?? (throw StateError('附件MLS存储缺失')),
+    identity:context.identity,protectedRoot:await _attachmentDirectoryForToken(context.bindingToken),
+    mutate:<T>(operation)=>_runBindingFileMutation<T>(context.bindingToken,operation),
+    requireCurrent:() async {
+      _ensureActive();
+      await _runBindingFileMutation(context.bindingToken,() async {});
+      await requireAudience?.call();
+    },
+  );
+
+  /// 上传后和发送控制前复核原聊天epoch/名册与当前设备资格，不扩大原附件收件集合。
+  Future<void> _requireAttachmentAudience(ChatRuntimeAccountContext context,String conversationId,ChatContent content) async {
+    await _runBindingFileMutation(context.bindingToken,() async {});
+    final state=await context.crypto.groupState(conversationId);
+    final members=[...state.memberIdentities]..sort();
+    if(state.epoch!=content.attachmentChatEpoch ||
+        jsonEncode(members)!=jsonEncode(content.attachmentMemberIdentities) ||
+        content.attachmentSenderMemberIdentity!='${context.account.userId}:${context.deviceId}') {
+      throw const _AttachmentAudienceChanged();
+    }
+    final self='${context.account.userId}:${context.deviceId}';
+    for(final user in userIdsFromMemberIdentities(members)) {
+      final packages=await _resolveKeyPackages(context,user);
+      for(final member in members.where((m)=>m!=self && userIdFromMemberIdentity(m)==user)) {
+        if(packages.where((p)=>'${p.userId}:${p.deviceId}'==member && p.lastResort).length!=1) {
+          throw const _AttachmentAudienceChanged();
+        }
+      }
+    }
+    await _runBindingFileMutation(context.bindingToken,() async {});
+  }
+
+  /// 当前绑定内只丢弃准确待发附件；远端清理不持有本机文件屏障。
+  Future<void> _discardPendingAttachment(
+    ChatRuntimeAccountContext context,ChatPendingOutgoingMessage pending,
+  ) async {
+    final content=ChatPayloadCodec.decode(pending.payload);
+    if(!content.isMedia) throw StateError('只能终结准确附件操作');
+    final id=content.attachmentId!;
+    await _store.markPendingOutgoingFailed(
+      bindingToken:context.bindingToken,ownerUserId:context.account.userId,
+      localMessageId:pending.localMessageId,
+    );
+    await _runBindingFileMutation(context.bindingToken,() async {
+      final cipher=await _pendingAttachmentUploadFile(context.bindingToken,pending.conversationId,id);
+      final marker=await _pendingAttachmentUploadedMarker(context.bindingToken,pending.conversationId,id);
+      if(await cipher.exists()) await cipher.delete();
+      if(await marker.exists()) await marker.delete();
+    });
+    try { await context.transport.abortAttachment(id); } catch (_) {
+      // 本机已明确失败且不会重发；远端不透明对象继续受既有七天期限约束。
+      debugPrint('[ChatTrace] direction=attachment stage=cleanup code=attachment_cleanup_deferred');
     }
   }
 
@@ -3949,7 +3230,7 @@ class ChatRuntimeCore {
   }
 
   /// 批量解析媒体在本机缓存中的绝对路径。字节未到达时不入结果，由 UI 显示占位。
-  /// 同一页面批次只解封一次附件用途钥，避免每条媒体重复进入硬件钥通道。
+  /// 同一页面批次共用当前公开绑定和文件操作代次。
   Future<Map<String, String>> resolveCachedMediaPaths({
     required String conversationId,
     required List<ChatContent> contents,
@@ -3962,10 +3243,9 @@ class ChatRuntimeCore {
       final paths = await _runBindingFileMutation(bindingToken, () async {
         final cacheDirectory = await _attachmentDirectoryForToken(bindingToken);
         final plainDirectory = await _plainDirectoryForBinding(bindingToken);
-        final attachmentKey = await _attachmentKeyForBinding(bindingToken);
-        try {
+
           final paths = <String, String>{};
-          // 文件仍逐项执行大小、密文和缓存校验；这里只复用当前批次的短命钥。
+          // 每项只读系统保护缓存，复核当前公开绑定和明文大小。
           for (final content in contents) {
             final attachmentId = content.attachmentId ?? '';
             if (!content.isMedia || attachmentId.isEmpty) continue;
@@ -3977,7 +3257,6 @@ class ChatRuntimeCore {
                 contentType: content.mime ?? 'application/octet-stream',
                 clearByteSize: content.byteSize ?? 0,
                 cacheDirectory: cacheDirectory,
-                attachmentKey: attachmentKey,
                 plainDirectory: plainDirectory,
               );
               final path = cached?.filePath;
@@ -3987,9 +3266,7 @@ class ChatRuntimeCore {
             }
           }
           return Map<String, String>.unmodifiable(paths);
-        } finally {
-          attachmentKey.fillRange(0, attachmentKey.length, 0);
-        }
+
       });
       // 控制消息已经是本机真值；缓存缺失的附件在独立任务中补取，不能挡住本次文字首屏。
       for (final content in contents) {
@@ -4010,7 +3287,7 @@ class ChatRuntimeCore {
     required String conversationId,
     required String controlPlaintext,
   }) {
-    return _runWithReadyBinding(
+    return _runWithReadyContext(
       (context) =>
           _downloadAttachment(context, conversationId, controlPlaintext),
     );
@@ -4031,7 +3308,6 @@ class ChatRuntimeCore {
       conversationId: conversationId,
       controlPlaintext: controlPlaintext,
       cacheDirectory: cacheDirectory,
-      attachmentKey: await _attachmentKeyForBinding(bindingToken),
       plainDirectory: await _plainDirectoryForBinding(bindingToken),
     );
   }
@@ -4077,7 +3353,7 @@ class ChatRuntimeCore {
         final userDirectory = Directory(
           '${documentsRoot.path}${Platform.pathSeparator}chat'
           '${Platform.pathSeparator}by_user'
-          '${Platform.pathSeparator}${_safePath(userId)}',
+          '${Platform.pathSeparator}${_ownerPath(userId)}',
         ).absolute;
         if (userDirectory.path == userDirectory.parent.path ||
             !userDirectory.path.startsWith(
@@ -4152,7 +3428,7 @@ class ChatRuntimeCore {
     });
   }
 
-  /// 把本机用途钥密文待发送行按会话顺序转换为正式 MLS Message。
+  /// 把本机系统保护存储中的待发送行按会话顺序转换为正式 MLS Message。
   ///
   /// 直聊附件的 encrypted object storage 上传不是 MLS 操作，必须先移出会话门闩独立执行；否则一张
   /// 上传缓慢的图片会把同会话后续文字、表情和贴纸全部堵在本机 pending。附件
@@ -4199,6 +3475,10 @@ class ChatRuntimeCore {
       try {
         await _sendPendingOutgoing(context, item);
       } on Object catch (error) {
+        if(error is _AttachmentAudienceChanged) {
+          await _discardPendingAttachment(context,item);
+          continue;
+        }
         debugPrint(
           '[ChatTrace] direction=outbound stage=message '
           'code=${chatSdkDiagnosticCode(error)}',
@@ -4279,9 +3559,13 @@ class ChatRuntimeCore {
           recipientUserId: pending.recipientUserId,
           conversationId: pending.conversationId,
         );
-      }).catchError((Object _) {
+      }).catchError((Object error) async {
         _mediaBytesInFlight.remove(attachmentId);
         _mediaUploadBusy = false;
+        if(error is _AttachmentAudienceChanged) {
+          await _discardPendingAttachment(context,pending);
+          return;
+        }
         final failures = (_mediaUploadFailures[attachmentId] ?? 0) + 1;
         _mediaUploadFailures[attachmentId] = failures;
         final delay = switch (failures) {
@@ -4314,6 +3598,11 @@ class ChatRuntimeCore {
     );
   }
 
+  /// 对象授权取原附件成员，排除本设备；同CID其他设备仍需下载权限。
+  List<String> _attachmentRecipientUserIds(ChatContent content) =>
+      userIdsFromMemberIdentities(content.attachmentMemberIdentities!
+        .where((member) => member != content.attachmentSenderMemberIdentity));
+
   Future<void> _uploadPendingDirectAttachment(
     ChatRuntimeAccountContext context,
     ChatPendingOutgoingMessage pending,
@@ -4335,28 +3624,33 @@ class ChatRuntimeCore {
       pending.conversationId,
       attachmentId,
     );
-    if (await uploaded.exists()) return;
+    if (await uploaded.exists()) {
+      await _requireAttachmentAudience(context,pending.conversationId,content);
+      return;
+    }
     if (!await staged.exists() || await staged.length() != cipherByteSize) {
       throw StateError('Chat 本地待上传附件密文缺失');
     }
     try {
       await context.transport.uploadEncryptedAttachment(
         attachmentId: attachmentId,
-        recipientUserIds: <String>[pending.recipientUserId],
+        recipientUserIds: _attachmentRecipientUserIds(content),
         cipherFile: staged,
         cipherByteSize: cipherByteSize,
         cipherSha256: cipherSha256,
       );
-      await uploaded.writeAsString('uploaded', flush: true);
+      await _requireAttachmentAudience(context,pending.conversationId,content);
+      await _runBindingFileMutation(context.bindingToken,
+        () => uploaded.writeAsString('uploaded', flush: true));
     } catch (_) {
       // transport 是上传事务唯一所有者，失败时已完成一次 abort；运行态禁止
       // 再次中止同一 attachmentId，避免重复 encrypted object storage/D1 写入。
       rethrow;
     }
     try {
-      await staged.delete();
+      await _runBindingFileMutation(context.bindingToken, () => staged.delete());
     } catch (_) {
-      // 上传标记已经持久成立；密文缓存残留由会话删除统一清理。
+      // 上传标记已持久成立；原帧文件残留由准确会话清理。
     }
   }
 
@@ -4376,7 +3670,7 @@ class ChatRuntimeCore {
       return;
     }
     final flow = _messageFlow(context, scheduleDelivery: false);
-    final recipientKeyPackages = await context.transport.resolveKeyPackages(
+    final recipientKeyPackages = content.isMedia ? const <MlsKeyPackage>[] : await context.transport.resolveKeyPackages(
       pending.recipientUserId,
     );
 
@@ -4414,7 +3708,6 @@ class ChatRuntimeCore {
             flow: flow,
             pending: pending,
             content: content,
-            recipientKeyPackages: recipientKeyPackages,
           );
       }
     }
@@ -4427,7 +3720,6 @@ class ChatRuntimeCore {
     required ChatFlow<ChatBindingFenceToken> flow,
     required ChatPendingOutgoingMessage pending,
     required ChatContent content,
-    required List<MlsKeyPackage> recipientKeyPackages,
   }) async {
     final attachmentId = content.attachmentId ?? '';
     if (attachmentId.isEmpty) {
@@ -4441,17 +3733,21 @@ class ChatRuntimeCore {
     if (!await uploaded.exists()) {
       throw StateError('Chat 附件密文仍在后台上传');
     }
+    if(!(await context.crypto.pendingMessageResults(pending.localMessageId)).any((r)=>(r['result'] as Map)['application_wire_hex'] is String)) {
+      await _requireAttachmentAudience(context,pending.conversationId,content);
+    }
     await flow.sendMediaControl(
       conversationId: pending.conversationId,
       senderUserId: context.account.userId,
       recipientUserId: pending.recipientUserId,
       senderDeviceId: context.deviceId,
-      recipientKeyPackages: recipientKeyPackages,
       media: content,
       pendingLocalMessageId: pending.localMessageId,
       createdAtMillis: pending.createdAtMillis,
     );
-    if (await uploaded.exists()) await uploaded.delete();
+    await _runBindingFileMutation(context.bindingToken, () async {
+      if (await uploaded.exists()) await uploaded.delete();
+    });
   }
 
   Future<void> _sendPendingGroupAttachment(
@@ -4466,10 +3762,7 @@ class ChatRuntimeCore {
       throw StateError('Chat 群待发送附件密文元数据无效');
     }
     final flow = _groupFlow(context);
-    final recipients = await flow.recipientUserIds(
-      groupId: pending.conversationId,
-      senderUserId: context.account.userId,
-    );
+    final recipients = _attachmentRecipientUserIds(content);
     final staged = await _pendingAttachmentUploadFile(
       context.bindingToken,
       pending.conversationId,
@@ -4492,18 +3785,21 @@ class ChatRuntimeCore {
           cipherByteSize: cipherByteSize,
           cipherSha256: cipherSha256,
         );
-        await uploaded.writeAsString('uploaded', flush: true);
+        await _requireAttachmentAudience(context,pending.conversationId,content);
+        await _runBindingFileMutation(context.bindingToken,
+          () => uploaded.writeAsString('uploaded', flush: true));
       } catch (_) {
-        await context.transport
-            .abortAttachment(attachmentId)
-            .catchError((Object _) {});
+        // 上传事务负责网络失败中止；受众变化由准确待发动作终结入口清理。
         rethrow;
       }
       try {
-        await staged.delete();
+        await _runBindingFileMutation(context.bindingToken, () => staged.delete());
       } catch (_) {
         // 上传标记是远端成功真值，缓存清理留给会话删除统一收口。
       }
+    }
+    if(!(await context.crypto.pendingMessageResults(pending.localMessageId)).any((r)=>(r['result'] as Map)['application_wire_hex'] is String)) {
+      await _requireAttachmentAudience(context,pending.conversationId,content);
     }
     await flow.sendGroupAttachmentControl(
       groupId: pending.conversationId,
@@ -4513,7 +3809,9 @@ class ChatRuntimeCore {
       pendingLocalMessageId: pending.localMessageId,
       createdAtMillis: pending.createdAtMillis,
     );
-    if (await uploaded.exists()) await uploaded.delete();
+    await _runBindingFileMutation(context.bindingToken, () async {
+      if (await uploaded.exists()) await uploaded.delete();
+    });
   }
 
   Future<({int sent, bool retryNeeded})> _retryQueuedMessages(
@@ -4565,7 +3863,7 @@ class ChatRuntimeCore {
     return (sent: sent, retryNeeded: retryNeeded);
   }
 
-  /// 接收端下载、验哈希和解密成功后，把明文重新写入账户绑定的本机加密缓存。
+  /// 接收端完成MLS及摘要核验后，把明文流式写入当前CID系统保护缓存。
   Future<void> _saveReceivedAttachmentToCacheMutation({
     required ChatBindingFenceToken bindingToken,
     required String conversationId,
@@ -4585,7 +3883,6 @@ class ChatRuntimeCore {
       byteSize: byteSize,
       maxByteSize: _host.mediaLimits.limitForMime(contentType),
       cacheDirectory: cacheDirectory,
-      attachmentKey: await _attachmentKeyForBinding(bindingToken),
       plainDirectory: await _plainDirectoryForBinding(bindingToken),
     );
   }
@@ -4609,7 +3906,6 @@ class ChatRuntimeCore {
       byteSize: byteSize,
       moveSource: false,
       cacheDirectory: cacheDirectory,
-      attachmentKey: await _attachmentKeyForBinding(bindingToken),
       plainDirectory: await _plainDirectoryForBinding(bindingToken),
     );
   }
@@ -5134,6 +4430,7 @@ class ChatRuntimeCore {
         bindingToken: bindingToken,
         deviceId: deviceId,
         localKeyPackage: localKeyPackage,
+        stateStore: stateStore,
         crypto: fencedCrypto,
         transport: transport,
       );
@@ -5272,9 +4569,9 @@ class ChatRuntimeCore {
     return account;
   }
 
-  static ChatDataBinding _bindingForAccount(ChatRuntimeAccount account) =>
-      ChatDataBinding(
-        keyDomain: account.keyDomain,
+  static ChatBinding _bindingForAccount(ChatRuntimeAccount account) =>
+      ChatBinding(
+        bindingScope: account.bindingScope,
         userId: account.userId,
         bindingRevision: account.bindingRevision,
         accountId: account.accountId,
@@ -5376,77 +4673,52 @@ class ChatRuntimeCore {
     return task;
   }
 
+  /// 下载的是不透明MLS帧文件；已消费块保留保护前缀，重试只能续用原结果。
   Future<void> _cacheIncomingCloudAttachment(
-    ChatRuntimeAccountContext context,
-    String conversationId,
-    ChatContent content,
+    ChatRuntimeAccountContext context, String conversationId, ChatContent content,
   ) async {
-    if (!content.isMedia) return;
-    final attachmentId = content.attachmentId ?? '';
-    final cacheDirectory = await _attachmentDirectoryForToken(
-      context.bindingToken,
+    if(!content.isMedia) return;
+    final attachmentId=content.attachmentId!;
+    final directory=await _attachmentDirectoryForToken(context.bindingToken);
+    final cachePath=ChatFlow.attachmentCachePath(
+      cacheDirectory:directory,conversationId:conversationId,
+      attachmentId:attachmentId,fileName:content.fileName!,
     );
-    final cachePath = ChatFlow.attachmentCachePath(
-      cacheDirectory: cacheDirectory,
-      conversationId: conversationId,
-      attachmentId: attachmentId,
-      fileName: content.fileName ?? 'attachment.bin',
-    );
-    if (await AttachmentVault.hasCipher(cachePath)) {
+    final engine=await _attachmentEngine(context);
+    if(await AttachmentVault.hasCache(cachePath)) {
+      final file=File(cachePath);
+      if(await file.length()!=content.byteSize || await MlsAttachment.digest(file)!=content.plainSha256) {
+        throw StateError('附件最终缓存损坏，不能重新推进接收链');
+      }
+      // 缓存提交后被中断时补终态；此动作幂等，不重新处理Welcome。
+      await engine.finish(content.attachmentGroupId!);
       await context.transport.acknowledgeAttachment(attachmentId);
       return;
     }
-    final encodedKey = content.cipherKey ?? '';
-    final cipherKey = base64Url.decode(
-      encodedKey.padRight((encodedKey.length + 3) ~/ 4 * 4, '='),
-    );
-    if (cipherKey.length != 32) {
-      throw const FormatException('Chat 附件传输密钥不合法');
-    }
-    final tempDirectory = Directory('${cacheDirectory.path}/.tmp');
-    // 首次接收附件时临时目录尚不存在；必须在 encrypted object storage 流打开目标文件之前创建，
-    // 否则每次自动重试和用户点击重试都会在 openWrite() 前重复失败。
-    await tempDirectory.create(recursive: true);
-    final cipherFile = File(
-      '${tempDirectory.path}/${_safePath(attachmentId)}.download',
-    );
-    final plainFile = File(
-      '${tempDirectory.path}/${_safePath(attachmentId)}.plain',
-    );
-    try {
+    final temp=Directory('${directory.path}/.tmp');
+    await _runBindingFileMutation(context.bindingToken,()=>temp.create(recursive:true));
+    final cipher=File('${temp.path}/${_safePath(attachmentId)}.download');
+    final plain=File('${temp.path}/${_safePath(attachmentId)}.plain');
+    if(!await cipher.exists()) {
       await context.transport.downloadEncryptedAttachment(
-        attachmentId: attachmentId,
-        target: cipherFile,
-        expectedByteSize: content.cipherByteSize ?? 0,
-        expectedSha256: content.cipherSha256 ?? '',
+        attachmentId:attachmentId,target:cipher,
+        expectedByteSize:content.cipherByteSize!,expectedSha256:content.cipherSha256!,
       );
-      final digest = await crypto_hash.sha256.bind(cipherFile.openRead()).first;
-      if (digest.toString() != content.cipherSha256) {
-        throw const FormatException('Chat 附件密文摘要不一致');
-      }
-      await AttachmentVault.openTransportCipher(
-        cipherSource: cipherFile,
-        plainTarget: plainFile,
-        key: cipherKey,
-      );
-      if (await plainFile.length() != content.byteSize) {
-        throw const FormatException('Chat 附件明文大小不一致');
-      }
-      await _saveReceivedAttachmentToCacheMutation(
-        bindingToken: context.bindingToken,
-        conversationId: conversationId,
-        attachmentId: attachmentId,
-        fileName: content.fileName ?? 'attachment.bin',
-        contentType: content.mime ?? 'application/octet-stream',
-        filePath: plainFile.path,
-        byteSize: content.byteSize ?? 0,
-      );
-      await context.transport.acknowledgeAttachment(attachmentId);
-    } finally {
-      cipherKey.fillRange(0, cipherKey.length, 0);
-      if (await cipherFile.exists()) await cipherFile.delete();
-      if (await plainFile.exists()) await plainFile.delete();
     }
+    await engine.open(content:content,cipher:cipher,target:plain);
+    await _runBindingFileMutation(context.bindingToken, () =>
+      _saveReceivedAttachmentToCacheMutation(
+        bindingToken:context.bindingToken,conversationId:conversationId,
+        attachmentId:attachmentId,fileName:content.fileName!,contentType:content.mime!,
+        filePath:plain.path,byteSize:content.byteSize!,
+      ));
+
+    await engine.finish(content.attachmentGroupId!);
+    await _runBindingFileMutation(context.bindingToken,() async {
+      if(await cipher.exists()) await cipher.delete();
+      if(await plain.exists()) await plain.delete();
+    });
+    await context.transport.acknowledgeAttachment(attachmentId);
   }
 
   /// TataChatServer 邮箱的唯一入站 Message 边界；服务端路由身份与密文内身份必须一致。
@@ -5537,97 +4809,64 @@ class ChatRuntimeCore {
     );
   }
 
-  static Future<MlsStateStore> _receiptStore(String userId) async {
-    final store = await MlsStateStore.prepare(userId);
-    if (store.newlyCreated) {
-      await store.initializeIdentity();
-    } else {
-      await store.readIdentity();
+  /// 认证账户事实只来自宿主；不请求钱包、权益或聊天连接。
+  ///
+  /// 与本机擦除共用用户文件屏障，签名前后复核宿主事实及账户失效代次；
+  /// 等待期间切换/换绑/关闭时丢弃证明，不自动补身份或回退旧设备签名。
+  Future<MlsAuthenticationProof> createMlsAuthenticationProof(
+    MlsAuthenticationRequest request,
+  ) => _runRuntimeOperation(() async {
+    request.validate();
+    final account = await _readAccountInternal();
+    _ensureActive();
+    final generation = _accountGenerations[account.accountId] ?? 0;
+    Future<void> requireCurrentAccount() async {
+      final current = await _readAccountInternal(
+        expectedAccountId: account.accountId,
+      );
+      _ensureActive();
+      if (_blockedAccountIds.contains(account.accountId) ||
+          (_accountGenerations[account.accountId] ?? 0) != generation ||
+          current.userId != account.userId ||
+          current.accountId != account.accountId ||
+          current.bindingRevision != account.bindingRevision ||
+          current.bindingScope != account.bindingScope ||
+          current.hostIndex != account.hostIndex) {
+        throw StateError('MLS认证期间宿主账户已失效');
+      }
     }
-    return store;
-  }
+
+    await requireCurrentAccount();
+    final proof = await _runUserFileMutation(
+      userId: account.userId,
+      operation: () async {
+        final store = await _stateStore(account.userId);
+        if (store.ownerUserId != account.userId) {
+          throw StateError('MLS认证存储所有者不一致');
+        }
+        await requireCurrentAccount();
+        final proof = await store.signAuthentication(
+          accountId: account.accountId,
+          bindingRevision: account.bindingRevision,
+          request: request,
+        );
+        await requireCurrentAccount();
+        MlsAuthenticationRequest.validateExpiry(proof.expiresAtMillis);
+        return proof;
+      },
+    );
+    // 文件屏障退出仍有异步等待，必须在真正交付调用方前再次复核。
+    await requireCurrentAccount();
+    MlsAuthenticationRequest.validateExpiry(proof.expiresAtMillis);
+    return proof;
+  });
+
 }
 
 class _ChatServiceContext {
   const _ChatServiceContext({required this.transport});
 
   final ChatServiceTransport transport;
-}
-
-enum _ChatFileHandoverState {
-  staged,
-  committing;
-
-  static _ChatFileHandoverState fromName(Object? value) {
-    for (final state in values) {
-      if (state.name == value) return state;
-    }
-    throw const FormatException('Chat 文件交接 receipt 状态损坏');
-  }
-}
-
-@immutable
-class _ChatFileHandoverInventoryItem {
-  const _ChatFileHandoverInventoryItem({
-    required this.relativePath,
-    required this.byteSize,
-    required this.sha256,
-  });
-
-  final String relativePath;
-  final int byteSize;
-  final String sha256;
-
-  Map<String, Object> toJson() => <String, Object>{
-    'relative_path': relativePath,
-    'byte_size': byteSize,
-    'sha256': sha256,
-  };
-
-  static _ChatFileHandoverInventoryItem fromJson(Object? value) {
-    if (value is! Map<String, dynamic> ||
-        value.length != 3 ||
-        value.keys.toSet().difference(<String>{
-          'relative_path',
-          'byte_size',
-          'sha256',
-        }).isNotEmpty) {
-      throw const FormatException('Chat 文件交接文件清单结构损坏');
-    }
-    final relativePath = value['relative_path'];
-    final byteSize = value['byte_size'];
-    final sha256 = value['sha256'];
-    if (relativePath is! String ||
-        relativePath.isEmpty ||
-        relativePath.startsWith('/') ||
-        relativePath
-            .split('/')
-            .any((segment) => segment.isEmpty || segment == '..') ||
-        byteSize is! int ||
-        byteSize < 0 ||
-        sha256 is! String ||
-        !RegExp(r'^[0-9a-f]{64}$').hasMatch(sha256)) {
-      throw const FormatException('Chat 文件交接文件清单内容损坏');
-    }
-    return _ChatFileHandoverInventoryItem(
-      relativePath: relativePath,
-      byteSize: byteSize,
-      sha256: sha256,
-    );
-  }
-}
-
-@immutable
-class _ChatFileHandoverReceipt {
-  const _ChatFileHandoverReceipt({
-    required this.state,
-    required this.payloadJson,
-    required this.files,
-  });
-
-  final _ChatFileHandoverState state;
-  final String payloadJson;
-  final List<_ChatFileHandoverInventoryItem> files;
 }
 
 String _newPendingMessageId(String conversationId, int millis) =>
@@ -5642,6 +4881,9 @@ String _newNonce() {
   return bytes.map((item) => item.toRadixString(16).padLeft(2, '0')).join();
 }
 
+String _ownerPath(String value) => utf8.encode(value)
+    .map((byte) => byte.toRadixString(16).padLeft(2, '0')).join();
+
 String _safePath(String value) {
   return value.replaceAll(RegExp(r'[^a-zA-Z0-9_.-]'), '_');
 }
@@ -5652,7 +4894,7 @@ String _contextKey(
   ChatBindingFenceToken bindingToken,
 ) {
   return '${account.userId}|${account.bindingRevision}|${account.accountId}|'
-      '${bindingToken.keyDomain}|${bindingToken.generation}|'
+      '${bindingToken.bindingScope}|${bindingToken.generation}|'
       '${identity.deviceId}';
 }
 

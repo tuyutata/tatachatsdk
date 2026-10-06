@@ -110,14 +110,14 @@ class GroupCreated {
 /// 加人/删人产生的 Commit 束。
 ///
 /// add:`commit` 发给现有成员,`welcome` 发给全部新人(单条覆盖 N 人)。
-/// remove:仅 `commit`,发给剩余成员 + 被删者;`removedUserIds` 为被删 用户身份。
+/// remove:仅 `commit`,发给剩余成员 + 被删者;`removedMemberIdentities` 为被删 用户身份。
 class GroupCommitBundle {
   const GroupCommitBundle({
     required this.groupId,
     required this.epoch,
     required this.commit,
     this.welcome,
-    this.removedUserIds = const [],
+    this.removedMemberIdentities = const [],
     this.priorMemberIdentities = const [],
     this.createdAtMillis,
   });
@@ -126,7 +126,7 @@ class GroupCommitBundle {
   final int epoch;
   final MlsWireMessage commit;
   final MlsWireMessage? welcome;
-  final List<String> removedUserIds;
+  final List<String> removedMemberIdentities;
   final List<String> priorMemberIdentities;
   final int? createdAtMillis;
 }
@@ -142,6 +142,7 @@ class GroupInbound {
     required this.selfRemoved,
     this.plaintext,
     this.memberIdentities,
+    this.senderMemberIdentity,
     this.committed = false,
   });
 
@@ -159,6 +160,9 @@ class GroupInbound {
 
   /// 应用 Commit / 入群 Welcome 后的 MLS 权威名册(标识,含设备段)。
   final List<String>? memberIdentities;
+
+  /// 由OpenMLS验签后的真实发送设备，不能用传输层自报值替代。
+  final String? senderMemberIdentity;
 
   /// 原生已提交精确处理收据，不能由stale状态推定。
   final bool committed;
@@ -202,10 +206,10 @@ abstract class MlsGroupCrypto {
     List<MlsKeyPackage> keyPackages,
   );
 
-  /// 删人：Commit（剩余成员 + 被删者）。按 用户身份 移除（含其全部设备叶子）。
+  /// 精确移除user_id:device_id设备叶子；用户级移除由调用方先展开当前名册。
   Future<GroupCommitBundle> removeMembers(
     String groupId,
-    List<String> memberUserIds,
+    List<String> memberIdentities,
   );
 
   /// 群 application message(单次加密,Dart 侧扇出)。

@@ -8,8 +8,8 @@ import '../support/isar_test_env.dart';
 const _ownerUserId = 'CN220-CTZN2-100000001-2026';
 const _accountA =
     '0x3333333333333333333333333333333333333333333333333333333333333333';
-const _binding = ChatDataBinding(
-  keyDomain:
+const _binding = ChatBinding(
+  bindingScope:
       '0x4242424242424242424242424242424242424242424242424242424242424242',
   userId: _ownerUserId,
   bindingRevision: 1,
@@ -66,18 +66,18 @@ class _FakeGroupCrypto implements MlsGroupCrypto {
   @override
   Future<GroupCommitBundle> removeMembers(
     String groupId,
-    List<String> memberUserIds,
+    List<String> memberIdentities,
   ) async {
     final roster = _roster[groupId]!;
     roster.removeWhere(
-      (identity) => memberUserIds.contains(identity.split(':').first),
+      (identity) => memberIdentities.contains(identity),
     );
     _epoch[groupId] = (_epoch[groupId] ?? 0) + 1;
     return GroupCommitBundle(
       groupId: groupId,
       epoch: _epoch[groupId]!,
       commit: _wire(groupId, 'commit'),
-      removedUserIds: memberUserIds,
+      removedMemberIdentities: memberIdentities,
     );
   }
 
@@ -236,7 +236,7 @@ void main() {
       localDeviceId: 'devA',
       invitees: [_keyPackage(_userB, 'devB'), _keyPackage(_userC, 'devC')],
     );
-    expect(group.memberUserIds.toSet(), {_userA, _userB, _userC});
+    expect(group.memberIdentities.toSet(), {_userA, _userB, _userC});
     expect(group.adminSet, {_userA});
     // Welcome 扇给 B、C(建群时无其他现有成员,无 Commit 扇出)。
     expect(delivered.map((e) => e.recipientUserId).toSet(), {_userB, _userC});
@@ -305,7 +305,7 @@ void main() {
       targetUserIds: [_userC],
     );
     final afterRemove = await store.readGroup(_ownerUserId, groupId);
-    expect(afterRemove!.memberUserIds.toSet(), {_userA, _userB});
+    expect(afterRemove!.memberIdentities.toSet(), {_userA, _userB});
     expect(delivered.map((e) => e.recipientUserId).toSet(), {_userB, _userC});
   });
 
@@ -396,7 +396,7 @@ void main() {
     );
     await flow.processIncomingGroupMessage(message.writeToBuffer());
     final group = await store.readGroup(_ownerUserId, groupId);
-    expect(group!.memberUserIds.toSet(), {_userA, _userC}); // B 被移除
+    expect(group!.memberIdentities.toSet(), {_userA, _userC}); // B 被移除
   });
 
   test('收到 rename → 群名更新(非 admin 收端也同步)', () async {
@@ -529,7 +529,14 @@ void main() {
       fileName: 'archive.bin',
       mime: 'application/octet-stream',
       byteSize: byteSize,
-      cipherKey: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+
+      attachmentChatEpoch: 1,
+      attachmentGroupId: 'attachment:CID-A:' + '11' * 32 + ':' + 'att-group-1',
+      attachmentWelcome: 'AQID',
+      attachmentMemberIdentities: ['CID-A:' + '11' * 32, 'CID-B:' + '22' * 32],
+      attachmentSenderMemberIdentity: 'CID-A:' + '11' * 32,
+      attachmentChunkCount: ((byteSize) + 1024 * 1024 - 1) ~/ (1024 * 1024),
+      plainSha256: '00' * 32,
       cipherByteSize: byteSize + 16,
       cipherSha256: List<String>.filled(64, 'a').join(),
     );

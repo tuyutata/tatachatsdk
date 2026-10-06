@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   final source = File('lib/src/runtime/chat_runtime.dart').readAsStringSync();
 
-  test('media is durably queued before asynchronous HTTPS upload', () {
+  test('独立MLS附件落盘后才异步HTTPS上传，普通消息不等待附件', () {
     final prepare = source.indexOf(
       'Future<ChatContent> _prepareEncryptedMedia',
     );
@@ -19,6 +19,16 @@ void main() {
     expect(upload, greaterThan(schedule));
     expect(source, contains('uploadEncryptedAttachment('));
     expect(source, contains('scheduleDelivery: false'));
+    expect(source, contains('await engine.seal('));
+    expect(source, contains('await _requireAttachmentAudience('));
+    expect(source, contains('context.crypto.groupState(conversationId)'));
+    expect(source, contains('recipientUserIds: _attachmentRecipientUserIds(content)'));
+    expect(source, contains('final recipients = _attachmentRecipientUserIds(content)'));
+    expect(source, contains('member != content.attachmentSenderMemberIdentity'));
+    final application = File('lib/src/mls/mls_attachment.dart').readAsStringSync();
+    expect(application, contains('crypto.groupCreateMessage(group,payload)'));
+    expect(application, contains("confirm_attachment_chunk"));
+    expect(application, contains('Future<void>.delayed(Duration.zero)'));
   });
 
   test('mailbox acknowledgement follows successful local persistence', () {

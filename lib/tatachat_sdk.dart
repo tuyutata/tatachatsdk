@@ -21,7 +21,6 @@ export 'src/runtime/chat_runtime.dart';
 export 'src/runtime/direct_flow.dart';
 export 'src/runtime/group_flow.dart';
 export 'src/runtime/media_limit_policy.dart';
-export 'src/storage/chat_crypto.dart';
 export 'src/storage/chat_isar.dart';
 export 'src/storage/chat_store.dart';
 export 'src/storage/flow_store.dart';
@@ -30,3 +29,6 @@ export 'src/storage/records.dart';
 export 'src/transport/chat_service_transport.dart';
 export 'src/transport/chat_transport.dart';
 export 'ui.dart';
+
+export 'src/storage/system_protected_storage.dart';
+export 'src/mls/mls_contact_sync.dart';

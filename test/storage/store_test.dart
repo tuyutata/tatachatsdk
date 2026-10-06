@@ -2,11 +2,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:isar_community/isar.dart';
 import 'package:tatachat_sdk/protocol.dart' as pb;
 import 'package:tatachat_sdk/tatachat_sdk.dart' hide ChatRoute;
-import 'package:tatachat_sdk/tatachat_sdk.dart';
 
 import '../support/isar_test_env.dart';
 
-/// user ID 是消息、MLS 名册和待投递路由的唯一身份键；当前钱包账户只解锁本地密钥。
+/// user ID 是消息、MLS 名册和待投递路由的唯一身份键；当前账户和公开版本用于操作围栏。
 const _bobUserId = 'CN220-CTZN2-100000002-2026';
 const _ownerUserId = 'CN220-CTZN2-100000001-2026';
 const _aliceAccountId =
@@ -14,15 +13,15 @@ const _aliceAccountId =
 const _nextAccountId =
     '0x2222222222222222222222222222222222222222222222222222222222222222';
 const _carolUserId = 'CN220-CTZN2-100000003-2026';
-const _testBinding = ChatDataBinding(
-  keyDomain:
+const _testBinding = ChatBinding(
+  bindingScope:
       '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
   userId: _ownerUserId,
   bindingRevision: 1,
   accountId: _aliceAccountId,
 );
-const _nextBinding = ChatDataBinding(
-  keyDomain:
+const _nextBinding = ChatBinding(
+  bindingScope:
       '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
   userId: _ownerUserId,
   bindingRevision: 2,
@@ -198,10 +197,7 @@ void main() {
       hasLength(1),
     );
 
-    await store.isolateInaccessibleBinding(
-      previous: _testBinding,
-      current: _nextBinding,
-    );
+    await store.convergeFinalizedBinding(_nextBinding);
 
     await expectLater(
       store.readQueuedMessages(
@@ -607,7 +603,7 @@ void main() {
     expect(after.commits, 0);
   });
 
-  test('无签名交接时保留永久聊天密文并清空此前绑定的瞬时状态', () async {
+  test('finalized换绑保留同用户历史并清空此前绑定的瞬时状态', () async {
     final store = ChatStore();
     final bindingToken = await store.activateBindingFence(_testBinding);
     final message =
@@ -633,7 +629,7 @@ void main() {
       recipientUserId: _bobUserId,
       messageKind: ChatMessageKind.text,
       deliveryState: ChatMessageDeliveryState.queued,
-      plaintext: _payload('必须保留的历史密文'),
+      plaintext: _payload('必须保留的历史内容'),
     );
     await store.savePendingInbound(
       bindingToken: bindingToken,
@@ -711,15 +707,15 @@ void main() {
       isNull,
     );
 
-    // 隔离只移除不能跨绑定续用的任务和 MLS 镜像，不删除永久聊天密文。
+    // 换绑只移除不能跨绑定续用的任务和 MLS 镜像，不删除同用户历史记录。
     final retained = await store.readMessages(
       ownerUserId: _ownerUserId,
-      currentAccountId: _aliceAccountId,
+      currentAccountId: _nextAccountId,
       conversationId: 'conv-isolate',
     );
     expect(
       ChatPayloadCodec.decode(retained.single.plaintext!).text,
-      '必须保留的历史密文',
+      '必须保留的历史内容',
     );
   });
 
@@ -829,13 +825,7 @@ void main() {
       ),
       isEmpty,
     );
-    expect(
-      await store.searchMessages(
-        ownerUserId: 'CN220-CTZN2-999999999-2026',
-        currentAccountId: peer,
-        keyword: '开会',
-      ),
-      isEmpty,
-    );
+    await expectLater(store.searchMessages(
+      ownerUserId: 'CN220-CTZN2-999999999-2026', currentAccountId: peer, keyword: '开会'), throwsStateError);
   });
 }
