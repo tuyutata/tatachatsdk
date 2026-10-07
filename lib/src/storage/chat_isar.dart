@@ -542,7 +542,9 @@ class ChatIsar {
       return existing;
     }
 
-    final opened = await Isar.open(
+    // Isar 3.3.2 异步开库共用 FFI 输出指针；同一 isolate 内同步取得句柄，避免跨域串用。
+    // 仅句柄创建同步执行，系统保护回读与本域生命周期继续沿用原有异步路径。
+    final opened = Isar.openSync(
       _schemas,
       name: 'tatachat_sdk_chat',
       directory: directory,
