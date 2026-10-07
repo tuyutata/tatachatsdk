@@ -3,7 +3,19 @@ set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 protocol_dir="$root/lib/src/protocol"
-work_dir="${TATACHATSDK_PROTOCOL_WORK_DIR:-${TMPDIR:-/tmp}/tatachatsdk/protocol-tools}"
+# 所有独立入口的工具临时状态归本产品target；宿主已交付的产品工作根继续归当前任务。
+PRODUCT_TEMP_SCRIPT="${BASH_SOURCE[0]}"
+while [[ -L "$PRODUCT_TEMP_SCRIPT" ]]; do
+  PRODUCT_TEMP_LINK="$(readlink "$PRODUCT_TEMP_SCRIPT")"
+  [[ "$PRODUCT_TEMP_LINK" == /* ]] || PRODUCT_TEMP_LINK="$(cd "$(dirname "$PRODUCT_TEMP_SCRIPT")" && pwd -P)/$PRODUCT_TEMP_LINK"
+  PRODUCT_TEMP_SCRIPT="$PRODUCT_TEMP_LINK"
+done
+PRODUCT_TEMP_SOURCE="$(cd "$(dirname "$PRODUCT_TEMP_SCRIPT")/.." && pwd -P)"
+PRODUCT_TARGET_TEMP_ROOT="$("${PRODUCT_NODE_BIN:-${NODE:-node}}" "$PRODUCT_TEMP_SOURCE/scripts/build.mjs" temporary-root "${PLATFORM:-${platform:-}}" 'sdk')" || exit 1
+if [[ -z "${PRODUCT_WORK_DIR:-}" && "${TMPDIR:-}" != "$PRODUCT_TEMP_SOURCE/target/"* ]]; then
+  export TMPDIR="$PRODUCT_TARGET_TEMP_ROOT/"
+fi
+work_dir="${TATACHATSDK_PROTOCOL_WORK_DIR:-${TMPDIR:-$PRODUCT_TARGET_TEMP_ROOT}/tatachatsdk/protocol-tools}"
 
 [[ "$#" -eq 0 ]] || { printf '%s\n' 'TataChatSDK协议生成不接受参数' >&2; exit 1; }
 case "$(uname -s)/$(uname -m)" in

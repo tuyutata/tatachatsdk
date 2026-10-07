@@ -117,7 +117,7 @@ jobs:
     - name: 签署 TataChatSDK 单一正式包构建来源
       uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a
       with:
-        subject-path: ${{ runner.temp }}/tatachatsdk/release/tatachatsdk.tgz
+        subject-path: ${{ github.workspace }}/target/release/tatachatsdk/release/tatachatsdk.tgz
     - env:
         GH_TOKEN: "${{ github.token }}"
       shell: bash
@@ -126,4 +126,4 @@ jobs:
         node "$GITHUB_WORKSPACE/scripts/release/index.mjs" github-release \
           --tag "$VERSION_TAG" --source-sha "$SOURCE_SHA" \
           --title "塔塔聊天SDK · Release · SDK" --notes "$notes" --latest false \
-          --assets "$RUNNER_TEMP/tatachatsdk/release/tatachatsdk.tgz"
+          --assets "$GITHUB_WORKSPACE/target/release/tatachatsdk/release/tatachatsdk.tgz"

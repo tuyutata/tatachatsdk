@@ -56,6 +56,18 @@
         {
           "id": "posix",
           "version": "27.0"
+        },
+        {
+          "id": "bash",
+          "version": "5.3.20"
+        },
+        {
+          "id": "grep",
+          "version": "3.12"
+        },
+        {
+          "id": "sed",
+          "version": "4.10"
         }
       ],
       "locks": [
@@ -180,8 +192,50 @@
             "id": "xcode",
             "version": "27.0"
           }
-        ]
-      }
+        ],
+        "version_source": {
+          "kind": "pubspec-package",
+          "path": "pubspec.yaml"
+        },
+        "record_source": {
+          "kind": "body",
+          "asset_names": [
+            "tatachatsdk.tgz"
+          ],
+          "metadata_asset": null,
+          "source_field": null,
+          "version_field": null,
+          "marker_prefix": "TATA",
+          "immutable": false
+        }
+      },
+      "completion": "compile-only",
+      "files": []
     }
-  }
+  },
+  "remote_routes": [
+    {
+      "canonicalID": "tatachatsdk.sdk.ci",
+      "repository": "tatachatsdk",
+      "productID": "tatachatsdk",
+      "productTitle": "塔塔聊天SDK",
+      "flow": "ci",
+      "platform": "sdk",
+      "expectedTitle": "塔塔聊天SDK · CI · SDK",
+      "tagPrefix": null,
+      "recordsFormalRelease": false
+    },
+    {
+      "canonicalID": "tatachatsdk.sdk.release",
+      "repository": "tatachatsdk",
+      "productID": "tatachatsdk",
+      "productTitle": "塔塔聊天SDK",
+      "flow": "release",
+      "platform": "sdk",
+      "expectedTitle": "塔塔聊天SDK · Release · SDK",
+      "tagPrefix": "tatachatsdk-sdk-v",
+      "recordsFormalRelease": true
+    }
+  ],
+  "flow_entry": "scripts/flow.mjs"
 }

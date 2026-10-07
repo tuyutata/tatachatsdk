@@ -144,7 +144,7 @@ jobs:
       run: node "$GITHUB_WORKSPACE/scripts/ci/check/execute.mjs" workflow-step 7
     - shell: bash
       run: node "$GITHUB_WORKSPACE/scripts/ci/check/execute.mjs" workflow-step 8
-    - working-directory: "${{ runner.temp }}/tatachatsdk/build-source"
+    - working-directory: "${{ github.workspace }}/target/ci/tatachatsdk/build-source"
       shell: bash
       run: node "$GITHUB_WORKSPACE/scripts/ci/check/execute.mjs" workflow-step 9
     - env:
@@ -157,8 +157,8 @@ jobs:
       with:
         name: TataChatSDK-CI
         path: |
-          ${{ runner.temp }}/tatachatsdk/native
-          ${{ runner.temp }}/tatachatsdk/source-sha.txt
+          ${{ github.workspace }}/target/ci/tatachatsdk/native
+          ${{ github.workspace }}/target/ci/tatachatsdk/source-sha.txt
         if-no-files-found: error
         compression-level: 0
         retention-days: 7

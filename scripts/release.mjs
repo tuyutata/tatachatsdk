@@ -17,7 +17,8 @@ import {
 } from 'node:fs/promises';
 import { gzipSync, gunzipSync } from 'node:zlib';
 import { createHash } from 'node:crypto';
-import { tmpdir } from 'node:os';
+import { temporaryRoot } from './build.mjs';
+const tmpdir=()=>temporaryRoot('sdk','tmp');
 import { basename, dirname, isAbsolute, join, posix, relative, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 

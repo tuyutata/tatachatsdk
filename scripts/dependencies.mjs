@@ -43,7 +43,7 @@ function fail(message) { throw new Error(message); }
 function safeWork(value) {
   if (!isAbsolute(value)) fail('TataChatSDK工具工作目录必须是绝对路径');
   const target = resolve(value);
-  if (target === product || target.startsWith(product + '/')) fail('TataChatSDK工具不得写入源码目录');
+  if ((target === product || target.startsWith(product + '/')) && !target.startsWith(join(product, 'target') + '/')) fail('TataChatSDK工具只能在源码树的target内生成');
   mkdirSync(target, { recursive: true, mode: 0o700 });
   const actual = realpathSync(target);
   if (actual !== target) fail('TataChatSDK工具工作目录禁止符号链接');

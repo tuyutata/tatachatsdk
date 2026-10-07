@@ -10,8 +10,20 @@ while [[ -L "$SCRIPT_PATH" ]]; do
 done
 ROOT="$(cd "$(dirname "$SCRIPT_PATH")/.." && pwd -P)"
 MANIFEST="$ROOT/native/Cargo.toml"
-TATACHATSDK_WORK_DIR="${TATACHATSDK_WORK_DIR:-${TMPDIR:-/tmp}/tatachatsdk/work}"
-TATACHATSDK_NATIVE_OUTPUT_DIR="${TATACHATSDK_NATIVE_OUTPUT_DIR:-${TMPDIR:-/tmp}/tatachatsdk/output}"
+# 所有独立入口的工具临时状态归本产品target；宿主已交付的产品工作根继续归当前任务。
+PRODUCT_TEMP_SCRIPT="${BASH_SOURCE[0]}"
+while [[ -L "$PRODUCT_TEMP_SCRIPT" ]]; do
+  PRODUCT_TEMP_LINK="$(readlink "$PRODUCT_TEMP_SCRIPT")"
+  [[ "$PRODUCT_TEMP_LINK" == /* ]] || PRODUCT_TEMP_LINK="$(cd "$(dirname "$PRODUCT_TEMP_SCRIPT")" && pwd -P)/$PRODUCT_TEMP_LINK"
+  PRODUCT_TEMP_SCRIPT="$PRODUCT_TEMP_LINK"
+done
+PRODUCT_TEMP_SOURCE="$(cd "$(dirname "$PRODUCT_TEMP_SCRIPT")/.." && pwd -P)"
+PRODUCT_TARGET_TEMP_ROOT="$("${PRODUCT_NODE_BIN:-${NODE:-node}}" "$PRODUCT_TEMP_SOURCE/scripts/build.mjs" temporary-root "${PLATFORM:-${platform:-}}" 'sdk')" || exit 1
+if [[ -z "${PRODUCT_WORK_DIR:-}" && "${TMPDIR:-}" != "$PRODUCT_TEMP_SOURCE/target/"* ]]; then
+  export TMPDIR="$PRODUCT_TARGET_TEMP_ROOT/"
+fi
+TATACHATSDK_WORK_DIR="${TATACHATSDK_WORK_DIR:-${TMPDIR:-$PRODUCT_TARGET_TEMP_ROOT}/tatachatsdk/work}"
+TATACHATSDK_NATIVE_OUTPUT_DIR="${TATACHATSDK_NATIVE_OUTPUT_DIR:-${TMPDIR:-$PRODUCT_TARGET_TEMP_ROOT}/tatachatsdk/output}"
 TATACHATSDK_NATIVE_ANDROID_DIR="${TATACHATSDK_NATIVE_ANDROID_DIR:-$TATACHATSDK_NATIVE_OUTPUT_DIR/android}"
 TATACHATSDK_NATIVE_IOS_DIR="${TATACHATSDK_NATIVE_IOS_DIR:-$TATACHATSDK_NATIVE_OUTPUT_DIR/ios}"
 TATACHATSDK_NATIVE_MACOS_DIR="${TATACHATSDK_NATIVE_MACOS_DIR:-$TATACHATSDK_NATIVE_OUTPUT_DIR/macos}"
@@ -30,7 +42,7 @@ import sys
 source = Path(sys.argv[1]).resolve()
 for value in sys.argv[2:]:
     raw, target = Path(value), Path(value).resolve()
-    if not raw.is_absolute() or target == source or source in target.parents:
+    if not raw.is_absolute() or target == source or (source in target.parents and source / 'target' not in target.parents):
         raise SystemExit(f'TataChatSDK可写目录必须是源码外绝对路径：{value}')
 CHECK_OUTPUTS
     mkdir -p "$TATACHATSDK_WORK_DIR" "$TATACHATSDK_NATIVE_OUTPUT_DIR"

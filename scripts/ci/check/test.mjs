@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, existsSync, rmSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
-import { tmpdir } from 'node:os';
+import { testRoot as tmpdir } from '../../build.mjs';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
