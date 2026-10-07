@@ -94,3 +94,63 @@ esac
     assert.equal(readFileSync(join(temporary, 'tatachatsdk/source-sha.txt'), 'utf8'), '0123456789abcdef0123456789abcdef01234567\n');
   } finally { rmSync(work, { recursive: true, force: true }); }
 });
+
+// 夹具按锁定Pub坐标解析实际文件，并拒绝缓存外、重复坐标、错误身份及符号链接。
+test('SDK测试Isar仅消费本轮准确锁定普通库文件', async () => {
+  const {realpathSync,symlinkSync}=await import('node:fs');
+  const {pathToFileURL}=await import('node:url');
+  const {isarCorePath}=await import('./native.mjs');
+  const root=realpathSync(mkdtempSync(join(tmpdir(),'chat-ci-isar-')));
+  const cache=join(root,'pub'), pkg=join(cache,'hosted/pub.dev/isar_community_flutter_libs-3.3.2');
+  const config=join(root,'package_config.json'),lock=join(root,'pubspec.lock'),library=join(pkg,'macos/libisar.dylib');
+  mkdirSync(join(pkg,'macos'),{recursive:true});writeFileSync(library,'fixture');
+  writeFileSync(join(pkg,'pubspec.yaml'),'name: isar_community_flutter_libs\nversion: 3.3.2\n');
+  writeFileSync(lock,'packages:\n  isar_community_flutter_libs:\n    source: hosted\n    version: "3.3.2"\n');
+  const packageValue={name:'isar_community_flutter_libs',rootUri:pathToFileURL(pkg+'/').href};
+  const set=packages=>writeFileSync(config,JSON.stringify({configVersion:2,packages}));
+  const resolve=()=>isarCorePath(config,cache,lock,'darwin','arm64');
+  try {
+    set([packageValue]);assert.equal(resolve(),library);
+    set([packageValue,packageValue]);assert.throws(resolve,/不唯一/);
+    set([{...packageValue,rootUri:'https://example.invalid/native'}]);assert.throws(resolve,/坐标无效/);
+    const outside=join(root,'outside');mkdirSync(outside);set([{...packageValue,rootUri:pathToFileURL(outside+'/').href}]);assert.throws(resolve,/越出/);
+    set([packageValue]);writeFileSync(join(pkg,'pubspec.yaml'),'name: isar_community_flutter_libs\nversion: 3.3.1\n');assert.throws(resolve,/身份与锁/);
+    writeFileSync(join(pkg,'pubspec.yaml'),'name: isar_community_flutter_libs\nversion: 3.3.2\n');
+    rmSync(library);symlinkSync(lock,library);assert.throws(resolve,/普通文件/);
+    rmSync(library);assert.throws(resolve,/普通文件/);
+    assert.throws(()=>isarCorePath(config,cache,lock,'linux','arm64'),/宿主不受支持|普通文件/);
+  } finally {rmSync(root,{recursive:true,force:true});}
+});
+
+// 直接执行阶段9，证明宿主库在Flutter测试前准备，且准备失败不会运行跳过原生的测试。
+test('SDK CI宿主原生和锁定Isar准备完成后才执行Flutter测试', async () => {
+  const {realpathSync}=await import('node:fs');const {pathToFileURL}=await import('node:url');
+  const root=realpathSync(mkdtempSync(join(tmpdir(),'chat-ci-host-'))),source=join(root,'source'),bin=join(root,'bin'),cache=join(root,'pub');
+  const pkg=join(cache,'hosted/pub.dev/isar_community_flutter_libs-3.3.2');
+  const target=join(root,'cargo'),log=join(root,'calls');
+  mkdirSync(join(source,'scripts'),{recursive:true});mkdirSync(join(source,'.dart_tool'));mkdirSync(bin);
+  for(const suffix of ['macos/libisar.dylib','linux/libisar.so']){
+    mkdirSync(dirname(join(pkg,suffix)),{recursive:true});writeFileSync(join(pkg,suffix),'fixture');
+  }
+  writeFileSync(join(pkg,'pubspec.yaml'),'name: isar_community_flutter_libs\nversion: 3.3.2\n');
+  writeFileSync(join(source,'pubspec.lock'),'packages:\n  isar_community_flutter_libs:\n    source: hosted\n    version: "3.3.2"\n');
+  writeFileSync(join(source,'.dart_tool/package_config.json'),JSON.stringify({configVersion:2,packages:[{name:'isar_community_flutter_libs',rootUri:pathToFileURL(pkg+'/').href}]}));
+  for(const tool of ['flutter','dart','cargo'])writeFileSync(join(bin,tool),`#!${process.execPath}
+const fs=require('node:fs'); const tool=require('node:path').basename(process.argv[1]);
+if(tool==='flutter'&&process.argv[2]==='test'){
+ if(!fs.existsSync(process.env.ISAR_CORE_LIB_PATH)||process.env.DYLD_LIBRARY_PATH!==process.env.CARGO_TARGET_DIR+'/debug'||!fs.existsSync(process.env.CALLS)||!fs.readFileSync(process.env.CALLS,'utf8').includes('host\\n'))process.exit(73);
+}
+fs.appendFileSync(process.env.CALLS,tool+' '+process.argv.slice(2).join(' ')+'\\n');
+`,{mode:0o755});
+  writeFileSync(join(source,'scripts/build-native.sh'),'#!/bin/bash\nset -euo pipefail\n[[ "$1" == host ]]\n[[ "${FAIL_HOST:-}" != 1 ]] || exit 74\nprintf "host\\n" >> "$CALLS"\n',{mode:0o755});
+  try {
+    for(const fail of [false,true]){
+      writeFileSync(log,'');
+      const result=spawnSync(process.execPath,[fileURLToPath(new URL('./execute.mjs',import.meta.url)),'workflow-step','9'],{cwd:source,encoding:'utf8',env:{...process.env,
+        PATH:bin+':'+process.env.PATH,GITHUB_REPOSITORY:'tuyutata/tatachatsdk',GITHUB_WORKSPACE:fileURLToPath(new URL('../../../',import.meta.url)).replace(/\/$/,''),PUB_CACHE:cache,CARGO_TARGET_DIR:target,CALLS:log,...(fail?{FAIL_HOST:'1'}:{})}});
+      assert.equal(result.status,fail?74:0,result.stderr);
+      const calls=readFileSync(log,'utf8');assert.equal(calls.includes('flutter test\n'),!fail);
+      if(!fail)assert.ok(calls.indexOf('host\n')<calls.indexOf('flutter test\n'));
+    }
+  }finally{rmSync(root,{recursive:true,force:true});}
+});

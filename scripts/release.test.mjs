@@ -58,7 +58,7 @@ test('protocol generator uses only TataChatSDK exact tools', async () => {
 
 test('protocol tool preparer rejects a symlink work directory', async () => {
   const dependencyPath = fileURLToPath(new URL('./dependencies.mjs', import.meta.url));
-  const root = await mkdtemp(join(tmpdir(), 'tatachatsdk-protocol-tool-test-'));
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'tatachatsdk-protocol-tool-test-')));
   const actual = join(root, 'actual');
   const linked = join(root, 'linked');
   try {
@@ -113,7 +113,7 @@ test('协议准备器在创建目录前拒绝非法离线参数', async () => {
 });
 
 test('两项协议工具的离线缺失原件不会联网或启动工具', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'tatachatsdk-offline-missing-'));
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'tatachatsdk-offline-missing-')));
   try {
     for (const [tool, platform] of [['protoc', 'macos'], ['protoc_plugin', 'sdk']]) {
       const work = join(root, tool);
@@ -127,7 +127,7 @@ test('两项协议工具的离线缺失原件不会联网或启动工具', async
 });
 
 test('离线损坏及非普通原件拒绝且保留既有原件和输出', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'tatachatsdk-offline-invalid-'));
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'tatachatsdk-offline-invalid-')));
   try {
     for (const [tool, platform, name] of [
       ['protoc', 'macos', 'protoc-35.0-osx-aarch_64.zip'],
