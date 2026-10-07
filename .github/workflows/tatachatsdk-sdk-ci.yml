@@ -92,6 +92,8 @@ jobs:
         targets: aarch64-linux-android,aarch64-apple-ios,aarch64-apple-darwin
     - name: 装载Android SDK
       uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699
+      with:
+        packages: platform-tools
     - id: tatachatsdk_ci_sdk__check__ci_cache
       env:
         GH_TOKEN: "${{ github.token }}"
@@ -160,12 +162,12 @@ jobs:
         if-no-files-found: error
         compression-level: 0
         retention-days: 7
-    - if: "${{ failure() && !cancelled() }}"
+    - if: "${{ failure() && !cancelled() && steps.tatachatsdk_ci_sdk__check__ci_cache.outcome == 'success' }}"
       env:
         CI_CACHE_TERMINAL_STATE: failure
       shell: bash
       run: node "$GITHUB_WORKSPACE/scripts/ci/check/execute.mjs" workflow-step 11
-    - if: "${{ failure() && !cancelled() }}"
+    - if: "${{ failure() && !cancelled() && steps.tatachatsdk_ci_sdk__check__ci_cache.outcome == 'success' }}"
       name: 保存本次失败的CI增量缓存
       id: tatachatsdk_ci_sdk__check__ci_cache_save_failure
       continue-on-error: true
@@ -173,7 +175,7 @@ jobs:
       with:
         path: "${{ steps.tatachatsdk_ci_sdk__check__ci_cache.outputs.failure_paths }}"
         key: "${{ steps.tatachatsdk_ci_sdk__check__ci_cache.outputs.failure_key }}"
-    - if: "${{ failure() && !cancelled() && steps.tatachatsdk_ci_sdk__check__ci_cache_save_failure.outcome == 'success' }}"
+    - if: "${{ failure() && !cancelled() && steps.tatachatsdk_ci_sdk__check__ci_cache.outcome == 'success' && steps.tatachatsdk_ci_sdk__check__ci_cache_save_failure.outcome == 'success' }}"
       continue-on-error: true
       env:
         GH_TOKEN: "${{ github.token }}"
