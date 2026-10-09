@@ -4221,7 +4221,7 @@ class ChatRuntimeCore {
     _mailboxEpochs[accountId] = (_mailboxEpochs[accountId] ?? 0) + 1;
     _mailboxRetryTimers.remove(accountId)?.cancel();
     _mailboxDrainRequested.remove(accountId);
-    _mailboxDrains.remove(accountId);
+    unawaited(_mailboxDrains.remove(accountId));
     hub.reconnectTimer?.cancel();
     hub.reconnectTimer = null;
     hub.listeners.clear();
@@ -4430,8 +4430,9 @@ class ChatRuntimeCore {
             }
             _mailboxRetryAttempts.remove(key);
             if (DateTime.now().difference(started) >=
-                const Duration(seconds: 15))
+                const Duration(seconds: 15)) {
               break;
+            }
           }
           _scheduleMailboxRetry(
             account,
@@ -4441,8 +4442,9 @@ class ChatRuntimeCore {
             noProgress: false,
           );
         }).whenComplete(() {
-          if (identical(_mailboxDrains[key], created))
+          if (identical(_mailboxDrains[key], created)) {
             _mailboxDrains.remove(key);
+          }
         });
     _mailboxDrains[key] = created;
     return created;
@@ -4461,8 +4463,9 @@ class ChatRuntimeCore {
         _blockedAccountIds.contains(key) ||
         (_accountGenerations[key] ?? 0) != generation ||
         (_mailboxEpochs[key] ?? 0) != epoch ||
-        _mailboxRetryTimers.containsKey(key))
+        _mailboxRetryTimers.containsKey(key)) {
       return;
+    }
     final attempt = _mailboxRetryAttempts[key] ?? 0;
     if (noProgress && attempt >= 3) return;
     if (noProgress) _mailboxRetryAttempts[key] = attempt + 1;

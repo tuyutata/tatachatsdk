@@ -236,8 +236,9 @@ final class ChatServerConnection implements ChatServiceTransport {
     }
     if (_socket != null && _readySuccess) {
       await _disconnect('realtime_access_expired', notify: true);
-      if (_disposed)
+      if (_disposed) {
         throw const ChatServerConnectionException('transport_disposed');
+      }
     }
     final connecting = _connecting;
     if (connecting != null) return connecting.future;
@@ -858,8 +859,9 @@ final class ChatServerConnection implements ChatServiceTransport {
         'not_found',
         'conflict',
         'storage_unavailable',
-      }.contains(error.code))
+      }.contains(error.code)) {
         return false;
+      }
       rethrow;
     }
   }
@@ -1034,11 +1036,13 @@ final class ChatServerConnection implements ChatServiceTransport {
         }),
       );
     }
-    if (subscription != null)
+    if (subscription != null) {
       _closeActions.add(_CloseAction(subscription.cancel));
+    }
     if (socket != null) _closeActions.add(_CloseAction(socket.close));
-    if (attachments != null)
+    if (attachments != null) {
       _closeActions.add(_CloseAction(attachments.dispose));
+    }
     final callback = notify && !_disposed ? _onDisconnected : null;
     late final Future<void> created;
     created =

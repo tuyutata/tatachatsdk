@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -6,8 +7,15 @@ void main() {
   test(
     'OpenMLS symbols belong only to the independent TataChatSDK library',
     () {
-      final chatSdkScript = File('scripts/build-native.sh').readAsStringSync();
-      final chatSdkHeader = File('scripts/tatachat_sdk.h').readAsStringSync();
+      final buildSource = File('scripts/build.mjs').readAsStringSync();
+      final declaration = RegExp(
+        r'^export const BUILD_SHELL_SOURCES = Object.freeze\((\{.*\})\);$',
+        multiLine: true,
+      ).firstMatch(buildSource)!;
+      final chatSdkScript =
+          (jsonDecode(declaration.group(1)!) as Map<String, dynamic>)['native']
+              as String;
+      final chatSdkHeader = File('native/tatachat_sdk.h').readAsStringSync();
       final chatSdkPodspec = File('ios/tatachat_sdk.podspec')
           .readAsStringSync();
       final privacyManifest = File('ios/PrivacyInfo.xcprivacy')

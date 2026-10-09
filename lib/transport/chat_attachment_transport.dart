@@ -191,8 +191,9 @@ final class IoChatHttpAdapter implements ChatHttpAdapter {
     } catch (_) {
       failed = true;
     }
-    if (failed)
+    if (failed) {
       throw const ChatServerConnectionException('attachment_cleanup_failed');
+    }
     _closed = true;
   }
 }
@@ -329,10 +330,11 @@ final class ChatAttachmentTransport {
   Future<void> dispose() {
     _disposed = true;
     for (final pending in _pending) {
-      if (!pending.isCompleted)
+      if (!pending.isCompleted) {
         pending.completeError(
           const ChatServerConnectionException('attachment_cancelled'),
         );
+      }
     }
     _expiry?.cancel();
     _expiry = null;

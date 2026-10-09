@@ -305,8 +305,8 @@ test('官方Flutter归档字段不冒充旧平台标识，其它残留和伪造�
 // 用真实门禁函数检查登记与执行回执；这些用例在整项实现后统一运行。
 test('本仓Git测试集合不得漏项、增项、重复或混入门禁自身', async () => {
   const { validateNodeInventory } = await import('./index.mjs');
-  const paths = ['scripts/build.mjs', 'scripts/build.test.mjs', 'test/api.spec.mjs', '.github/tatagate/test.mjs'];
-  const registered = ['scripts/build.test.mjs', 'test/api.spec.mjs'];
+  const paths = ['scripts/dependencies.mjs', 'scripts/build.mjs', 'test/api.spec.mjs', '.github/tatagate/test.mjs'];
+  const registered = ['scripts/build.mjs', 'test/api.spec.mjs'];
   assert.deepEqual(validateNodeInventory(paths, registered), registered);
   for (const listed of [registered.slice(1), [...registered, 'missing.test.mjs'], [...registered, registered[0]], []]) {
     assert.throws(() => validateNodeInventory(paths, listed));

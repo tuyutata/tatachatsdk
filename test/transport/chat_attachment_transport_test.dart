@@ -2,8 +2,8 @@ import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart' as crypto;
 import 'package:flutter_test/flutter_test.dart';
-import 'package:tatachat_sdk/transport/chat_attachment_transport.dart';
 import 'package:tatachat_sdk/tatachat_sdk.dart';
+import 'package:tatachat_sdk/transport/chat_attachment_transport.dart';
 
 final class _FakeHttpAdapter implements ChatHttpAdapter {
   Uri? putUri;

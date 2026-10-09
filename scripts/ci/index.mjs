@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 import { remoteEnvironment as productRemoteEnvironment } from '../build.mjs';
-if(process.env.GITHUB_ACTIONS==='true'&&String(process.env.GITHUB_WORKFLOW||'').startsWith('tatachatsdk.'))Object.assign(process.env,productRemoteEnvironment());
 import { spawnSync as runExactProcess } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
@@ -467,33 +466,23 @@ async function prune(environment) {
 }
 
 
-// 本文件只执行 tatachatsdk.sdk.ci 的 check Job；阶段编号由本仓唯一 Workflow 固定，禁止接收其它身份。
-export const EXACT_REMOTE_JOB_IDENTITY=Object.freeze({"pipeline":"tatachatsdk.sdk.ci","job":"check"});
 
-function requireExactRemoteJobEnvironment() {
-  const expected = 'tuyutata/tatachatsdk';
-  if (!expected || process.env.GITHUB_REPOSITORY !== expected) {
-    throw new Error('准确远端Job仓库身份无效');
-  }
-}
-const workflowSteps=Object.freeze({"0":{"shell":"bash","source":"node \"$GITHUB_WORKSPACE/scripts/ci/execute.mjs\" prepare"},"1":{"shell":"bash","source":"node \"$GITHUB_WORKSPACE/scripts/ci/execute.mjs\" wire"},"2":{"shell":"bash","source":"node \"$GITHUB_WORKSPACE/scripts/ci/execute.mjs\" sanitize"},"3":{"shell":"bash","source":"test \"$(git rev-parse HEAD)\" = \"$SOURCE_SHA\"\nnode --test scripts/release.test.mjs\n"},"4":{"shell":"bash","source":"cargo install cargo-audit --locked"},"5":{"shell":"bash","source":"# 版本只读受控工具登记，不读取产品依赖合同中的副本。\nprintf 'version=3.47.2\n' >> \"$GITHUB_OUTPUT\"\n"},"6":{"shell":"bash","source":"# 安装后先验真，再统一准备目标平台缓存与受控修订。\nflutter --version --machine >/dev/null\nplatform=\"sdk\"\nflutter --version >/dev/null\n"},"7":{"shell":"bash","source":"sdkmanager \"ndk;28.2.13676358\""},"8":{"shell":"bash","source":"build_source=\"$RUNNER_TEMP/tatachatsdk/build-source\"\ntest ! -e \"$build_source\"\nmkdir -p \"$(dirname \"$build_source\")\"\n# 新仓根直接复制受控源码；Git 元数据不进入源码外临时编译目录。\nnode --input-type=module <<'NODE'\nimport { cpSync } from 'node:fs';\nimport { pathToFileURL } from 'node:url';\nimport { basename } from 'node:path';\ncpSync(process.env.GITHUB_WORKSPACE, `${process.env.RUNNER_TEMP}/tatachatsdk/build-source`, {\n  recursive: true, filter: source => basename(source) !== '.git',\n});\nconst {materializeAnalysisOptions}=await import(pathToFileURL(process.env.GITHUB_WORKSPACE+'/scripts/build.mjs'));\nmaterializeAnalysisOptions(process.env.GITHUB_WORKSPACE, process.env.RUNNER_TEMP+'/tatachatsdk/build-source');\nNODE\n"},"9":{"shell":"bash","source":"set -euo pipefail\nflutter pub get --enforce-lockfile\ndart format --output=none --set-exit-if-changed lib test\nflutter analyze\ncargo test --manifest-path native/Cargo.toml --all-targets --locked\nbash ./scripts/build-native.sh host\nexport ISAR_CORE_LIB_PATH=\"$(node \"$GITHUB_WORKSPACE/scripts/ci/native.mjs\" isar \"$PWD/.dart_tool/package_config.json\" \"$PUB_CACHE\" \"$PWD/pubspec.lock\")\"\nexport DYLD_LIBRARY_PATH=\"$CARGO_TARGET_DIR/debug\"\nexport LD_LIBRARY_PATH=\"$CARGO_TARGET_DIR/debug\"\nflutter test\n"},"10":{"shell":"bash","source":"build_source=\"$RUNNER_TEMP/tatachatsdk/build-source\"\nnative_output=\"$RUNNER_TEMP/tatachatsdk/native\"\nandroid_stage=\"$RUNNER_TEMP/tatachatsdk/android-stage\"\nmkdir -p \"$native_output/android\" \"$native_output/ios\" \"$native_output/macos\"\n# CI 独立调用产品编译器；它不调用本机 Build，也不消费本机最终产物。\nTATACHATSDK_NATIVE_ANDROID_DIR=\"$android_stage\" \\\n  \"$build_source/scripts/build-native.sh\" android\ncp \"$android_stage/arm64-v8a/libtatachat_sdk.so\" \\\n  \"$native_output/android/libtatachat_sdk.so\"\nTATACHATSDK_NATIVE_IOS_DIR=\"$native_output/ios\" \\\n  \"$build_source/scripts/build-native.sh\" ios\nTATACHATSDK_NATIVE_MACOS_DIR=\"$native_output/macos\" \\\n  \"$build_source/scripts/build-native.sh\" macos\nprintf '%s\n' \"$SOURCE_SHA\" > \"$RUNNER_TEMP/tatachatsdk/source-sha.txt\"\n"},"11":{"shell":"bash","source":"node \"$GITHUB_WORKSPACE/scripts/ci/execute.mjs\" sanitize\nnode \"$GITHUB_WORKSPACE/scripts/ci/execute.mjs\" record\n"},"12":{"shell":"bash","source":"node \"$GITHUB_WORKSPACE/scripts/ci/execute.mjs\" prune"},"13":{"shell":"bash","source":"node \"$GITHUB_WORKSPACE/scripts/ci/execute.mjs\" sanitize\nnode \"$GITHUB_WORKSPACE/scripts/ci/execute.mjs\" record\n"},"14":{"shell":"bash","source":"node \"$GITHUB_WORKSPACE/scripts/ci/execute.mjs\" prune"}});
-function runExactWorkflowStep(index){requireExactRemoteJobEnvironment();if(!/^(?:0|[1-9][0-9]*)$/.test(String(index||''))||!Object.hasOwn(workflowSteps,String(index)))throw new Error('准确远端Job阶段无效');const step=workflowSteps[String(index)];const command=step.shell==='pwsh'?'pwsh':(process.platform==='win32'?'bash':'/bin/bash');const args=step.shell==='pwsh'?['-NoLogo','-NoProfile','-NonInteractive','-Command',step.source]:['--noprofile','--norc','-e','-o','pipefail','-c',step.source];const result=runExactProcess(command,args,{cwd:process.cwd(),env:process.env,stdio:'inherit'});if(result.error)throw new Error('准确远端Job阶段无法启动');if(result.status!==0)process.exitCode=Number.isInteger(result.status)?result.status:1;}
+function requireExactRemoteJobEnvironment(){if(process.env.GITHUB_REPOSITORY!=="tuyutata/tatachatsdk")throw Error("准确远端Job仓库身份无效");}
+export async function runCacheCommand(command,environment=process.env){const actions={prepare,wire,sanitize,record:writeTerminalRecord,prune};if(!Object.hasOwn(actions,command))throw Error("CI缓存动作无效");await actions[command](environment);}
 
-async function main() {
-  const command = process.argv[2];
-  if (command === 'workflow-step') return runExactWorkflowStep(process.argv[3]);
-  if (command === 'prepare') return prepare(process.env);
-  if (command === 'wire') return wire(process.env);
-  if (command === 'sanitize') return sanitize(process.env);
-  if (command === 'record') return writeTerminalRecord(process.env);
-  if (command === 'prune') return prune(process.env);
-  throw new Error('用法：ci-cache.mjs <workflow-step|prepare|wire|sanitize|record|prune>');
-}
+import {resolve}from'node:path';
+import {fileURLToPath}from'node:url';
+const directInvocation=Boolean(!process.execArgv.some(value=>/^(?:-e|--eval(?:=|$)|--input-type(?:=|$))/u.test(value)) && process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url));
+const testInvocation=directInvocation && (process.argv[2]==='test'||process.env.NODE_TEST_CONTEXT==='child-v8'&&process.argv.length===2);
+if(directInvocation&&!testInvocation){try{await runCacheCommand(process.argv[2]);}catch(error){console.error(error.message);process.exitCode=1;}}
 
-const invokedPath = process.argv[1] ? pathToFileURL(path.resolve(process.argv[1])).href : '';
-if (invokedPath === import.meta.url) {
-  main().catch((error) => {
-    console.error(error instanceof Error ? error.message : String(error));
-    process.exitCode = 1;
-  });
+// 正式实现结束；以下回归仅在本文件作为测试入口时注册。
+if (testInvocation) {
+const {default:test}=await import('node:test');const {default:assert}=await import('node:assert/strict');
+test('CI缓存身份隔离产品平台，越界路径在写入前拒绝',()=>{
+ const input={repository:'tuyutata/tatachatsdk',product:'tatachatsdk',platform:'ios',architecture:'arm64',component:'sdk',runnerOs:'macos',runnerArch:'arm64',toolchainFingerprint:'a'.repeat(64)};
+ const identity=cacheIdentity(input),key=cacheKeys(identity,'1','1').successKey;
+ assert.equal(parseCacheKey(identity,key).state,'success');assert.equal(parseCacheKey(cacheIdentity({...input,platform:'android'}),key),null);
+ assert.throws(()=>cachePathPlan(identity,'relative',[]));assert.throws(()=>cacheIdentity({...input,platform:'../ios'}));
+});
 }

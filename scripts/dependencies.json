@@ -10,9 +10,9 @@
     "native/Cargo.toml",
     "native/Cargo.lock",
     "scripts/dependencies.mjs",
-    "scripts/generate-protocol.sh",
+    "scripts/build.mjs",
     "scripts/release.mjs",
-    "scripts/release.test.mjs"
+    "scripts/release.mjs"
   ],
   "dart_applications": [
     "."

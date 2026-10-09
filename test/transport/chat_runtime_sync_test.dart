@@ -13,7 +13,8 @@ const _device =
     'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 const _account = ChatRuntimeAccount(
   hostIndex: 0,
-  bindingScope: 'synthetic',
+  bindingScope:
+      '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
   userId: 'user-a',
   bindingRevision: 1,
   accountId: 'account-a',
@@ -100,8 +101,9 @@ final class _Crypto implements MlsGroupCrypto {
   @override
   Future<GroupInbound> groupProcess(MlsWireMessage wire) async {
     processed++;
-    if (wire.wireBytes.first == 255)
+    if (wire.wireBytes.first == 255) {
       throw StateError('synthetic decrypt failure');
+    }
     return GroupInbound(
       groupId: wire.conversationId,
       kind: GroupInboundKind.application,
@@ -201,8 +203,9 @@ final class _Transport implements ChatServiceTransport {
     fetches++;
     activeFetches++;
     if (activeFetches > maximumActive) maximumActive = activeFetches;
-    if (enteredFetch != null && !enteredFetch!.isCompleted)
+    if (enteredFetch != null && !enteredFetch!.isCompleted) {
       enteredFetch!.complete();
+    }
     try {
       return fetch == null
           ? messages.take(pageSize).toList()
@@ -375,7 +378,7 @@ void main() {
       if (terminal == 'binding') {
         fixture.host.account = const ChatRuntimeAccount(
           hostIndex: 0,
-          bindingScope: 'synthetic',
+          bindingScope: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
           userId: 'user-a',
           bindingRevision: 2,
           accountId: 'account-a',
@@ -407,7 +410,8 @@ void main() {
     await fixture.host.enteredAccess.future;
     fixture.host.account = const ChatRuntimeAccount(
       hostIndex: 0,
-      bindingScope: 'synthetic',
+      bindingScope:
+          '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
       userId: 'user-a',
       bindingRevision: 2,
       accountId: 'account-a',

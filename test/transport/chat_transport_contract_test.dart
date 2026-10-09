@@ -1,9 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:tatachat_sdk/transport/chat_server_connection.dart';
-import 'package:tatachat_sdk/transport/chat_attachment_transport.dart';
 import 'package:tatachat_sdk/tatachat_sdk.dart';
+import 'package:tatachat_sdk/transport/chat_attachment_transport.dart';
+import 'package:tatachat_sdk/transport/chat_server_connection.dart';
 
 final class _WrongProtocolSocket implements ChatSocket {
   final StreamController<Object?> _events = StreamController<Object?>();

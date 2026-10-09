@@ -73,7 +73,7 @@ export function pushBaseSHA({ forced, before, headSHA, parents, commitCount }) {
 }
 
 function trackedFiles(root) {
-  return git(root, ['ls-files', '-z', '--', '.']).split('\0').filter(Boolean).sort();
+  return [...new Set(git(root,['ls-files','--cached','--others','--exclude-standard','-z','--','.']).split('\0').filter(path=>path&&existsSync(resolve(root,path))))].sort();
 }
 
 function isTestPath(path) {
@@ -264,7 +264,7 @@ export async function validateQuality(root, baseSHA, headSHA, repository) {
     if (hasFirstPartyTemporaryComments(path, readFileSync(absolute, 'utf8'), upstream)) temporary.push(path);
   }
   if (temporary.length > 0) fail('产品实现代码保留临时注释：' + temporary.join('、'));
-  const tests = git(root, ['ls-files', '-z']).split('\0').filter((path) => path && (isTestPath(path)||path==='scripts/resources.mjs'&&contract.node_tests.includes(path))
+  const tests = git(root, ['ls-files', '-z']).split('\0').filter((path) => path && (isTestPath(path)||inlineNodeTest(path)&&contract.node_tests.includes(path))
     && !ignoredPrefixesFor(repository).some((prefix) => path.startsWith(prefix)));
   if (tests.length === 0) fail('产品没有受控测试代码');
   for (const path of tests) {
@@ -314,12 +314,15 @@ export default async function* reporter(events) {
   yield* Readable.from(checked()).pipe(spec());
 }
 
+function inlineNodeTest(path,root=resolve(dirname(fileURLToPath(import.meta.url)),'../..')){
+ const file=resolve(root,path);return path.endsWith('.mjs')&&existsSync(file)&&lstatSync(file).isFile()&&resourceTestSource(readFileSync(file,'utf8'))!=='';
+}
 // 扫描准确本仓Git已跟踪的Node测试，不接受漏登记、失效登记或重复入口。
 export function validateNodeInventory(paths, registered, repository = contract.repository) {
   if (!Array.isArray(paths) || !Array.isArray(registered)) fail('本仓测试清单类型无效');
   const owned = paths.filter(path => !path.startsWith('.github/tatagate/')
     && !ignoredPrefixesFor(repository).some(prefix => path.startsWith(prefix))
-    && (/(?:^|\/)(?:test\.mjs|[^/]+[._-](?:test|spec)\.mjs)$/u.test(path)||path==='scripts/resources.mjs')).sort();
+    && (/(?:^|\/)(?:test\.mjs|[^/]+[._-](?:test|spec)\.mjs)$/u.test(path)||inlineNodeTest(path))).sort();
   if (!owned.length || new Set(paths).size !== paths.length
     || new Set(registered).size !== registered.length
     || owned.join('\0') !== [...registered].sort().join('\0')) fail('本仓实际测试与门禁登记不闭合');
@@ -959,18 +962,20 @@ async function executeLanguageTests(root,work,receipt,env,run,languageView,signa
 // 同一提交范围必须包含所属资料和真实回归变化；空白调整不能作为同步证据。
 // 正式资源实现继续接受源码检查；同文件测试证据只比较末尾实际代码，不把实现变化冒充用例变化。
 export function resourceTestSource(source){
- const marker='\nif(resourceTestInvocation){\n',begin=source.lastIndexOf(marker);
+ const markers=['\nif(resourceTestInvocation){\n','\nif (testInvocation) {\n'];
+ let begin=-1,marker='';for(const value of markers){const i=source.lastIndexOf(value);if(i>begin){begin=i;marker=value;}}
  if(begin<0||!source.trimEnd().endsWith('}'))return '';
- const {code}=lexicalParts('scripts/resources.mjs',source);
- if(code.slice(begin+1,begin+marker.length-1)!=='if(resourceTestInvocation){'||!/\btest\s*\(/u.test(code.slice(begin+marker.length)))return '';
- return source.slice(begin+marker.length,source.lastIndexOf('}'));
+ const tail=source.slice(begin+marker.length,source.lastIndexOf('}'));
+ if(!/\btest\s*\(/u.test(lexicalParts('scripts/owned.mjs',tail).code))return '';
+ return tail;
 }
+
 export function validateChangeEvidence(paths,documents,{changed=()=>true,changedTests=()=>false}={}){
  if(!Array.isArray(paths)||!Array.isArray(documents))fail('本仓资料同步清单无效');
  const implementation=paths.filter(path=>isImplementationPath(path)&&!isTestPath(path)&&!path.startsWith('.github/workflows/'));
  if(!implementation.length)return true;
  if(!documents.some(path=>paths.includes(path)&&changed(path)))fail('本仓实现变化未同步所属根技术文档');
- if(!paths.some(path=>isTestPath(path)&&changed(path)||path==='scripts/resources.mjs'&&contract.node_tests.includes(path)&&changedTests(path)))fail('本仓实现变化缺少同步真实回归');
+ if(!paths.some(path=>isTestPath(path)&&changed(path)||inlineNodeTest(path)&&contract.node_tests.includes(path)&&changedTests(path)))fail('本仓实现变化缺少同步真实回归');
  return true;
 }
 function checkChangeEvidence(root,baseSHA,headSHA){
@@ -1010,7 +1015,7 @@ export function validateFunctionalInventory(root,functions=contract.functions) {
   const owned=trackedFiles(root).filter(path=>!path.startsWith('.github/')&&!functionalIgnoredPrefixes.some(prefix=>path.startsWith(prefix)));
   const expected=new Set();
   for(const path of owned){
-    if(path==='scripts/resources.mjs'){
+    if(inlineNodeTest(path,root)){
       if(!resourceTestSource(readFileSync(resolve(root,path),'utf8')))fail('本仓资源末尾缺少真实测试代码');
       expected.add(path);
     }

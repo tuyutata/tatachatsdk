@@ -110,10 +110,11 @@ void main() {
         http: http,
       );
       await transport.connect();
-      if (oversized)
+      if (oversized) {
         socket.controller.add(Uint8List(2 * 1024 * 1024 + 1));
-      else
+      } else {
         socket.receive(ChatFrame()..ping = Ping(sentAtMillis: Int64.ONE));
+      }
       await Future<void>.delayed(Duration.zero);
       expect(socket.closes, 1);
       expect(http.closes, 1);
@@ -260,7 +261,7 @@ void main() {
     await transport.dispose();
   });
 
-  testWidgets('命令超时关闭整条连接，后续排队命令不能匹配迟到回执', (tester) async {
+  test('命令超时关闭整条连接，后续排队命令不能匹配迟到回执', () async {
     final socket = _Socket(), http = _Http();
     final transport = _connection(
       connector: (_, _) => _ready(socket),
@@ -275,9 +276,10 @@ void main() {
       transport.resolveKeyPackages('user-c'),
       throwsA(isA<ChatServerConnectionException>()),
     );
-    await tester.pump();
+    await Future<void>.delayed(Duration.zero);
     expect(socket.sent, hasLength(1));
-    await tester.pump(const Duration(seconds: 12));
+    // 传输层使用真实异步资源；跨过现行12秒期限后核验关闭与排队拒绝。
+    await Future<void>.delayed(const Duration(seconds: 13));
     await Future.wait([first, second]);
     expect(socket.sent, hasLength(1));
     expect(socket.closes, 1);

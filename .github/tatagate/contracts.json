@@ -6,12 +6,14 @@
     "tatachatsdk.sdk.release"
   ],
   "node_tests": [
-    "scripts/build.test.mjs",
-    "scripts/ci/test.mjs",
-    "scripts/flow.test.mjs",
-    "scripts/release.test.mjs",
-    "scripts/release/test.mjs",
-    "scripts/resources.mjs"
+    "scripts/build.mjs",
+    "scripts/flow.mjs",
+    "scripts/release.mjs",
+    "scripts/resources.mjs",
+    "scripts/ci/index.mjs",
+    "scripts/ci/sdk.mjs",
+    "scripts/release/index.mjs",
+    "scripts/release/sdk.mjs"
   ],
   "checks": [
     "repository-contracts"
@@ -53,42 +55,6 @@
         "attachment_rejects_noncanonical_registration_and_confirmation_overflow",
         "welcome_rejects_a_valid_mls_signature_with_a_forged_device_credential"
       ]
-    },
-    {
-      "function": "scripts/build.test",
-      "path": "scripts/build.test.mjs",
-      "runner": "node",
-      "target": "node"
-    },
-    {
-      "function": "scripts/ci/test",
-      "path": "scripts/ci/test.mjs",
-      "runner": "node",
-      "target": "node"
-    },
-    {
-      "function": "scripts/flow.test",
-      "path": "scripts/flow.test.mjs",
-      "runner": "node",
-      "target": "node"
-    },
-    {
-      "function": "scripts/release.test",
-      "path": "scripts/release.test.mjs",
-      "runner": "node",
-      "target": "node"
-    },
-    {
-      "function": "scripts/release/test",
-      "path": "scripts/release/test.mjs",
-      "runner": "node",
-      "target": "node"
-    },
-    {
-      "function": "scripts/resources",
-      "path": "scripts/resources.mjs",
-      "runner": "node",
-      "target": "node"
     },
     {
       "function": "test/attachment/compressor_test",
@@ -371,6 +337,54 @@
       "path": "test/transport/chat_runtime_sync_test.dart",
       "runner": "flutter",
       "target": "flutter"
+    },
+    {
+      "function": "scripts/build",
+      "path": "scripts/build.mjs",
+      "runner": "node",
+      "target": "node"
+    },
+    {
+      "function": "scripts/flow",
+      "path": "scripts/flow.mjs",
+      "runner": "node",
+      "target": "node"
+    },
+    {
+      "function": "scripts/release",
+      "path": "scripts/release.mjs",
+      "runner": "node",
+      "target": "node"
+    },
+    {
+      "function": "scripts/resources",
+      "path": "scripts/resources.mjs",
+      "runner": "node",
+      "target": "node"
+    },
+    {
+      "function": "scripts/ci/index",
+      "path": "scripts/ci/index.mjs",
+      "runner": "node",
+      "target": "node"
+    },
+    {
+      "function": "scripts/ci/sdk",
+      "path": "scripts/ci/sdk.mjs",
+      "runner": "node",
+      "target": "node"
+    },
+    {
+      "function": "scripts/release/index",
+      "path": "scripts/release/index.mjs",
+      "runner": "node",
+      "target": "node"
+    },
+    {
+      "function": "scripts/release/sdk",
+      "path": "scripts/release/sdk.mjs",
+      "runner": "node",
+      "target": "node"
     }
   ]
 }

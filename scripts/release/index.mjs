@@ -19,9 +19,10 @@ const expectedFiles = [
   'native/Cargo.toml',
   'native/Cargo.lock',
   'scripts/dependencies.mjs',
-  'scripts/generate-protocol.sh',
+  'scripts/build.mjs',
   'scripts/release.mjs',
-  'scripts/release.test.mjs',
+  'scripts/resources.mjs',
+  'native/tatachat_sdk.h',
 ];
 
 function fail(message) {
@@ -322,9 +323,21 @@ function main() {
   else fail('不支持的 TataChatSDK Release 命令');
 }
 
+import {fileURLToPath}from'node:url';
+const directInvocation=Boolean(!process.execArgv.some(value=>/^(?:-e|--eval(?:=|$)|--input-type(?:=|$))/u.test(value)) && process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url));
+const testInvocation=directInvocation && (process.argv[2]==='test'||process.env.NODE_TEST_CONTEXT==='child-v8'&&process.argv.length===2);
+if(directInvocation&&!testInvocation){
 try {
   main();
 } catch (error) {
   process.stderr.write(`TataChatSDK Release 检查失败：${error.message}\n`);
   process.exitCode = 1;
+}
+
+}
+
+// 正式实现结束；以下回归仅在本文件作为测试入口时注册。
+if (testInvocation) {
+const {default:test}=await import('node:test');const {default:assert}=await import('node:assert/strict');
+test('发布调度拒绝未知动作及缺少来源参数',()=>{const before=process.argv;try{for(const args of [['unknown'],['version-tag','verify-release-source']]){process.argv=[process.execPath,fileURLToPath(import.meta.url),...args];assert.throws(()=>main());}}finally{process.argv=before;}});
 }

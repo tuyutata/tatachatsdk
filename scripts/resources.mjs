@@ -1467,15 +1467,6 @@ async function materializeResources(platform,work,previous={},options={}){
  const flutter=library.installed.get('flutter');if(flutter){const sdk=dirname(dirname(flutter.path));receipt.environment.DART_EXECUTABLE=join(sdk,'bin/cache/dart-sdk/bin/dart');const os=platform.endsWith('ios')?'ios':platform.endsWith('macos')?'macos':null;if(os&&!await stat(join(work,'flutter-tools'))){const delivery=await flutterRecipe.prepareFlutterTaskTools(sdk,work,os,{signal:options.signal,environment:{PRODUCT_BASH_BIN:library.installed.get('bash').path,PRODUCT_RSYNC_BIN:foundation.tools.rsync}});if(delivery.PATH)receipt.environment.PATH=delivery.PATH+':'+receipt.environment.PATH;}if(os)receipt.environment.PATH=join(work,'flutter-tools')+':'+receipt.environment.PATH;receipt.environment.PRODUCT_RSYNC_BIN=foundation.tools.rsync;receipt.environment.PRODUCT_BASH_BIN=library.installed.get('bash').path;}
  await prepareGradleResources(work,options,receipt.environment);options.signal?.throwIfAborted();if(JSON.stringify(request())!==JSON.stringify(requirement)){if((options.depth||0)>=8)fail('资源递归闭包超限');return materializeResources(platform,work,receipt,{...options,depth:(options.depth||0)+1});}owner.resourceEnvironment(platform,work,receipt,cleanEnvironment(environment));return receipt;
 }
-// CLI唯一JSON结果；资源日志由子工具stderr进入本轮调用者，信号取消贯穿全部阶段。
-const resourceMain=Boolean(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url));
-// 固定Node测试子进程或明确test命令才注册末尾用例；普通导入和资源CLI没有测试副作用。
-const resourceTestInvocation=resourceMain&&(process.argv[2]==='test'||process.env.NODE_TEST_CONTEXT==='child-v8');
-if(resourceMain&&!resourceTestInvocation){
- if(process.argv[2]==='rsync'){await flutterRecipe.copyFlutterArtifact(process.argv.slice(3));}
- else{const [platform,flag,work,...extra]=process.argv.slice(2);if(flag!=='--work'||extra.some(x=>x!=='--offline')||extra.length>1)fail('资源参数无效');const cancellation=new AbortController();for(const name of ['SIGTERM','SIGINT'])process.once(name,()=>cancellation.abort());let input='';for await(const chunk of process.stdin){input+=chunk;if(Buffer.byteLength(input)>2*1024**2)fail('资源请求超限');}process.stdout.write(JSON.stringify(await resources(platform,work,input?JSON.parse(input):{},{offline:extra.includes('--offline'),signal:cancellation.signal})));}
-}
-
 // 本仓门禁宿主资源配置，不改变原有生产配方。
 const gateProductID="tatachatsdk";
 const gateBootstrapInputs={"platform":"linux","architecture":"x64","os":"24.04","commands":[{"name":"basename","path":"/usr/bin/basename","package":"coreutils"},{"name":"cat","path":"/usr/bin/cat","package":"coreutils"},{"name":"chmod","path":"/usr/bin/chmod","package":"coreutils"},{"name":"cp","path":"/usr/bin/cp","package":"coreutils"},{"name":"cut","path":"/usr/bin/cut","package":"coreutils"},{"name":"date","path":"/usr/bin/date","package":"coreutils"},{"name":"dd","path":"/usr/bin/dd","package":"coreutils"},{"name":"dirname","path":"/usr/bin/dirname","package":"coreutils"},{"name":"du","path":"/usr/bin/du","package":"coreutils"},{"name":"echo","path":"/usr/bin/echo","package":"coreutils"},{"name":"env","path":"/usr/bin/env","package":"coreutils"},{"name":"expr","path":"/usr/bin/expr","package":"coreutils"},{"name":"false","path":"/usr/bin/false","package":"coreutils"},{"name":"head","path":"/usr/bin/head","package":"coreutils"},{"name":"install","path":"/usr/bin/install","package":"coreutils"},{"name":"ln","path":"/usr/bin/ln","package":"coreutils"},{"name":"ls","path":"/usr/bin/ls","package":"coreutils"},{"name":"mkdir","path":"/usr/bin/mkdir","package":"coreutils"},{"name":"mv","path":"/usr/bin/mv","package":"coreutils"},{"name":"od","path":"/usr/bin/od","package":"coreutils"},{"name":"printf","path":"/usr/bin/printf","package":"coreutils"},{"name":"pwd","path":"/usr/bin/pwd","package":"coreutils"},{"name":"readlink","path":"/usr/bin/readlink","package":"coreutils"},{"name":"realpath","path":"/usr/bin/realpath","package":"coreutils"},{"name":"rm","path":"/usr/bin/rm","package":"coreutils"},{"name":"rmdir","path":"/usr/bin/rmdir","package":"coreutils"},{"name":"sleep","path":"/usr/bin/sleep","package":"coreutils"},{"name":"sort","path":"/usr/bin/sort","package":"coreutils"},{"name":"stat","path":"/usr/bin/stat","package":"coreutils"},{"name":"tail","path":"/usr/bin/tail","package":"coreutils"},{"name":"tee","path":"/usr/bin/tee","package":"coreutils"},{"name":"test","path":"/usr/bin/test","package":"coreutils"},{"name":"touch","path":"/usr/bin/touch","package":"coreutils"},{"name":"tr","path":"/usr/bin/tr","package":"coreutils"},{"name":"true","path":"/usr/bin/true","package":"coreutils"},{"name":"uname","path":"/usr/bin/uname","package":"coreutils"},{"name":"uniq","path":"/usr/bin/uniq","package":"coreutils"},{"name":"wc","path":"/usr/bin/wc","package":"coreutils"},{"name":"bash","path":"/usr/bin/bash","package":"bash"},{"name":"grep","path":"/usr/bin/grep","package":"grep"},{"name":"sed","path":"/usr/bin/sed","package":"sed"},{"name":"make","path":"/usr/bin/make","package":"make"},{"name":"patch","path":"/usr/bin/patch","package":"patch"},{"name":"tar","path":"/usr/bin/tar","package":"tar"},{"name":"gzip","path":"/usr/bin/gzip","package":"gzip"},{"name":"xz","path":"/usr/bin/xz","package":"xz-utils"},{"name":"awk","path":"/usr/bin/mawk","package":"mawk"},{"name":"diff","path":"/usr/bin/diff","package":"diffutils"},{"name":"cmp","path":"/usr/bin/cmp","package":"diffutils"},{"name":"find","path":"/usr/bin/find","package":"findutils"},{"name":"xargs","path":"/usr/bin/xargs","package":"findutils"},{"name":"clang","path":"/usr/lib/llvm-18/bin/clang","package":"clang-18"},{"name":"ar","path":"/usr/bin/x86_64-linux-gnu-ar","package":"binutils-x86-64-linux-gnu"},{"name":"as","path":"/usr/bin/x86_64-linux-gnu-as","package":"binutils-x86-64-linux-gnu"},{"name":"ld","path":"/usr/bin/x86_64-linux-gnu-ld.bfd","package":"binutils-x86-64-linux-gnu"},{"name":"nm","path":"/usr/bin/x86_64-linux-gnu-nm","package":"binutils-x86-64-linux-gnu"},{"name":"ranlib","path":"/usr/bin/x86_64-linux-gnu-ranlib","package":"binutils-x86-64-linux-gnu"},{"name":"strip","path":"/usr/bin/x86_64-linux-gnu-strip","package":"binutils-x86-64-linux-gnu"},{"name":"dpkg-deb","path":"/usr/bin/dpkg-deb","package":"dpkg"},{"name":"mktemp","path":"/usr/bin/mktemp","package":"coreutils"},{"name":"whoami","path":"/usr/bin/whoami","package":"coreutils"},{"name":"id","path":"/usr/bin/id","package":"coreutils"},{"name":"seq","path":"/usr/bin/seq","package":"coreutils"},{"name":"comm","path":"/usr/bin/comm","package":"coreutils"},{"name":"nproc","path":"/usr/bin/nproc","package":"coreutils"},{"name":"truncate","path":"/usr/bin/truncate","package":"coreutils"},{"name":"sha256sum","path":"/usr/bin/sha256sum","package":"coreutils"},{"name":"objcopy","path":"/usr/bin/x86_64-linux-gnu-objcopy","package":"binutils-x86-64-linux-gnu"},{"name":"objdump","path":"/usr/bin/x86_64-linux-gnu-objdump","package":"binutils-x86-64-linux-gnu"},{"name":"readelf","path":"/usr/bin/x86_64-linux-gnu-readelf","package":"binutils-x86-64-linux-gnu"},{"name":"file","path":"/usr/bin/file","package":"file"},{"name":"flock","path":"/usr/bin/flock","package":"util-linux"}],"packages":[{"name":"dpkg","version":"1.22.6ubuntu6.6","source":"https://packages.ubuntu.com/noble/dpkg"},{"name":"bash","version":"5.2.21-2ubuntu4","source":"https://packages.ubuntu.com/noble/bash"},{"name":"grep","version":"3.11-4build1","source":"https://packages.ubuntu.com/noble/grep"},{"name":"sed","version":"4.9-2ubuntu0.24.04.1","source":"https://packages.ubuntu.com/noble/sed"},{"name":"coreutils","version":"9.4-3ubuntu6.3","source":"https://packages.ubuntu.com/noble/coreutils"},{"name":"make","version":"4.3-4.1build2","source":"https://packages.ubuntu.com/noble/make"},{"name":"patch","version":"2.7.6-7build3","source":"https://packages.ubuntu.com/noble/patch"},{"name":"mawk","version":"1.3.4.20240123-1build1","source":"https://packages.ubuntu.com/noble/mawk"},{"name":"diffutils","version":"1:3.10-1ubuntu0.1","source":"https://packages.ubuntu.com/noble/diffutils"},{"name":"findutils","version":"4.9.0-5build1","source":"https://packages.ubuntu.com/noble/findutils"},{"name":"tar","version":"1.35+dfsg-3ubuntu0.4","source":"https://packages.ubuntu.com/noble/tar"},{"name":"gzip","version":"1.12-1ubuntu3.2","source":"https://packages.ubuntu.com/noble/gzip"},{"name":"xz-utils","version":"5.6.1+really5.4.5-1ubuntu0.3","source":"https://packages.ubuntu.com/noble/xz-utils"},{"name":"clang-18","version":"1:18.1.3-1ubuntu1","source":"https://packages.ubuntu.com/noble/clang-18"},{"name":"binutils-x86-64-linux-gnu","version":"2.42-4ubuntu2.10","source":"https://packages.ubuntu.com/noble/binutils-x86-64-linux-gnu"},{"name":"libexpat1-dev","version":"2.6.1-2ubuntu0.6","source":"https://packages.ubuntu.com/noble/libexpat1-dev"},{"name":"zlib1g-dev","version":"1:1.3.dfsg-3.1ubuntu2.2","source":"https://packages.ubuntu.com/noble/zlib1g-dev"},{"name":"libc6","version":"2.39-0ubuntu8.9","source":"https://packages.ubuntu.com/noble/libc6"},{"name":"libc6-dev","version":"2.39-0ubuntu8.9","source":"https://packages.ubuntu.com/noble/libc6-dev"},{"name":"libc-dev-bin","version":"2.39-0ubuntu8.9","source":"https://packages.ubuntu.com/noble/libc-dev-bin"},{"name":"libgcc-13-dev","version":"13.3.0-6ubuntu2~24.04.1","source":"https://packages.ubuntu.com/noble/libgcc-13-dev"},{"name":"libstdc++-13-dev","version":"13.3.0-6ubuntu2~24.04.1","source":"https://packages.ubuntu.com/noble/libstdc++-13-dev"},{"name":"file","version":"1:5.45-3build1","source":"https://packages.ubuntu.com/noble/amd64/file"},{"name":"util-linux","version":"2.39.3-9ubuntu6.6","source":"https://packages.ubuntu.com/noble-updates/amd64/util-linux"},{"name":"libclang1-18","version":"1:18.1.3-1ubuntu1","source":"https://packages.ubuntu.com/noble-updates/amd64/libclang1-18"},{"name":"libclang-18-dev","version":"1:18.1.3-1ubuntu1","source":"https://packages.ubuntu.com/noble-updates/amd64/libclang-18-dev"}],"artifacts":[{"name":"libcurl4-openssl-dev","version":"8.5.0-2ubuntu10.15","architecture":"amd64","url":"https://archive.ubuntu.com/ubuntu/pool/main/c/curl/libcurl4-openssl-dev_8.5.0-2ubuntu10.15_amd64.deb","sha256":"c63393dd39d8bc49580e3e23be3eda63ce62ae4823d95f692c7547b25ade8a31","size":446114,"depends":"libcurl4t64 (= 8.5.0-2ubuntu10.15)"},{"name":"libcurl4t64","version":"8.5.0-2ubuntu10.15","architecture":"amd64","url":"https://archive.ubuntu.com/ubuntu/pool/main/c/curl/libcurl4t64_8.5.0-2ubuntu10.15_amd64.deb","sha256":"02f8f39727a43d5a7057cba35cda866be00d929b91ea67ed02dd9d6402fa551c","size":343472,"depends":"libbrotli1 (>= 0.6.0), libc6 (>= 2.34), libgssapi-krb5-2 (>= 1.17), libidn2-0 (>= 2.0.0), libldap2 (>= 2.6.2), libnghttp2-14 (>= 1.50.0), libpsl5t64 (>= 0.16.0), librtmp1 (>= 2.3), libssh-4 (>= 0.9.0), libssl3t64 (>= 3.0.0), libzstd1 (>= 1.5.5), zlib1g (>= 1:1.1.4)"}]};
@@ -2024,8 +2015,7 @@ export async function gateLanguageView(destination,receipt,{signal}={}){
  const archiveView=async(source,path)=>{const archive=path+'.tar';await runResourceProcess(environment.PRODUCT_GIT_BIN,['-C',source,'archive','--format=tar','--output='+archive,'HEAD'],{cwd:receipt.work,env:environment,signal,quietOutput:true});try{return await extractArchive(archive,path,{signal});}finally{await rm(archive);}};
  const view=await archiveView(root,destination);
  const sources=receipt.inputs?.sources||owner.lockedSources();
- const rootSource=await stat(join(root,'app/pubspec.yaml'))?join(root,'app'):root;
- const project=rootSource===root?view:join(view,'app');
+ const project=view;
  // 本SDK分析配置在已保存源码中只位于scripts，派生工程显式装配以保持Flutter自动发现。
  owner.materializeAnalysisOptions(root,project);
  const library={root:receipt.schema===2?join(receipt.store,'tools'):join(receipt.work,'objects'),work:receipt.work,installed:new Map([['node',{path:environment.PRODUCT_NODE_BIN}]]),gateLinuxFoundation:receipt.schema===1?{path:environment.PATH}:undefined};
@@ -2124,6 +2114,302 @@ export async function prepareGateFunctionalHost(receipt,languageView,{signal,nat
 }
 
 // 资源回归统一随正式实现归档；仅本文件被明确选为测试入口时加载测试工具。
+
+// 协议工具及测试原生库定位与资源交付共用唯一模块。
+const protocolDependencies = await (async()=>{
+// TataChatSDK只在调用方源码外目录准备自己声明的协议生成工具，不读取其它产品或控制程序。
+const { createHash }=await import('node:crypto');
+const { spawnSync }=await import('node:child_process');
+const {
+  createWriteStream,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+}=await import('node:fs');
+const { chmod }=await import('node:fs/promises');
+const { isAbsolute, join, resolve }=await import('node:path');
+const { pipeline }=await import('node:stream/promises');
+const { fileURLToPath, pathToFileURL }=await import('node:url');
+
+const scripts = fileURLToPath(new URL('.', import.meta.url));
+const product = realpathSync(join(scripts, '..'));
+const contract = new Proxy({}, {get:(_target,key)=>JSON.parse(readFileSync(join(scripts,'dependencies.json'),'utf8'))[key]});
+// 离线只读取已交付原件；非法开关必须在创建工作目录前拒绝。
+let offlineValue,offline;
+const protocVersion = '35.0';
+const protocSource = 'https://github.com/protocolbuffers/protobuf/releases/tag/v35.0';
+const pluginVersion = '25.0.0';
+const pluginSource = 'https://pub.dev/packages/protoc_plugin/versions/25.0.0';
+const pluginArchiveURL = 'https://pub.dev/api/archives/protoc_plugin-25.0.0.tar.gz';
+const pluginArchiveSHA256 = 'd1ea363e9118f954d9d482c2f7281c5ff5149b059e68672d1faa564d49091f05';
+const protocArchives = Object.freeze({
+  macos: 'protoc-35.0-osx-aarch_64.zip',
+  'linux-arm': 'protoc-35.0-linux-aarch_64.zip',
+  'linux-amd': 'protoc-35.0-linux-x86_64.zip',
+  windows: 'protoc-35.0-win64.zip',
+});
+
+function fail(message) { throw new Error(message); }
+
+function safeWork(value) {
+  if (!isAbsolute(value)) fail('TataChatSDK工具工作目录必须是绝对路径');
+  const target = resolve(value);
+  if ((target === product || target.startsWith(product + '/')) && !target.startsWith(join(product, 'target') + '/')) fail('TataChatSDK工具只能在源码树的target内生成');
+  mkdirSync(target, { recursive: true, mode: 0o700 });
+  const actual = realpathSync(target);
+  if (actual !== target) fail('TataChatSDK工具工作目录禁止符号链接');
+  return actual;
+}
+
+async function download(url, output, hosts) {
+  const parsed = new URL(url);
+  if (parsed.protocol !== 'https:' || !hosts.includes(parsed.hostname)
+      || parsed.username || parsed.password) fail('TataChatSDK工具来源无效');
+  let last;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    const partial = `${output}.partial-${process.pid}-${attempt}`;
+    try {
+      const response = await fetch(url, {
+        redirect: 'follow',
+        signal: AbortSignal.timeout(300_000),
+      });
+      const final = new URL(response.url);
+      if (!response.ok || !response.body) fail(`TataChatSDK工具下载失败：${response.status}`);
+      if (final.protocol !== 'https:' || !hosts.includes(final.hostname)
+          || final.username || final.password) fail('TataChatSDK工具重定向来源无效');
+      await pipeline(response.body, createWriteStream(partial, { flags: 'wx', mode: 0o600 }));
+      renameSync(partial, output);
+      return;
+    } catch (error) {
+      rmSync(partial, { force: true });
+      last = error;
+    }
+  }
+  throw last;
+}
+
+function sha256(path) {
+  return createHash('sha256').update(readFileSync(path)).digest('hex');
+}
+
+function fileInventory(root) {
+  const files = new Map();
+  function walk(directory, prefix) {
+    for (const entry of readdirSync(directory, { withFileTypes: true })
+      .sort((left, right) => left.name.localeCompare(right.name))) {
+      const path = join(directory, entry.name);
+      const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
+      const status = lstatSync(path);
+      if (status.isSymbolicLink()) fail('TataChatSDK protoc_plugin源码禁止符号链接');
+      if (status.isDirectory()) walk(path, relative);
+      else if (status.isFile()) files.set(relative, sha256(path));
+      else fail('TataChatSDK protoc_plugin源码文件类型无效');
+    }
+  }
+  walk(root, '');
+  return [...files.entries()];
+}
+
+async function verifiedArchive(entry, archive, hosts) {
+  if (offline) {
+    if (!existsSync(archive)) fail('TataChatSDK离线工具原件缺失');
+    const status = lstatSync(archive);
+    if (!status.isFile() || status.isSymbolicLink()) {
+      fail('TataChatSDK离线工具原件必须为普通文件');
+    }
+    if (sha256(archive) !== entry.sha256) fail('TataChatSDK离线工具原件摘要不符');
+    return;
+  }
+  if (existsSync(archive) && sha256(archive) !== entry.sha256) rmSync(archive, { force: true });
+  if (!existsSync(archive)) await download(entry.url, archive, hosts);
+  if (sha256(archive) !== entry.sha256) {
+    rmSync(archive, { force: true });
+    fail('TataChatSDK工具摘要不符');
+  }
+}
+
+async function prepareProtoc(platform, workValue) {
+  const archives = contract.tools?.protoc?.archives;
+  const entry = archives?.[platform];
+  const archiveName = protocArchives[platform];
+  const expectedURL = archiveName
+    ? `https://github.com/protocolbuffers/protobuf/releases/download/v${protocVersion}/${archiveName}`
+    : null;
+  const expectedExecutable = platform === 'windows' ? 'bin/protoc.exe' : 'bin/protoc';
+  if (contract.tools?.protoc?.version !== protocVersion
+      || contract.tools?.protoc?.source !== protocSource || !archives
+      || Object.keys(archives).sort().join(',') !== Object.keys(protocArchives).sort().join(',')
+      || !entry || entry.url !== expectedURL || entry.executable !== expectedExecutable
+      || !/^[a-f0-9]{64}$/.test(entry.sha256)) fail('TataChatSDK protoc声明无效');
+  const work = safeWork(workValue);
+  const archive = join(work, archiveName);
+  const payload = join(work, 'payload');
+  await verifiedArchive(entry, archive, ['github.com', 'release-assets.githubusercontent.com']);
+  rmSync(payload, { recursive: true, force: true });
+  mkdirSync(payload, { mode: 0o700 });
+  const unpacked = spawnSync('unzip', ['-q', archive, '-d', payload], { stdio: 'inherit' });
+  if (unpacked.error || unpacked.status !== 0) {
+    rmSync(payload, { recursive: true, force: true });
+    fail('TataChatSDK protoc解包失败');
+  }
+  const executable = join(payload, entry.executable);
+  if (!existsSync(executable) || !lstatSync(executable).isFile()) fail('TataChatSDK protoc可执行文件无效');
+  await chmod(executable, 0o700);
+  const version = spawnSync(executable, ['--version'], { encoding: 'utf8' });
+  if (version.error || version.status !== 0 || version.stdout.trim() !== `libprotoc ${protocVersion}`) {
+    rmSync(payload, { recursive: true, force: true });
+    fail('TataChatSDK protoc版本验真失败');
+  }
+  return executable;
+}
+
+async function preparePlugin(platform, workValue) {
+  const tool = contract.tools?.protoc_plugin;
+  const entry = tool?.archive;
+  if (platform !== 'sdk' || tool?.version !== pluginVersion || tool?.source !== pluginSource
+      || entry?.url !== pluginArchiveURL || entry?.sha256 !== pluginArchiveSHA256
+      || entry?.executable !== 'protoc-gen-dart') fail('TataChatSDK protoc_plugin声明无效');
+  const work = safeWork(workValue);
+  const archive = join(work, `protoc_plugin-${pluginVersion}.tar.gz`);
+  await verifiedArchive(entry, archive, ['pub.dev', 'storage.googleapis.com']);
+  const listing = spawnSync('tar', ['-tzf', archive], { encoding: 'utf8' });
+  if (listing.error || listing.status !== 0) fail('TataChatSDK protoc_plugin归档无效');
+  for (const path of listing.stdout.split(/\r?\n/u).filter(Boolean)) {
+    if (path.startsWith('/') || path.split('/').includes('..') || path.includes('\\')) {
+      fail('TataChatSDK protoc_plugin归档路径无效');
+    }
+  }
+  const verifiedSource = join(work, 'verified-source');
+  rmSync(verifiedSource, { recursive: true, force: true });
+  mkdirSync(verifiedSource, { mode: 0o700 });
+  const extracted = spawnSync('tar', ['-xzf', archive, '-C', verifiedSource], { encoding: 'utf8' });
+  if (extracted.error || extracted.status !== 0) fail('TataChatSDK protoc_plugin解包失败');
+
+  const pubCache = join(work, 'pub-cache');
+  mkdirSync(pubCache, { recursive: true, mode: 0o700 });
+  const environment = {
+    ...process.env,
+    PUB_CACHE: pubCache,
+    PUB_HOSTED_URL: 'https://pub.dev',
+  };
+  // 固定消费者只引用官方插件；Pub离线解析后直接编译同一验真源码，不使用全局激活。
+  const consumer = join(work, 'consumer');
+  rmSync(consumer, { recursive: true, force: true });
+  mkdirSync(consumer, { mode: 0o700 });
+  writeFileSync(join(consumer, 'pubspec.yaml'),
+    'name: protoc_plugin_runner\npublish_to: none\nenvironment:\n  sdk: ^3.7.0\ndependencies:\n  protoc_plugin: ' + pluginVersion + '\n',
+    { flag: 'wx', mode: 0o600 });
+  for (const locked of [false, true]) {
+    const resolved = spawnSync('dart',
+      ['pub', 'get', ...(offline ? ['--offline'] : []), ...(locked ? ['--enforce-lockfile'] : [])],
+      { encoding: 'utf8', cwd: consumer, env: environment });
+    if (resolved.error || resolved.status !== 0) fail('TataChatSDK protoc_plugin固定依赖准备失败');
+  }
+  const packageConfig = join(consumer, '.dart_tool', 'package_config.json');
+  const configuration = JSON.parse(readFileSync(packageConfig, 'utf8'));
+  const pluginPackages = configuration.packages?.filter(value => value.name === 'protoc_plugin');
+  const preparedSource = join(pubCache, 'hosted', 'pub.dev', 'protoc_plugin-' + pluginVersion);
+  if (configuration.configVersion !== 2 || pluginPackages?.length !== 1
+      || fileURLToPath(new URL(pluginPackages[0].rootUri, pathToFileURL(packageConfig))) !== preparedSource
+      || !existsSync(preparedSource) || !lstatSync(preparedSource).isDirectory()
+      || realpathSync(preparedSource) !== preparedSource
+      || JSON.stringify(fileInventory(preparedSource)) !== JSON.stringify(fileInventory(verifiedSource))) {
+    fail('TataChatSDK protoc_plugin准备源码与官方归档不一致');
+  }
+  // 显式使用本轮Pub配置，输出官方插件的宿主可执行文件，不包装Dart命令。
+  const executable = join(work, process.platform === 'win32' ? 'protoc-gen-dart.exe' : 'protoc-gen-dart');
+  rmSync(executable, { force: true });
+  const compiled = spawnSync('dart', ['compile', 'exe',
+    join(preparedSource, 'bin', 'protoc_plugin.dart'), '--packages=' + packageConfig, '-o', executable],
+    { encoding: 'utf8', cwd: consumer, env: environment });
+  if (compiled.error || compiled.status !== 0) fail('TataChatSDK protoc_plugin官方源码编译失败');
+  if (!existsSync(executable) || !lstatSync(executable).isFile()
+      || lstatSync(executable).isSymbolicLink() || realpathSync(executable) !== executable) {
+    fail('TataChatSDK protoc_plugin可执行文件无效');
+  }
+  if (process.platform !== 'win32') await chmod(executable, 0o700);
+  return executable;
+}
+
+async function main(values) {
+  offlineValue=process.env.TATACHATSDK_PROTOCOL_OFFLINE;offline=offlineValue==='1';
+  if (offlineValue !== undefined && offlineValue !== '1') {
+    fail('TataChatSDK协议生成离线参数仅接受1');
+  }
+  const [command, toolName, platform, workValue] = values;
+  if (contract.schema !== 1 || command !== 'prepare' || !workValue
+      || values.length !== 4) fail('TataChatSDK工具参数无效');
+  if (toolName === 'protoc') return prepareProtoc(platform, workValue);
+  if (toolName === 'protoc_plugin') return preparePlugin(platform, workValue);
+  fail('TataChatSDK工具名称无效');
+}
+
+
+return {main};
+})();
+export async function runDependencyCLI(values){try{const executable=await protocolDependencies.main(values);process.stdout.write(executable);}catch(error){process.stderr.write(error.message+'\n');process.exitCode=1;}}
+const nativeLibraries = await (async()=>{
+// 测试库只取本轮锁定Pub坐标；禁止默认HOME缓存及目录扫描回退。
+const {lstatSync, readFileSync, realpathSync}=await import('node:fs');
+const {isAbsolute, join, relative, resolve, sep}=await import('node:path');
+const {fileURLToPath, pathToFileURL}=await import('node:url');
+
+function ordinary(path, directory=false) {
+  if(typeof path!=='string'||!isAbsolute(path)||resolve(path)!==path)throw Error('测试原生库路径无效');
+  const stat=lstatSync(path,{throwIfNoEntry:false});
+  if(!(directory?stat?.isDirectory():stat?.isFile())||stat.isSymbolicLink()||realpathSync(path)!==path)throw Error('测试原生库不是本轮普通文件或目录');
+  return path;
+}
+function inside(root,path) {
+  const rel=relative(root,path);
+  if(!rel||rel==='..'||rel.startsWith('..'+sep)||isAbsolute(rel))throw Error('测试原生库越出本轮缓存');
+}
+function host(platform,arch) {
+  if(platform==='linux'&&arch==='x64')return {isar:'linux/libisar.so'};
+  if(platform==='darwin'&&(arch==='arm64'||arch==='x64'))return {isar:'macos/libisar.dylib'};
+  throw Error('测试原生库宿主不受支持');
+}
+function isarCorePath(configPath,pubCache,lockPath,platform=process.platform,arch=process.arch) {
+  ordinary(configPath); ordinary(pubCache,true); ordinary(lockPath);
+  const lock=readFileSync(lockPath,'utf8');
+  const blocks=[...lock.matchAll(/^  isar_community_flutter_libs:\n(?:[ \t]{4,}[^\n]*\n)+/gm)];
+  if(blocks.length!==1||!/^    source: hosted$/m.test(blocks[0][0]))throw Error('Isar锁定包无效');
+  const versions=[...blocks[0][0].matchAll(/^    version: "([0-9]+\.[0-9]+\.[0-9]+)"$/gm)];
+  if(versions.length!==1)throw Error('Isar锁定版本不唯一');
+  const config=JSON.parse(readFileSync(configPath,'utf8'));
+  const packages=Array.isArray(config.packages)?config.packages.filter(p=>p.name==='isar_community_flutter_libs'):[];
+  if(config.configVersion!==2||packages.length!==1||typeof packages[0].rootUri!=='string')throw Error('Isar本轮包坐标不唯一');
+  const url=new URL(packages[0].rootUri,pathToFileURL(configPath));
+  if(url.protocol!=='file:'||url.search||url.hash)throw Error('Isar本轮包坐标无效');
+  const root=ordinary(fileURLToPath(url).replace(/[\/]$/u,''),true);
+  inside(pubCache,root);
+  const expected=join(pubCache,'hosted','pub.dev','isar_community_flutter_libs-'+versions[0][1]);
+  if(root!==expected)throw Error('Isar包坐标与锁定缓存不一致');
+  const manifest=readFileSync(ordinary(join(root,'pubspec.yaml')),'utf8');
+  if(!/^name: isar_community_flutter_libs$/m.test(manifest)||!new RegExp('^version: '+versions[0][1].replaceAll('.','\\.')+'$','m').test(manifest))throw Error('Isar包身份与锁不一致');
+  return ordinary(join(root,host(platform,arch).isar));
+}
+
+return {isarCorePath};
+})();
+export const isarCorePath=(...args)=>nativeLibraries.isarCorePath(...args);
+
+const resourceMain=Boolean(!process.execArgv.some(value=>/^(?:-e|--eval(?:=|$)|--input-type(?:=|$))/u.test(value)) && process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url));
+const resourceTestInvocation=resourceMain&&(process.argv[2]==='test'||process.env.NODE_TEST_CONTEXT==='child-v8'&&process.argv.length===2);
+if(resourceMain&&!resourceTestInvocation){
+ if(process.argv[2]==='dependencies'){await runDependencyCLI(process.argv.slice(3));}
+ else if(process.argv[2]==='isar'){if(process.argv.length!==6)fail('测试原生库入口参数无效');process.stdout.write(isarCorePath(...process.argv.slice(3)));}
+ else if(process.argv[2]==='rsync'){await flutterRecipe.copyFlutterArtifact(process.argv.slice(3));}
+ else{const [platform,flag,work,...extra]=process.argv.slice(2);if(flag!=='--work'||extra.some(x=>x!=='--offline')||extra.length>1)fail('资源参数无效');const cancellation=new AbortController();for(const name of ['SIGTERM','SIGINT'])process.once(name,()=>cancellation.abort());let input='';for await(const chunk of process.stdin){input+=chunk;if(Buffer.byteLength(input)>2*1024**2)fail('资源请求超限');}process.stdout.write(JSON.stringify(await resources(platform,work,input?JSON.parse(input):{},{offline:extra.includes('--offline'),signal:cancellation.signal})));}
+}
+
+
 if(resourceTestInvocation){
  const {test}=await import('node:test');
  const {default:assert}=await import('node:assert/strict');
@@ -2680,7 +2966,7 @@ test('XZ名称预检与解包失败均清理本轮目标，取消不调用提取
 
 test('门禁Node清单包含真实资源文件，漏登记、失效或重复均拒绝',async()=>{
  const {validateNodeInventory}=await import('../.github/tatagate/index.mjs');
- const paths=['scripts/resources.mjs','scripts/build.test.mjs'],registered=[...paths];
+ const paths=['scripts/resources.mjs','scripts/build.mjs'],registered=[...paths];
  assert.deepEqual(validateNodeInventory(paths,registered),[...paths].sort());
  for(const values of [[paths,registered.slice(1)],[paths,[...registered,'scripts/absent.test.mjs']],[[...paths,paths[0]],registered],[paths,[...registered,registered[0]]]])assert.throws(()=>validateNodeInventory(...values),/闭合/);
 });
