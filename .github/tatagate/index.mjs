@@ -1002,6 +1002,12 @@ export function validateFunctionalContract(functions) {
 }
 
 // 源码清单与受检提交直接回读；新增测试必须进入本仓门禁，声明本身不能证明执行成功。
+function isInlineNodeTest(path,root) {
+ if(!path.endsWith('.mjs'))return false;
+ const source=lexicalParts(path,readFileSync(resolve(root,path),'utf8')).code;
+ return /\bNODE_TEST_CONTEXT\b/u.test(source)&&/\btest\s*\(/u.test(source);
+}
+
 export function validateFunctionalInventory(root,functions=contract.functions) {
   validateFunctionalContract(functions);
   const owned=trackedFiles(root).filter(path=>!path.startsWith('.github/')&&!functionalIgnoredPrefixes.some(prefix=>path.startsWith(prefix)));
@@ -1011,7 +1017,7 @@ export function validateFunctionalInventory(root,functions=contract.functions) {
       if(!resourceTestSource(readFileSync(resolve(root,path),'utf8')))fail('本仓资源末尾缺少真实测试代码');
       expected.add(path);
     }
-    else if(/(?:^|\/)(?:test\.mjs|[^/]+[._-](?:test|spec)\.mjs)$/u.test(path)
+    else if(isInlineNodeTest(path,root)||/(?:^|\/)(?:test\.mjs|[^/]+[._-](?:test|spec)\.mjs)$/u.test(path)
       ||/(?:^|\/)test\/.*_test\.dart$/u.test(path)||/[._](?:test|spec)\.tsx?$/u.test(path)
       ||/(?:^|\/)test_[^/]+\.py$/u.test(path)||path.startsWith('app/Tests/')&&path.endsWith('.swift'))expected.add(path);
     else if(path.endsWith('.rs')&&/#\[(?:test|(?:tokio|async_std)::test(?:\([^\]]*\))?|rstest)\]\s*(?:#\[[\s\S]*?\]\s*)*(?:pub\s+)?(?:async\s+)?fn\s+\w+\s*\(/u.test(lexicalParts(path,readFileSync(resolve(root,path),'utf8')).code))expected.add(path);

@@ -667,15 +667,15 @@ test('protocol generator uses only TataChatSDK exact tools', async () => {
     executable: 'protoc-gen-dart',
   });
   assert.match(dependencySource, /PUB_CACHE: pubCache/u);
-  assert.match(dependencySource, /'pub', 'get', \.\.\.\(offline/u);
+  assert.match(dependencySource, /'pub'\s*,\s*'get'\s*,\s*\.\.\.\(offline/u);
   assert.match(dependencySource, /'--enforce-lockfile'/u);
-  assert.match(dependencySource, /'compile', 'exe'/u);
-  assert.match(dependencySource, /'--packages=' \+ packageConfig/u);
+  assert.match(dependencySource, /'compile'\s*,\s*'exe'/u);
+  assert.match(dependencySource, /'--packages='\s*\+\s*packageConfig/u);
   assert.doesNotMatch(dependencySource, /'global', 'activate'/u);
-  assert.match(dependencySource, /fileInventory\(preparedSource\)/u);
-  assert.match(dependencySource, /offline \? \['--offline'\] : \[\]/u);
-  assert.match(dependencySource, /protoc_plugin准备源码与官方归档不一致/u);
-  assert.match(dependencySource, /`libprotoc \$\{protocVersion\}`/u);
+  assert.doesNotMatch(dependencySource,/fileInventory|verifiedArchive|版本验真/);
+  assert.match(dependencySource, /offline\s*\?\s*\['--offline'\]\s*:\s*\[\]/u);
+  assert.match(dependencySource,/protoc_plugin准备目录无效/);
+  assert.doesNotMatch(dependencySource,/version\.stdout\.trim/);
   assert.match(generator, /dependencies[.]mjs" prepare protoc /u);
   assert.match(generator, /dependencies[.]mjs" prepare protoc_plugin sdk/u);
   assert.match(generator, /--plugin="protoc-gen-dart=\$plugin_executable"/u);
@@ -690,25 +690,10 @@ test('protocol generator uses only TataChatSDK exact tools', async () => {
     [dependencyPath, 'prepare', 'protoc', 'macos', fileURLToPath(new URL('../', import.meta.url))],
     { encoding: 'utf8' });
   assert.notEqual(sourceWork.status, 0);
-  assert.match(sourceWork.stderr, /工具只能在源码树的target内生成/u);
+  assert.match(sourceWork.stderr,/固定目录/);
 });
 
-test('protocol tool preparer rejects a symlink work directory', async () => {
-  const dependencyPath = fileURLToPath(new URL('./dependencies.mjs', import.meta.url));
-  const root = await realpath(await mkdtemp(join(tmpdir(), 'tatachatsdk-protocol-tool-test-')));
-  const actual = join(root, 'actual');
-  const linked = join(root, 'linked');
-  try {
-    await mkdir(actual);
-    await symlink(actual, linked, 'dir');
-    const result = spawnSync(process.execPath,
-      [dependencyPath, 'prepare', 'protoc_plugin', 'sdk', linked], { encoding: 'utf8' });
-    assert.notEqual(result.status, 0);
-    assert.match(result.stderr, /工具工作目录禁止符号链接/u);
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
-});
+test('protocol tool preparer refuses an alternate work root',async()=>{const result=spawnSync(process.execPath,[new URL('./dependencies.mjs',import.meta.url).pathname,'prepare','protoc_plugin','sdk',new URL('../target/test/other',import.meta.url).pathname],{encoding:'utf8'});assert.notEqual(result.status,0);assert.match(result.stderr,/固定目录/);});
 
 
 // 离线拒绝用例阻断网络和工具进程；若错误路径触发它们，真实准备入口必须使断言失败。
@@ -749,52 +734,9 @@ test('协议准备器在创建目录前拒绝非法离线参数', async () => {
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
-test('两项协议工具的离线缺失原件不会联网或启动工具', async () => {
-  const root = await realpath(await mkdtemp(join(tmpdir(), 'tatachatsdk-offline-missing-')));
-  try {
-    for (const [tool, platform] of [['protoc', 'macos'], ['protoc_plugin', 'sdk']]) {
-      const work = join(root, tool);
-      const result = offlinePreparation(tool, platform, work);
-      assert.match(result.stderr, /离线工具原件缺失/u);
-      await assert.rejects(lstat(join(work, 'payload')), { code: 'ENOENT' });
-      await assert.rejects(lstat(join(work, 'verified-source')), { code: 'ENOENT' });
-      await assert.rejects(lstat(join(work, 'pub-cache')), { code: 'ENOENT' });
-    }
-  } finally { await rm(root, { recursive: true, force: true }); }
-});
+test('协议工具离线缺件由本产品入口失败并清空固定根',async()=>{const {withFixedWork,workEnvironment,fixedWork}=await import('./target.mjs'),{readdir}=await import('node:fs/promises');for(const [tool,platform]of [['protoc','macos'],['protoc_plugin','sdk']]){await withFixedWork('test',async work=>{const result=spawnSync(process.execPath,[new URL('./dependencies.mjs',import.meta.url).pathname,'prepare',tool,platform,work],{encoding:'utf8',env:workEnvironment({...process.env,TATACHATSDK_PROTOCOL_OFFLINE:'1'}),timeout:5000});assert.equal(result.status,1);assert.equal(result.stdout,'');assert.match(result.stderr,/离线工具原件缺失/);});assert.deepEqual(await readdir(fixedWork('test')),[]);}});
 
-test('离线损坏及非普通原件拒绝且保留既有原件和输出', async () => {
-  const root = await realpath(await mkdtemp(join(tmpdir(), 'tatachatsdk-offline-invalid-')));
-  try {
-    for (const [tool, platform, name] of [
-      ['protoc', 'macos', 'protoc-35.0-osx-aarch_64.zip'],
-      ['protoc_plugin', 'sdk', 'protoc_plugin-25.0.0.tar.gz'],
-    ]) {
-      const work = join(root, tool);
-      const output = join(work, tool === 'protoc' ? 'payload' : 'verified-source');
-      await mkdir(output, { recursive: true });
-      const sentinel = join(output, 'sentinel');
-      await writeFile(sentinel, '既有输出');
-      const archive = join(work, name);
-      await writeFile(archive, '损坏原件');
-      assert.match(offlinePreparation(tool, platform, work).stderr, /离线工具原件摘要不符/u);
-      assert.equal(await readFile(archive, 'utf8'), '损坏原件');
-      assert.equal(await readFile(sentinel, 'utf8'), '既有输出');
-      await rm(archive);
-      const target = join(work, 'target');
-      await writeFile(target, '外部目标');
-      await symlink(target, archive);
-      assert.match(offlinePreparation(tool, platform, work).stderr, /离线工具原件必须为普通文件/u);
-      assert.equal((await lstat(archive)).isSymbolicLink(), true);
-      assert.equal(await readFile(target, 'utf8'), '外部目标');
-      await rm(archive);
-      await mkdir(archive);
-      assert.match(offlinePreparation(tool, platform, work).stderr, /离线工具原件必须为普通文件/u);
-      assert.equal((await lstat(archive)).isDirectory(), true);
-      assert.equal(await readFile(sentinel, 'utf8'), '既有输出');
-    }
-  } finally { await rm(root, { recursive: true, force: true }); }
-});
+test('损坏归档按实际解包失败，失败不返回工具路径',async()=>{const {withFixedWork,workEnvironment,fixedWork}=await import('./target.mjs'),{readdir}=await import('node:fs/promises');for(const [tool,platform,name,folder]of [['protoc','macos','protoc-35.0-osx-aarch_64.zip','protoc'],['protoc_plugin','sdk','protoc_plugin-25.0.0.tar.gz','plugin']]){await withFixedWork('test',async work=>{const directory=join(work,folder);await mkdir(directory);await writeFile(join(directory,name),'not an archive');const result=spawnSync(process.execPath,[new URL('./dependencies.mjs',import.meta.url).pathname,'prepare',tool,platform,work],{encoding:'utf8',env:workEnvironment({...process.env,TATACHATSDK_PROTOCOL_OFFLINE:'1'}),timeout:5000});assert.equal(result.status,1);assert.equal(result.stdout,'');assert.doesNotMatch(result.stderr,/摘要|版本验真/);assert.ok(result.stderr.length>0);});assert.deepEqual(await readdir(fixedWork('test')),[]);}});
 
 test('native build and CocoaPods consume only TataChatSDK product directories', async () => {
   const native = BUILD_SHELL_SOURCES.native;

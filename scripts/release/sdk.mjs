@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import {remoteStep} from '../target.mjs';
 // 作业身份及阶段正文唯一归本模块；普通导入不改变环境或运行作业。
 import {spawnSync as runExactProcess}from'node:child_process';
 import {resolve}from'node:path';

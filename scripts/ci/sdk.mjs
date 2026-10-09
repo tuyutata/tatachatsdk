@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import {remoteStep} from '../target.mjs';
 // 作业身份及阶段正文唯一归本模块；普通导入不改变环境或运行作业。
 import {spawnSync as runExactProcess}from'node:child_process';
 import {resolve}from'node:path';
@@ -116,6 +117,7 @@ test('CI 临时工程来自完整 SDK 仓根且排除 Git 元数据', async () =
   mkdirSync(join(source, 'scripts'));
   writeFileSync(join(source, 'scripts/build.mjs'), readFileSync(new URL('../build.mjs', import.meta.url)));
   writeFileSync(join(source, 'scripts/flows.json'), readFileSync(new URL('../flows.json', import.meta.url)));
+  writeFileSync(join(source, 'scripts/target.mjs'), readFileSync(new URL('../target.mjs', import.meta.url)));
   
   mkdirSync(temporary);
   writeFileSync(join(source, '.git/config'), 'synthetic git metadata');
