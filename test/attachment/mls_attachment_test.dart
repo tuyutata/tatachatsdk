@@ -3,7 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:tatachat_sdk/src/mls/mls_attachment.dart';
+import 'package:tatachat_sdk/mls/mls_attachment.dart';
 import 'package:tatachat_sdk/tatachat_sdk.dart';
 
 import '../support/isar_test_env.dart';
@@ -351,20 +351,22 @@ void main() {
       );
       await expectLater(seal(a.attachment(state: hooked)), throwsStateError);
       final prefix = await cipher.readAsBytes();
-      final nativeBefore = await a.store
-          .attachmentAction('attachment_progress', {
-            'group_id': MlsAttachment.groupId(
-              roster.firstWhere((m) => m.endsWith(a.identity.deviceId)),
-              'file-1',
-            ),
-          });
+      final nativeBefore = await a.store.attachmentAction(
+        'attachment_progress',
+        {
+          'group_id': MlsAttachment.groupId(
+            roster.firstWhere((m) => m.endsWith(a.identity.deviceId)),
+            'file-1',
+          ),
+        },
+      );
       expect(nativeBefore['next_chunk'], committed ? 1 : 0);
       final control = await seal(a.attachment());
       final complete = await cipher.readAsBytes();
       expect(complete.sublist(0, prefix.length), prefix);
-      final state =
-          jsonDecode(await File('${a.store.path}/state.bin').readAsString())
-              as Map;
+      final state = jsonDecode(
+        await File('${a.store.path}/state.bin').readAsString(),
+      ) as Map;
       expect(
         (state['results'] as Map).values.where(
           (v) => (v as Map)['request']['group_id'] == control.attachmentGroupId,

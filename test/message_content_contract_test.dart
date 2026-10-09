@@ -94,30 +94,30 @@ void main() {
   test('网络端点拒绝非加密协议', () {
     final now = DateTime.now().millisecondsSinceEpoch;
     expect(
-      () => TataChatServerAccess(
-        tataChatServerUrl: Uri.parse(
+      () => ChatAccess(
+        realtimeUrl: Uri.parse(
           'http'
           '://example.com',
         ),
-        tataChatServerToken: 'token',
+        accessToken: 'token',
         expiresAtMillis: now + 120000,
       ).validate(now),
       throwsStateError,
     );
     expect(
-      (TataChatServerAccess(
-        tataChatServerUrl: Uri.parse('https://example.com'),
-        tataChatServerToken: 'token',
+      (ChatAccess(
+        realtimeUrl: Uri.parse('wss://example.com/api/tatachat/realtime'),
+        accessToken: 'token',
         expiresAtMillis: now + 120000,
       )..validate(now)).realtimeUrl.scheme,
       'wss',
     );
     expect(
-      (TataChatServerAccess(
-        tataChatServerUrl: Uri.parse('https://example.com'),
-        tataChatServerToken: 'token',
+      (ChatAccess(
+        realtimeUrl: Uri.parse('wss://example.com/api/tatachat/realtime'),
+        accessToken: 'token',
         expiresAtMillis: now + 120000,
-      )..validate(now)).tataChatServerUrl.scheme,
+      )..validate(now)).attachmentChunkUrl('attachment-a', 0).scheme,
       'https',
     );
   });

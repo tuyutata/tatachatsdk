@@ -190,7 +190,7 @@ build_ios_slice() {
   mkdir -p "$framework/Headers" "$framework/Modules"
   cp "$library" "$framework/TataChatSDK"
   chmod 755 "$framework/TataChatSDK"
-  cp "$ROOT/tatachat_sdk.h" "$framework/Headers/tatachat_sdk.h"
+  cp "$ROOT/scripts/tatachat_sdk.h" "$framework/Headers/tatachat_sdk.h"
   cat > "$framework/Modules/module.modulemap" <<'MODULEMAP'
 framework module TataChatSDK {
   umbrella header "tatachat_sdk.h"

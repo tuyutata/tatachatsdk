@@ -4,10 +4,10 @@
 /// Message and attachment delivery do not use WebRTC.
 library;
 
-export 'src/call/coordinator.dart';
-export 'src/call/flutter_peer.dart';
-export 'src/call/peer.dart';
-export 'src/call/signal.dart';
-export 'src/call/transport.dart';
-export 'src/direct/call/session.dart';
-export 'src/direct/call/state.dart';
+export 'call/coordinator.dart';
+export 'call/flutter_peer.dart';
+export 'call/peer.dart';
+export 'call/signal.dart';
+export 'call/transport.dart';
+export 'direct/call/session.dart';
+export 'direct/call/state.dart';

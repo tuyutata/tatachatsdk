@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:tatachat_sdk/src/protocol/media_content.pb.dart' as protocol;
+import 'package:tatachat_sdk/protocol/media_content.pb.dart' as protocol;
 import 'package:tatachat_sdk/tatachat_sdk.dart';
 
 void main() {
@@ -83,9 +83,9 @@ void main() {
       cipherByteSize: 1024 + 4096,
     );
     expect(
-      MediaContentCodec.decode(
-        MediaContentCodec.encode(atLimit),
-      ).attachmentWelcome.length,
+      MediaContentCodec.decode(MediaContentCodec.encode(atLimit))
+          .attachmentWelcome
+          .length,
       48 * 1024,
     );
     for (final invalid in [
@@ -158,28 +158,30 @@ void main() {
   test('附件传输地址只允许HTTPS', () {
     final now = DateTime.now().millisecondsSinceEpoch;
     expect(
-      (TataChatServerAccess(
-        tataChatServerUrl: Uri.parse('https://objects.example.com'),
-        tataChatServerToken: 'token',
+      (ChatAccess(
+        realtimeUrl: Uri.parse(
+          'wss://objects.example.com/api/tatachat/realtime',
+        ),
+        accessToken: 'token',
         expiresAtMillis: now + 120000,
-      )..validate(now)).tataChatServerUrl.scheme,
+      )..validate(now)).attachmentChunkUrl('attachment-a', 0).scheme,
       'https',
     );
     expect(
-      () => TataChatServerAccess(
-        tataChatServerUrl: Uri.parse(
+      () => ChatAccess(
+        realtimeUrl: Uri.parse(
           'http'
           '://objects.example.com',
         ),
-        tataChatServerToken: 'token',
+        accessToken: 'token',
         expiresAtMillis: now + 120000,
       ).validate(now),
       throwsStateError,
     );
     expect(
-      () => TataChatServerAccess(
-        tataChatServerUrl: Uri.parse('https://user@example.com'),
-        tataChatServerToken: 'token',
+      () => ChatAccess(
+        realtimeUrl: Uri.parse('https://user@example.com'),
+        accessToken: 'token',
         expiresAtMillis: now + 120000,
       ).validate(now),
       throwsStateError,

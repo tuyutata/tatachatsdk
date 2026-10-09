@@ -149,7 +149,7 @@ class _ChatBindingMutationGate {
 
 /// 宿主用户 Chat 的 Isar 持久化仓库。
 ///
-/// 本仓库只保存手机本地状态。TataChatServer 瞬时转发和近场 transport 只拿到完整
+/// 本仓库只保存手机本地状态。聊天服务模块瞬时转发和近场 transport 只拿到完整
 /// Protobuf message bytes，不会接触 [plaintext]。
 class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
   ChatStore({ChatIsar? chatIsar})
@@ -781,7 +781,7 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
 
   /// 彻底删除本机会话记录。
   ///
-  /// TataChatServer 不保存聊天内容；用户删除聊天记录时，本地 Isar 是唯一
+  /// 聊天服务模块不保存聊天内容；用户删除聊天记录时，本地 Isar 是唯一
   /// 需要清理的聊天历史真源，附件缓存目录由运行态在同一操作中删除。
   Future<void> deleteConversation(
     String ownerUserId,
@@ -825,7 +825,7 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
 
   /// 注销用户：清除该 user ID 在本机的全部 Chat 历史与队列。
   ///
-  /// TataChatServer 端 A 的系统唤醒端点由 Worker purge 删除；本地 Isar 是 A 私信密文与
+  /// 聊天服务模块端 A 的系统唤醒端点由 Worker purge 删除；本地 Isar 是 A 私信密文与
   /// 本地队列的唯一残留处，须一并清空以做到零残留。
   Future<void> clearAllForUserId(String userId) {
     return _serializeBindingMutation(userId, () async {
@@ -932,7 +932,7 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
   ///
   /// 本行已经是会话与消息列表的真值，不是 UI 临时气泡。`messageBytesHex` 为空
   /// 明确表示“尚未转换为 MLS Message”；正文保存于系统保护数据库，
-  /// TataChatServer 与系统推送均看不到本行。
+  /// 聊天服务模块与系统推送均看不到本行。
   Future<void> savePendingOutgoingMessage({
     required ChatBindingFenceToken bindingToken,
     required String ownerUserId,
@@ -1487,7 +1487,7 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
     });
   }
 
-  /// 读取发送设备上尚未被 TataChatServer 持久接收的待重试密文。
+  /// 读取发送设备上尚未被 聊天服务模块持久接收的待重试密文。
   Future<List<ChatQueuedMessage>> readQueuedMessages({
     required ChatBindingFenceToken bindingToken,
     required String ownerUserId,
@@ -1517,9 +1517,8 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
                 .where((row) => row.recipientUserId == recipientUserId)
                 .toList(growable: false);
       matched.sort((a, b) {
-        final byCreatedAt = _queuedMessageCreatedAt(
-          a,
-        ).compareTo(_queuedMessageCreatedAt(b));
+        final byCreatedAt = _queuedMessageCreatedAt(a)
+            .compareTo(_queuedMessageCreatedAt(b));
         return byCreatedAt != 0 ? byCreatedAt : a.id.compareTo(b.id);
       });
       return matched
@@ -2265,9 +2264,9 @@ ChatStoredMessage _messageFromEntity(ChatMessageEntity row, String? plaintext) {
 /// Application；`updatedAtMillis` 会在每次尝试时变化，不能承担 MLS 排序。
 int _queuedMessageCreatedAt(ChatOutboundQueueEntity row) {
   try {
-    return EncryptedMessage.fromBuffer(
-      _hexToBytes(row.messageBytesHex),
-    ).createdAtMillis.toInt();
+    return EncryptedMessage.fromBuffer(_hexToBytes(row.messageBytesHex))
+        .createdAtMillis
+        .toInt();
   } on Exception {
     return row.updatedAtMillis;
   }

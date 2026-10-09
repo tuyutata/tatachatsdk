@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, existsSync, rmSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
-import { testRoot as tmpdir } from '../../build.mjs';
+import { testRoot as tmpdir } from '../build.mjs';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
@@ -16,7 +16,7 @@ test('tatachatsdk.sdk.release的check远端Job物理独立', () => {
 // 真实执行产品入口的只读拒绝分支，不联网、不编译、不读取任何发布凭据。
 test('独立 SDK Job 拒绝旧聚合仓、其它产品和缺少仓库身份', () => {
   const script = fileURLToPath(new URL('./execute.mjs', import.meta.url));
-  for (const repository of ['unregistered-owner/unregistered-product', 'crcfrcn/unregistered-product', 'tuyutata/tatachatserver', 'crcfrcn/citizensdk', '']) {
+  for (const repository of ['unregistered-owner/unregistered-product', 'crcfrcn/unregistered-product', 'tuyutata/tuyuserve', 'crcfrcn/citizensdk', '']) {
     const result = spawnSync(process.execPath, [script, 'workflow-step', '999'], {
       encoding: 'utf8', env: { ...process.env, GITHUB_REPOSITORY: repository },
     });

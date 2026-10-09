@@ -9,7 +9,7 @@ part 'chat_isar.g.dart';
 
 /// Chat 会话本地索引。
 ///
-/// 永久聊天历史只允许在宿主用户手机本地保存；TataChatServer 只接收七天 OpenMLS Envelope，WebRTC 与近场
+/// 永久聊天历史只允许在宿主用户手机本地保存；聊天服务模块只接收七天 OpenMLS Envelope，WebRTC 与近场
 /// transport 只在设备间承载密文。本表负责会话列表首屏，不参与链上状态。
 @collection
 class ChatConversationEntity {
@@ -483,9 +483,8 @@ class ChatIsar {
     }
 
     try {
-      final deleted = await _deleteInstance(
-        opened,
-      ).timeout(_forcedDeleteTimeout);
+      final deleted = await _deleteInstance(opened)
+          .timeout(_forcedDeleteTimeout);
       if (!deleted) {
         throw StateError('Chat 数据库仍被其它实例持有，未实际关闭并删除。');
       }
@@ -639,9 +638,8 @@ class ChatIsar {
       if (!candidate.isOpen) continue;
       deleteWasAttempted = true;
       try {
-        final deleted = await _deleteInstance(
-          candidate,
-        ).timeout(_forcedDeleteTimeout);
+        final deleted = await _deleteInstance(candidate)
+            .timeout(_forcedDeleteTimeout);
         if (!deleted) {
           failures.add('Chat 数据库仍被其它实例持有，未实际关闭并删除。');
         }

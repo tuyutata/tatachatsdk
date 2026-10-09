@@ -53,7 +53,7 @@ test('protocol generator uses only TataChatSDK exact tools', async () => {
     [dependencyPath, 'prepare', 'protoc', 'macos', fileURLToPath(new URL('../', import.meta.url))],
     { encoding: 'utf8' });
   assert.notEqual(sourceWork.status, 0);
-  assert.match(sourceWork.stderr, /不得写入源码目录/u);
+  assert.match(sourceWork.stderr, /工具只能在源码树的target内生成/u);
 });
 
 test('protocol tool preparer rejects a symlink work directory', async () => {
@@ -184,14 +184,14 @@ async function fixture() {
   const output = join(root, 'output');
   await mkdir(source, { recursive: true });
   for (const file of [
-    'CHANGELOG.md',
     'LICENSE',
     'README.md',
-    'analysis_options.yaml',
+    'scripts/analysis_options.yaml',
     'pubspec.yaml',
     'pubspec.lock',
-    'tatachat_sdk.h',
+    'scripts/tatachat_sdk.h',
   ]) {
+    await mkdir(join(source, file).replace(/\/[^/]+$/u, ''), {recursive:true});
     await writeFile(join(source, file), `${file}\n`);
   }
   for (const directory of ['ios', 'lib', 'native', 'stickers']) {
@@ -263,6 +263,8 @@ async function flutterViewFixture(t) {
   t.after(() => rm(root, { recursive: true, force: true }));
   const source = join(root, 'source'), output = join(root, 'view');
   await mkdir(join(source, 'android'), { recursive: true });
+  await mkdir(join(source, 'scripts'));
+  await writeFile(join(source, 'scripts/analysis_options.yaml'), 'analyzer:\n  language:\n    strict-casts: true\n');
   await writeFile(join(source, 'pubspec.yaml'),
     'name: tatachat_sdk\nflutter:\n  plugin:\n    platforms:\n      android:\n        package: chat.tata.sdk\n        pluginClass: TataChatSdkPlugin\n');
   await writeFile(join(source, 'pubspec.lock'), 'packages: {}\n');
@@ -433,7 +435,7 @@ test('rejects a path-traversal tar entry', async () => {
 
 // 跨语言通道与方法从SDK实际调用端提取；测试不保存第二份通道合同。
 test('聊天存储iOS安全通道由SDK自有插件完整接入', async () => {
-  const dart = await readFile(new URL('../lib/src/storage/system_protected_storage.dart', import.meta.url), 'utf8');
+  const dart = await readFile(new URL('../lib/storage/system_protected_storage.dart', import.meta.url), 'utf8');
   const native = await readFile(new URL('../ios/TataChatSdkPlugin.swift', import.meta.url), 'utf8');
   const channel = dart.match(/_channel = MethodChannel\(\s*'([^']+)'/u)[1];
   const method = dart.match(/_channel.invokeMethod<String>\('([^']+)'/u)[1];
@@ -458,4 +460,23 @@ test('正式包从现存源码生成介绍且不回写源码', async () => {
     assert.ok(introduction.stdout.includes(SHA));
     assert.match(introduction.stdout, /Version: 1[.]0[.]0/u);
   } finally { await rm(item.root, { recursive: true, force: true }); }
+});
+
+// 配置移动后，真实公开工程必须保留完整规则；复用不得接受被改动或链接的根配置。
+test('Flutter公开视图绑定scripts分析配置且拒绝漂移与旧根配置',async t=>{
+ const {source,output}=await flutterViewFixture(t);await createFlutterSourceView(source,output);
+ const input=join(source,'scripts/analysis_options.yaml'),options=join(output,'analysis_options.yaml');
+ assert.equal(await readFile(options,'utf8'),await readFile(input,'utf8'));assert.equal((await lstat(options)).isSymbolicLink(),false);
+ await writeFile(options,'changed');await assert.rejects(assertFlutterSourceView(source,output),/漂移/);
+ await writeFile(options,await readFile(input));await assertFlutterSourceView(source,output);
+ await writeFile(join(source,'analysis_options.yaml'),'duplicate');await assert.rejects(assertFlutterSourceView(source,output),/重复分析配置/);
+});
+test('Release仅包含移动后的两件scripts输入，排除删除文档和执行脚本',async()=>{
+ const item=await fixture();try{
+  await item.build();
+  const contents=gunzipSync(await readFile(join(item.output,'tatachatsdk.tgz')));
+  for(const file of ['scripts/tatachat_sdk.h','scripts/analysis_options.yaml'])assert.ok(contents.includes(Buffer.from(file)));
+  assert.equal(contents.includes(Buffer.from('CHANGELOG.md')),false);
+  assert.equal(contents.includes(Buffer.from('scripts/ci/execute.mjs')),false);
+ }finally{await rm(item.root,{recursive:true,force:true});}
 });

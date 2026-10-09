@@ -7,18 +7,15 @@ void main() {
     'OpenMLS symbols belong only to the independent TataChatSDK library',
     () {
       final chatSdkScript = File('scripts/build-native.sh').readAsStringSync();
-      final chatSdkHeader = File('tatachat_sdk.h').readAsStringSync();
-      final chatSdkPodspec = File(
-        'ios/tatachat_sdk.podspec',
-      ).readAsStringSync();
-      final privacyManifest = File(
-        'ios/PrivacyInfo.xcprivacy',
-      ).readAsStringSync();
-      final platformPlugin = File(
-        'ios/TataChatSdkPlugin.swift',
-      ).readAsStringSync();
+      final chatSdkHeader = File('scripts/tatachat_sdk.h').readAsStringSync();
+      final chatSdkPodspec = File('ios/tatachat_sdk.podspec')
+          .readAsStringSync();
+      final privacyManifest = File('ios/PrivacyInfo.xcprivacy')
+          .readAsStringSync();
+      final platformPlugin = File('ios/TataChatSdkPlugin.swift')
+          .readAsStringSync();
       final package = File('pubspec.yaml').readAsStringSync();
-      final loader = File('lib/src/mls/mls_native.dart').readAsStringSync();
+      final loader = File('lib/mls/mls_native.dart').readAsStringSync();
 
       expect(
         chatSdkScript,

@@ -1,20 +1,34 @@
 # TataChatSDK 技术文档
 
+## 工具与依赖的声明和供给职责（2026-10-08）
+
+本产品完全独立管理全部流程所需的工具、依赖及其它资源需求。需求唯一依据为本仓源码、公开声明、锁文件及本产品拥有的准备配方，包括准确版本、平台、官方来源、摘要或固定提交、闭包、验真方式和失败条件；塔塔控制台按当前产品声明提供资源，不维护另一份产品需求或替产品决定版本、来源与流程步骤。
+
+本产品必须能在没有塔塔控制台时完全独立执行全部已实现流程。独立执行时，本产品自行完成可信引导、资源获取、验真、保存、复用及任务工作视图准备，不依赖控制台源码、私有资料、安装位置或资源库。
+
+通过塔塔控制台执行本产品流程时，本产品向控制台声明所需资源并使用其已准备好的供给。控制台先核对并复用已有的匹配工具与依赖；没有的由控制台按本产品声明下载、准备、验真并保存到控制台工具库或依赖库，再交付本产品复用。本产品负责核验交付与自身需求一致并使用资源，不因控制台缺件或供给失败改为自行下载，也不另建同一资源的永久副本；可写包管理器视图与流程过程数据仍归本产品当前任务工作目录。
+
+两种执行方式使用本产品同一声明、锁和流程实现，仅资源供给职责随执行方式改变。该职责适用于本产品全部平台与已实现流程；控制台本身作为产品同样适用。独立模式下资源缺失由产品处理；控制台模式下资源缺失由控制台处理。显式离线缺件、交付失败、损坏、错误摘要、来源漂移或越界必须据实失败，不自动升级、覆盖可疑原件或切换执行方式。
+
+以上为当前职责规范；本次只更新文档，不代表现有资源协议与运行代码已完成接入或通过真实流程验收。历史记录中的“可选供给”或“产品负责缺件获取”仅描述当时实现，不作为当前职责依据。
+
+本仓现行入口以`scripts/flows.json`及产品公开scripts实现为准；本文按日期保留的历史验收只描述当时结果，不作为当前工具、私有调用者或已撤销Publish实现的运行条件。独立塔塔门禁候选的职责和未验收状态见文末。
+
 ## 当前工作目录归属（第8步，2026-10-06）
 
-本产品全部测试、编译临时数据和产物归 `/Users/rhett/tatachatsdk/target`。单平台不重复产品名或平台层，按build、ci、release、publish、test、tmp隔离。独立入口与控制台调用消费同一产品流程；控制台仅创建任务、调用与跟踪，不准备产品专用版本、依赖或步骤。下载半包、工具编译候选、工程视图、Runner步骤临时状态和测试夹具均属于当前产品工作区；永久工具与依赖原件继续归原件库。整个根target不进入Git、源码快照、程序摘要或打包输入。准确流程短锁、活跃任务保护、成功产物保护和原清理规则继续适用。
+本产品全部测试、编译临时数据和产物归 `<本仓根>/target`。单平台不重复产品名或平台层，按build、ci、release、publish、test、tmp隔离。独立入口与控制台调用消费同一产品流程；产品独立拥有需求与流程步骤；经控制台执行时，控制台按产品声明准备、保存并供给工具与依赖，同时创建任务、调用与跟踪。下载半包、工具编译候选、工程视图、Runner步骤临时状态和测试夹具均属于当前产品工作区；永久工具与依赖原件继续归原件库。整个根target不进入Git、源码快照、程序摘要或打包输入。准确流程短锁、活跃任务保护、成功产物保护和原清理规则继续适用。
 
-第8、9步完成目录与路径实现、根文档迁移及测试源码维护，未运行测试、门禁、编译或安装。本文唯一原件位于/Users/rhett/tatachatsdk/TataChatSDK.md；产品接口及流程直接以本仓实际代码和声明为准，业务字典库与其检查已撤销，不另建登记副本。历史验收事实不表示本轮改造已经通过验收，统一测试在第10步进行。根技术文档由本仓门禁按原文、JSON解码值及既有补丁快照扫描机密，仅报告路径；文档迁出不减少资料安全检查。
+第8、9步完成目录与路径实现、根文档迁移及测试源码维护，未运行测试、门禁、编译或安装。本文唯一原件位于<本仓根>/TataChatSDK.md；产品接口及流程直接以本仓实际代码和声明为准，业务字典库与其检查已撤销，不另建登记副本。历史验收事实不表示本轮改造已经通过验收，统一测试在第10步进行。根技术文档由本仓门禁按原文、JSON解码值及既有补丁快照扫描机密，仅报告路径；文档迁出不减少资料安全检查。
 
 
 ## 聊天功能的唯一产品归属
 
-**聊天客户端的逻辑功能只能在 TataChatSDK 中实现；聊天服务端的逻辑功能只能在 TataChatServer 中实现。公民、途遇及其他产品只依赖使用。**
+**聊天客户端的逻辑功能只能在 TataChatSDK 中实现；聊天服务端的逻辑功能只能在 CitizenServe.tatachat 中实现。公民、途遇及其他产品只依赖使用。**
 
 TataChatSDK 是聊天客户端逻辑功能的唯一实现产品；所有消费产品需要的聊天能力与修复都必须在本产品实现，通过公开接口供宿主依赖使用。
 
-- 消息、会话、群组、加密、协议、传输、同步、重试、聊天存储、附件、通话及聊天界面行为，按客户端与服务端职责分别归 TataChatSDK 和 TataChatServer；新增功能、缺陷修复和平台差异也必须在所属塔塔聊天产品内完成。
-- 消费产品只提供产品入口、身份与业务权益结果、服务地址及授权、主题和公开接口要求的平台配置；只通过公开接口接入，禁止复制、重写、包装成另一套聊天内核或维护产品专属聊天实现。CitizenServe、TuyuServe 的产品身份与权益授权不包含聊天数据面的实现职责。
+- 消息、会话、群组、加密、协议、传输、同步、重试、聊天存储、附件、通话及聊天界面行为，按客户端与服务端职责分别归 TataChatSDK 和 CitizenServe.tatachat；新增功能、缺陷修复和平台差异也必须在所属塔塔聊天产品内完成。
+- 消费产品只提供产品入口、身份与业务权益结果、服务地址及授权、主题和公开接口要求的平台配置；只通过公开接口接入，禁止复制、重写、包装成另一套聊天内核或维护产品专属聊天实现。CitizenServe.tatachat 实现通用聊天服务模块，CitizenServe.server 负责当前宿主授权装配；TuyuServe 本轮不接入聊天。
 - 宿主源码与锁文件固定消费真实已保存Git提交；禁止改用邻仓工作树或改写依赖缓存。正式分发依赖塔塔聊天Release；第三方市场分发使用公开市场版本。依赖使用不以公开市场发布为前置条件。
 
 本产品为单平台，受控缓存固定为 `tatachatsdk/target/<build|ci|release|publish>/`，不增加平台层、`runs/` 或 `start/`。SDK 本机编译中间物与日志只进入所属产品target内的当前工作目录；依赖原件和工具原件仍分别只属于 `rely/` 与 `tools/shared/`。
@@ -51,24 +65,26 @@ TataChatSDK 负责：
 - userId、accountId、绑定代次和显示名称。
 - 发送资格、媒体限制和产品入口。
 - 宿主业务记录的系统保护实现。
-- TataChatServer 地址、短期授权及操作系统推送能力的公开接口适配；聊天认证消费、连接、传输与唤醒后的同步逻辑由 TataChatSDK 实现。
+- CitizenServe.tatachat 地址、短期授权及操作系统推送能力的公开接口适配；聊天认证消费、连接、传输与唤醒后的同步逻辑由 TataChatSDK 实现。
 - 产品主题、品牌文案和平台权限配置。
 - 业务专属身份、发送授权、支付、位置和转账。
 
 ## 3. 当前源码结构
 
 - tatachatsdk/lib/tatachat_sdk.dart：公开入口。
-- tatachatsdk/lib/src/attachment：附件密文、分块和文件库。
-- tatachatsdk/lib/src/call：私聊通话状态和客户端边界。
-- tatachatsdk/lib/src/core：通用消息、内容、会话与范围模型。
-- tatachatsdk/lib/src/group：群聊模型与 OpenMLS 群流程。
-- tatachatsdk/lib/src/mls：OpenMLS 会话、状态库和原生边界。
-- tatachatsdk/lib/src/protocol：Protobuf 生成代码与严格编解码。
-- tatachatsdk/lib/src/runtime：唯一运行编排、队列、同步和账户生命周期。
-- tatachatsdk/lib/src/storage：唯一 Isar、系统保护记录、索引和公开绑定围栏。
-- tatachatsdk/lib/src/ui：通用聊天界面。
+- tatachatsdk/lib/attachment：附件密文、分块和文件库。
+- tatachatsdk/lib/call：私聊通话状态和客户端边界。
+- tatachatsdk/lib/direct：私聊消息、附件和通话功能。
+- tatachatsdk/lib/transport：WSS 控制面与同源 HTTPS 附件数据面。
+- tatachatsdk/lib/core：通用消息、内容、会话与范围模型。
+- tatachatsdk/lib/group：群聊模型与 OpenMLS 群流程。
+- tatachatsdk/lib/mls：OpenMLS 会话、状态库和原生边界。
+- tatachatsdk/lib/protocol：Protobuf 生成代码与严格编解码。
+- tatachatsdk/lib/runtime：唯一运行编排、队列、同步和账户生命周期。
+- tatachatsdk/lib/storage：唯一 Isar、系统保护记录、索引和公开绑定围栏。
+- tatachatsdk/lib/ui：通用聊天界面。
 - tatachatsdk/android、ios：SDK自己的Flutter平台插件与iOS集成资源；宿主不实现通用聊天媒体能力。
-- tatachatsdk/native、tatachat_sdk.h、proto、scripts、test：独立原生、协议、构建与测试。
+- tatachatsdk/native、scripts/tatachat_sdk.h、lib/protocol、scripts、test：独立原生、协议、构建与测试。
 
 ## 4. 运行时合同
 
@@ -78,17 +94,14 @@ ChatRuntimeAccount 只携带通用字段。运行时不得出现宿主身份格�
 
 账户上下文失效只清聊天上下文和聊天服务会话。宿主身份缓存由宿主业务流程自行管理，TataChatSDK 不得越权失效。
 
-### 通用安装器与 SDK 接入边界（2026-09-03）
+### 服务模块与 SDK 接入边界（2026-10-08）
 
-TataChatServer 的 `installer` 组件生成接入实例的 Cloudflare 或 LinuxARM 安装计划，
-TataChatSDK 不依赖该组件，不读取 Workers、D1、R2、数据库或服务端推送凭据。
-通用 SDK 的测试和正式包生成不要求任何接入产品的生产配置；具体实例安装时才检查其配置。
-这不改变 SDK 的 HTTPS/WSS 限制、短期凭证使用方式、OpenMLS 或设备隔离校验。
+通用服务模块唯一位于 CitizenServe.tatachat，当前适配 Cloudflare，Linux ARM 只预留通用接口。SDK 不读取部署资源、宿主 JWT 权益、链或服务端推送凭据；宿主通过公开 Host 合同提供短期许可和操作系统推送能力。
 
 公开入口 `ChatSdk` 直接继承唯一 `ChatRuntimeCore`，只接收同一 `ChatRuntimeHost` 与运行依赖；
 `start()` 实际调用实时同步并复用已有重连、邮箱和待发队列。重复或并发启动只登记一次；
 `isRunning` 表示同步生命周期已启动，不保证网络持续在线。服务地址和短期凭证统一使用
-`TataChatServerAccess`，从 HTTPS 根派生 WSS，不再提供独立身份、权限或双地址配置入口。
+`ChatAccess`，接收完整 WSS 入口并派生同 origin HTTPS 分块，不再提供独立身份、权限或双地址配置入口。
 
 `stop()`/`close()` 为实例终态，先拒绝新操作，再等待初始化、回调和资源关闭；关闭失败可
 重试清理，已关闭资源不会重复释放。停止不设置进程级擦除状态、不删除本机聊天历史，
@@ -239,19 +252,9 @@ TataChatSDK 原生库必须独立构建、独立加载、独立测试。任何�
 
 生成的 chat_isar.g.dart 由 Isar 官方生成器维护；分析器只排除该生成文件自身的 experimental API 告警，手写代码仍执行严格分析。
 
-## 12. TataConsole
+## 12. 产品独立流程
 
-TataChatSDK 在 TataConsole 中是独立产品，拥有自己的编译、CI、Release 和用户显式发布动作。
-TataChatSDK 是单一 `sdk` 平台，本机 Build 只需完成产品编译；它不是 macOS App，因此不进入 `target/`。本次任务日志和中间物只在 `tatachatsdk/target/`。
-
-Flutter、Dart 及其来源由 TataChatSDK 产品 Action 决定。产品可以主动读取塔塔工具服务，但 Worker 不在 Pub 或 Build 前验真、固定或拒绝其它正常产品入口。
-
-正式 Release 资产验证使用该任务自己创建的临时目录，退出即删除；不再使用固定 `.verify`、
-`.owner` 或占有记录。验证目录不写编译日志或成功产物，也不影响并行任务。
-
-产品流程直接读取真实产品源码；编译输出使用 Worker 提供的缓存路径，不复制源码，也不要求控制台生成 Flutter 投影。产品自行决定 Pub、分析、测试和原生编译步骤。
-
-本技术文档只记录代码与验证真相，不把尚未执行的 CI、Release、发布或部署写成完成。
+本产品是单一`sdk`平台。编译、CI、Release的正式入口由本仓`scripts/flows.json`声明，完整实现由本仓scripts拥有。编译日志、中间物和测试数据归本仓target，不依赖私有宿主。
 
 ## 13. 2026-08-31 第 3 步完成事实
 
@@ -264,11 +267,11 @@ Flutter、Dart 及其来源由 TataChatSDK 产品 Action 决定。产品可以�
 - TataChatSDK Flutter 测试 149 项通过；6 项依赖独立原生宿主库的测试明确跳过。
 - 本步骤未执行 CI、Release、发布、部署或原生构建。
 
-## 2026-08-31 第 4 步：唯一 TataChatServer 运行链路
+## 2026-08-31 第 4 步：唯一 CitizenServe.tatachat 运行链路
 
-- TataChatSDK 只保留一个具体运行传输 `内部 ChatServerConnection`。宿主只通过 `requestTataChatServerAccess` 提供服务地址、短期授权与到期时间；TataChatSDK 把授权作为不透明凭证直接交给 TataChatServer，不解析宿主身份、产品权益或授权载荷。
-- 控制与小型密文消息只走 `wss://<chat-server>/realtime`，子协议固定为 `tatachatserver`，帧固定为二进制 Protobuf `ChatFrame`；单连接同一时刻只允许一个命令等待响应。
-- 附件密文固定按 4 MiB 分块走 `https://<chat-server>/attachments/{attachment_id}/chunks/{chunk_index}`，上传、下载均校验长度、分块 SHA-256 和整附件 SHA-256；附件失败不关闭 WSS，也不阻塞文字消息。
+- TataChatSDK 只保留一个具体运行传输 `内部 ChatServerConnection`。宿主只通过 `requestChatAccess` 提供服务地址、短期授权与到期时间；TataChatSDK 把授权作为不透明凭证直接交给 CitizenServe.tatachat，不解析宿主身份、产品权益或授权载荷。
+- 控制与小型密文消息只走 `wss://<service-origin>/api/tatachat/realtime`，子协议固定为 `tatachat`，帧固定为二进制 Protobuf `ChatFrame`；单连接同一时刻只允许一个命令等待响应。
+- 附件密文固定按 4 MiB 分块走 `https://<service-origin>/api/tatachat/attachments/{attachment_id}/chunks/{chunk_index}`，上传、下载均校验长度、分块 SHA-256 和整附件 SHA-256；附件失败不关闭 WSS，也不阻塞文字消息。
 - 系统通知只接受无内容 `chat_wake`，唤醒后由同一账户运行态补拉密文邮箱；通知中不携带发送者、会话、消息或附件标识。
 - 访问地址只接受无路径、无查询、无片段、无账户信息的 HTTPS 根；TataChatSDK 从该根派生 WSS 与附件路径，拒绝重定向、明文协议和第二套传输。
 - 本阶段通话入口固定禁用，不增加通话信令、WebRTC 消息传输或兼容分支。
@@ -289,39 +292,29 @@ Flutter、Dart 及其来源由 TataChatSDK 产品 Action 决定。产品可以�
 - 本机开发、CI及Release：CitizenApp原始声明与锁统一到https://github.com/tuyutata/tatachatsdk.git，根路径.，准确提交6ea733efc14950616e116b2ca7ebffe2ce2f9a6e；工程准备器只消费本轮锁定Git原件，不编译邻仓。
 - 第一方正式 Release：CitizenApp 使用准确的 `tatachatsdk-sdk-v<software_version>` GitHub Release Tag 与仓库内 `tatachatsdk` 子路径，禁止依赖浮动分支、伪造 Tag 或提交。消费 SDK 的正式 Release 不以 SDK 的 Publish 或公开市场上架为前置条件。
 - 第三方使用：通过发布到公开市场 pub.dev 的 `tatachat_sdk` 版本接入。公开市场 Publish 是独立动作，不得因第一方消费 Release 而增设公开下载入口、分发服务或市场发布步骤。
-- 正式 TataChatSDK 归档必须包含 CHANGELOG、公开许可证和贴纸资源，Release manifest 的 `package_name` 固定为 `tatachat_sdk`。
+- 正式 TataChatSDK 归档必须包含公开许可证、贴纸资源及scripts两件分析/ABI输入，Release manifest 的 `package_name` 固定为 `tatachat_sdk`。
 - TataChatSDK 自身目录禁止出现宿主产品身份、产品权益、链或品牌概念；具体第一方产品依赖顺序只记录在对应产品技术文档。
-- TataChatSDK、TataChatServer 和各宿主测试只验证自身公开合同，不读取另一个聊天产品的实现源码。
+- TataChatSDK、CitizenServe.tatachat 和各宿主测试只验证自身公开合同，不读取另一个聊天产品的实现源码。
 - 第 6 步隔离验证完成：Flutter 静态分析 0 问题，Flutter 测试 156 项通过、6 项因未构建独立原生宿主库而明确跳过，Release 脚本测试 7 项通过，pub.dev 发布包 dry-run 0 警告；未执行 CI、Release、发布或部署。
 
-## 16. 塔塔控制台手动 pub.dev 发布
+## 16. pub.dev 发布边界
 
-- 成功 Release 只创建 `tatachatsdk:sdk` 待发布目标，不自动上传；只有用户点击“发布·SDK”并完成
-  生产授权后，才允许发布 `tatachat_sdk`。
-- 本机发布器只下载准确正式 Release 的唯一 `tatachatsdk.tgz`，先校验 GitHub Asset digest 与
-  Artifact Attestation，再安全解包并验证内部 `release-manifest.json`、`SHA256SUMS`、包名、版本、Tag、
-  源码 SHA 和完整文件闭集。
-- 上传前查询 pub.dev 官方版本接口并执行 dry-run；扫码后才使用受保护的
-  `pubdev:SERVICE_ACCOUNT_KEY` 换取短期 ID Token，在一次性 `PUB_CACHE` 中执行
-  `dart pub publish --force`，随后回读官方接口闭合结果。
-- TataChatSDK顶层Workflow 不增加发布文件，也不执行 `dart pub publish`；Release 与 Publish 始终是
-  两个独立流程。
-
+Release生成唯一正式`tatachatsdk.tgz`，不自动执行`dart pub publish`。新增Publish实现已撤销；后续发布需独立设计与实现，本次门禁不执行上传或修改生产资源。
 
 ## 17. 2026-09-01 TATA 产品归属
 
-- TataChatSDK完整源码由/Users/rhett/tatachatsdk和公开仓tuyutata/tatachatsdk持有；实际接口归本仓代码，技术文档唯一位于本仓根TataChatSDK.md。
+- TataChatSDK完整源码由<本仓根>和公开仓tuyutata/tatachatsdk持有；实际接口归本仓代码，技术文档唯一位于本仓根TataChatSDK.md。
 - 唯一产品 ID 为 `tatachatsdk`，唯一 Dart 包名为 `tatachat_sdk`，唯一受控路由前缀为 `tatachatsdk.sdk`。
 - Rust package/library、C ABI、Pod、Framework 与三端原生产物统一使用 `tatachat_sdk_native`、`tatachat_sdk`、`tatachat_sdk_*` 与 `TataChatSDK`。
 - 第一方宿主本机、CI、Release统一锁定Git提交6ea733efc14950616e116b2ca7ebffe2ce2f9a6e，路径为根(.)；第三方使用公开包。
-- TataConsole 的产品登记、产品路由分发、依赖清单、路由、软件记录、发布资产均按 TataChatSDK 独立产品登记。
-- TataChatServer 已作为 `tuyutata/tatachatserver` 独立产品接入受控流程；TataChatSDK 与它只共享公开合同，不读取对方实现源码。
+- 外部调用方 的产品登记、产品路由分发、依赖清单、路由、软件记录、发布资产均按 TataChatSDK 独立产品登记。
+- 通用聊天服务只由 CitizenServe.tatachat 提供；SDK 只消费公开 Protobuf 和访问合同。
 
 ## 18. TataChatSDK 受控流程合同
 
 - TataChatSDK 的 CI、Release 分别使用 `tatachatsdk.sdk.ci` 与 `tatachatsdk.sdk.release`，由本产品独立Workflow进入本仓scripts。
 - CI 只恢复同产品、SDK 平台和工具链身份最近一次成功缓存；成功与失败各保留一个终态槽，正式 Release 固定全量构建。
-- 下载并验真的依赖原件按内容摘要唯一保存在全局`tatatest/rely/objects/`，索引不记录产品归属；本轮依赖下载暂存、展开与编译中间物全部进入准确`tatachatsdk/target/<build|ci|release>/`流程目录，并由下一同身份任务首步完整清空。单包事务只处理正式成功产物，塔塔缓存库不保存第二份依赖原件或正式产物。
+- 下载并验真的依赖原件按内容摘要唯一保存在全局产品独立原件存储，索引不记录产品归属；本轮依赖下载暂存、展开与编译中间物全部进入准确`tatachatsdk/target/<build|ci|release>/`流程目录，并由下一同身份任务首步完整清空。单包事务只处理正式成功产物，塔塔缓存库不保存第二份依赖原件或正式产物。
 - TataChatSDK Release 属于证明型矩阵，TataChatSDKWorkflow 仅为该作业授予来源证明所需权限；发布仍只由用户点击塔塔控制台的 SDK 发布按钮执行。
 
 ## 会话 UI 运行控制器（2026-09-01）
@@ -333,7 +326,7 @@ Flutter、Dart 及其来源由 TataChatSDK 产品 Action 决定。产品可以�
 
 ## 第 5 步：客户端合同验收（2026-09-02）
 
-- TataChatSDK 是唯一通用聊天客户端实现，宿主只能通过产品适配器注入短期 TataChatServer 授权。
+- TataChatSDK 是唯一通用聊天客户端实现，宿主只能通过产品适配器注入短期 CitizenServe.tatachat 授权。
 - 所有普通聊天消息统一使用 OpenMLS；文字、表情、贴纸与后续媒体消息不得建立第二套传输或明文旁路。
 - 发件密文必须同时绑定消息编号、发送用户、发送设备、接收用户和接收设备；任一不一致在发网前失败。
 - 收件邮箱必须再次校验接收用户和接收设备，跨账户或跨设备响应以 `mailbox_identity_invalid` 失败。
@@ -379,12 +372,9 @@ iOS podspec只消费pod根内固定相对名称`TataChatSDK.xcframework`，不�
 正式Git包和公开包直接携带该目录；本机直接开发由消费产品在自己的源码外只读工程视图中，
 把当轮Framework链接投影到SDK视图pod根的同名位置。投影不复制、移动或回写TataChatSDK源码，
 CocoaPods在三种依赖形态下始终读取同一相对合同。
-### Build与Start物理归属（2026-09-12）
+### 产品流程物理归属
 
-本产品Build、CI和Release唯一实现位于产品scripts目录；TataConsole只按固定身份调用。Start由TataConsole启动产物库中的macOS成功产物，产品不实现Start。
-
-- tatachatsdk：
-  - `tatachatsdk.sdk.build` → `tataconsole/console/tatachatsdk/build.sh`
+本仓`scripts/flows.json`声明现有产品、平台与流程身份，完整调用入口由本仓scripts拥有。Build使用产品完整execute入口；CI与Release使用本仓`scripts/flow.mjs`。已接入Start由产品声明与产品实现负责，未接入动作不由文档新增；Publish等待后续逐产品重建。外部调用者读取当前声明、创建与跟踪独立任务，不维护产品流程的第二实现。
 
 ## CI与Release入口归属
 
@@ -392,7 +382,7 @@ CocoaPods在三种依赖形态下始终读取同一相对合同。
 
 ## 独立 GitHub CI 与 Release 工作流
 
-本产品每个实际产品、平台、流程身份使用下列独立文件，主 Job 为 `flow`；CI 验证源码，Release 生成正式产物，发布由塔塔控制台的独立 Publish 流程负责。
+本产品每个实际产品、平台、流程身份使用下列独立文件，主 Job 为 `flow`；CI 验证源码，Release 生成正式产物，本步不实现Publish，发布待后续逐产品重建。
 
 - `.github/workflows/tatachatsdk-sdk-ci.yml`
 - `.github/workflows/tatachatsdk-sdk-release.yml`
@@ -400,26 +390,26 @@ CocoaPods在三种依赖形态下始终读取同一相对合同。
 
 ## 扁平源码与Flutter平台布局
 
-Android唯一Java插件和Manifest直接位于android/，包名仍为chat.tata.sdk；公共原生头文件为根层tatachat_sdk.h。群界面位于lib/src/ui/group_views.dart，单文件测试归并到test/，不保留旧路径。
+Android唯一Java插件和Manifest直接位于android/，包名仍为chat.tata.sdk；公共原生头文件唯一为scripts/tatachat_sdk.h，Framework产物仍导出Headers/tatachat_sdk.h。群界面位于lib/ui/group_views.dart，单文件测试归并到test/，不保留旧路径。
 
 scripts/release.mjs公开createFlutterSourceView、assertFlutterSourceView及同名职责的flutter-source-view、verify-flutter-source-view命令。调用方提供互不包含的规范绝对源码根和输出根；SDK先完整核对来源，再在不存在的本轮输出目录装配Flutter标准Java包路径和Manifest。源文件只建立链接，Pub声明与锁文件使用独立普通文件，生成目录及旧Framework排除。复用前核对平台入口来源和Pub内容，拒绝链接目录、来源漂移、重复入口及旧工程叠加。Gradle继续从标准布局读取平台输入，宿主只调用接口，不复制SDK包路径规则。
 
 ## 独立公开仓库与源码根
 
-唯一源码根为 `/Users/rhett/tatachatsdk`，唯一公开仓库为 `tuyutata/tatachatsdk`。仓根直接承载 SDK；CI 与 Release 使用 `tatachatsdk.tatachatsdk.sdk.ci`、`tatachatsdk.tatachatsdk.sdk.release`，只执行本仓 `scripts`。依赖合同中的 Dart 源根为 `.`，Rust 项目为 `native`；工具版本、Dart 包名、C ABI、Android/iOS/macOS 候选及一个 SDK 包的边界保持原声明。
+唯一源码根为 `<本仓根>`，唯一公开仓库为 `tuyutata/tatachatsdk`。仓根直接承载 SDK；CI 与 Release 使用 `tatachatsdk.tatachatsdk.sdk.ci`、`tatachatsdk.tatachatsdk.sdk.release`，只执行本仓 `scripts`。依赖合同中的 Dart 源根为 `.`，Rust 项目为 `native`；工具版本、Dart 包名、C ABI、Android/iOS/macOS 候选及一个 SDK 包的边界保持原声明。
 
 CI 在源码外临时目录复制完整产品根并排除 Git 元数据，不把 `.git` 带入编译工程。正式包继续携带一个 `README.md`，其来源、软件版本与实际提交说明由包构建器只在临时包根生成并纳入 manifest 和 SHA256SUMS；源码不新增第二份技术文档。唯一技术文档仍由本文件承载。
 
 初始保存通过控制台现有 `test/tatachatsdk/save.sh` 与 `saveRepositories(selection=tatachatsdk)`，只创建无父 main 提交；初始源码提交与正式 Release 候选是不同事实，不得把保存冒充测试、正式签名或发布完成。
 ## 完整产品组织与执行合同
 
-所有者：`tatachatsdk`，正式源码根 `/Users/rhett/tatachatsdk`；本说明属于该完整产品。组件不会拆成独立仓库或目录产品。所有执行身份统一为 `产品.平台.流程`，单平台仅在控制台显示和物理目录中省略平台层。
+所有者：`tatachatsdk`，正式源码根 `<本仓根>`；本说明属于该完整产品。组件不会拆成独立仓库或目录产品。所有执行身份统一为 `产品.平台.流程`，单平台物理目录省略平台层，执行身份仍保留真实平台。
 
 真实平台目标：`sdk`。
 
-推送门禁唯一源码位于 `/Users/rhett/tatachatsdk/.github/tatagate/`，GitHub入口 `/Users/rhett/tatachatsdk/.github/workflows/tatagate.yml`。控制台先从本仓已保存提交执行这份门禁，通过后推送准确SHA；GitHub main push再执行同一提交的门禁，控制台核对所属仓、Workflow、main、SHA、Run和attempt，只有success并再次回查main一致才完成推送。失败、取消、超时或身份漂移均不得显示成功，不自动重试或派发CI/Release。
+推送门禁唯一源码位于 `<本仓根>/.github/tatagate/`，GitHub入口 `<本仓根>/.github/workflows/tatagate.yml`。控制台先从本仓已保存提交执行这份门禁，通过后推送准确SHA；GitHub main push再执行同一提交的门禁，控制台核对所属仓、Workflow、main、SHA、Run和attempt，只有success并再次回查main一致才完成推送。失败、取消、超时或身份漂移均不得显示成功，不自动重试或派发CI/Release。
 
-技术文档由所属完整产品仓根唯一持有；私有规则和任务库由控制台私仓持有，公开产品不读取它们。公开门禁不依赖私仓资料、安装包源码、其它本机产品或个人账号；必要链真源先锁定公开main的实际SHA后只读该SHA。本机开发跨产品验收仍比较三仓已保存快照与各端真实镜像。
+技术文档由所属完整产品仓根唯一持有；私有规则和任务库由控制台私仓持有，公开产品不读取它们。公开门禁不依赖私仓资料、安装包源码、其它本机产品或个人账号；必要链真源只读本仓明确固定的公开40位SHA，不在门禁中跟随main。本机开发跨产品验收仍比较三仓已保存快照与各端真实镜像。
 
 
 ### 门禁与开发审查职责
@@ -476,7 +466,7 @@ Git依赖只接受本仓声明与锁一致的HTTPS地址及40位固定提交；�
 
 本仓`scripts/resources.mjs`拥有工具准确来源/版本/配方、递归锁解析、缺失获取、验真、复用和本轮依赖准备；`scripts/build.mjs resources <platform> --work <绝对外部工作根>`调用同一实现，独立入口为`resources.mjs <platform> --work <工作根> [--offline]`。前者从stdin读取公开身份回执；后者允许空请求。最小宿主必须使用本仓声明的官方Node25.2.1绝对入口，本机配方限定macOS ARM；资源阶段回读官方发行归档与运行Node字节，不能从PATH取同名程序。工作根预先存在、位于源码外且不经过链接。
 
-可选`PRODUCT_TOOL_ROOT`只供读取工具原件，`PRODUCT_DEPENDENCY_ROOT`只供读取依赖原件；产品不读取供给者的版本决策或私有任务变量。独立缺省原件库为源码外`~/.local/share/product-resources`，本轮可写状态仅在work。GNU Bash/grep/sed纳入自身需求；发行件旧Shell仅用于声明中的首次GNU构建，不进入正式PATH。下载/源码工具编译不持全局锁，最终不可变对象提交使用短锁，取消传递到工具进程组。错误摘要、损坏、未锁来源、路径越界和显式离线缺失失败并保留可疑原件。
+现存`PRODUCT_TOOL_ROOT`与`PRODUCT_DEPENDENCY_ROOT`是工具和依赖的只读路径输入，本身不能完成控制台缺件准备与交付。当前供给职责按本文“工具与依赖的声明和供给职责”执行：经控制台运行由控制台准备、保存与供给，独立运行由产品自行处理；源码外`~/.local/share/product-resources`仅描述现存独立资源存储，本轮可写状态仅在work。GNU Bash/grep/sed纳入自身需求；发行件旧Shell仅用于声明中的首次GNU构建，不进入正式PATH。下载/源码工具编译不持全局锁，最终不可变对象提交使用短锁，取消传递到工具进程组。错误摘要、损坏、未锁来源、路径越界和显式离线缺失失败并保留可疑原件。
 
 Pub/npm/Cargo按原始锁准备；Git按固定HTTPS提交检出，Git Cargo目录源展开workspace继承并锁定相对包版本；CocoaPods按准确锁摘要恢复验真快照，缺失spec校验规范摘要，未锁源码来源拒绝取得。Android固定包与修订归产品；额外平台仅消费官方固定发行来源与发行树摘要，不借宿主历史SDK目录。Maven供给只读验真后复制到独占Gradle缓存，由产品准备现有配置，消费仍离线；全库坐标导入与旧目录清理留到第5步。
 
@@ -489,7 +479,7 @@ Pub/npm/Cargo按原始锁准备；Git按固定HTTPS提交检出，Git Cargo目�
 
 ### 第3步：产品完整Build入口（2026-10-06）
 
-本产品的正式完整入口为已锁定Node的绝对路径调用`/Users/rhett/tatachatsdk/scripts/build.mjs execute <platform> --work <已存在绝对工作根>`，可选`--offline`。输入stdin可为空；调用方可传schema/product_id/platform/work及真实run_id/program_digest，禁止私有变量或执行命令。入口内部完成需求→资源→准备→再次需求/资源闭包→编译→适用签名/安装/回读；独立与控制台调用同一实现。最小引导Node只启动本产品的资源引导器，产品按自己的官方Node声明验真、准备并重入，控制台运行Node不决定产品Node版本。
+本产品的正式完整入口为已锁定Node的绝对路径调用`<本仓根>/scripts/build.mjs execute <platform> --work <已存在绝对工作根>`，可选`--offline`。输入stdin可为空；调用方可传schema/product_id/platform/work及真实run_id/program_digest，禁止私有变量或执行命令。入口内部完成需求→资源→准备→再次需求/资源闭包→编译→适用签名/安装/回读；独立与控制台调用同一实现。最小引导Node只启动本产品的资源引导器，产品按自己的官方Node声明验真、准备并重入，控制台运行Node不决定产品Node版本。
 
 标准输出只有唯一有界JSON：schema、product_id、platform、work、completion、files及可选真实run_id。completion沿用固定平台的device-install/macos-artifact/compile-only；files按本产品flows.json登记路径和SHA256。编译日志使用stderr进入现有任务日志，不新增资源任务或任务状态。完整结果只在各阶段成功、源码/锁不漂移、工具进程确认退出后落入本轮build-result.json；同根并发或复用旧结果拒绝，取消/失联/错误身份/损坏候选不得成功。
 
@@ -519,7 +509,7 @@ CI/Release的规范身份、标题、版本前缀和正式版本记录标志已�
 
 `recover`不重新派发；重新核验原候选、成功CI、原Run终态、正式资产来源与Tag，输出formal_release/removed_run_ids。控制调用方仅绑定原任务身份、原候选和产品公开回执，更新现有持久发布目标；产品验真算法不再随调用方程序编译。相关正常、失败、错资产/正文/来源、重定向隔离、独立记录刷新和恢复用例源码归本仓flow.test.mjs。
 
-资源工具取消、超时、输出超限和异常收尾均等待主进程与整个后代组退出；无法确认退出时保留工作根和候选，禁止删除输入或改为可写。真实取消退出顺序用例仅写入resources.test.mjs，尚未执行。
+资源工具取消、超时、输出超限和异常收尾均等待主进程与整个后代组退出；无法确认退出时保留工作根和候选，禁止删除输入或改为可写。真实取消退出顺序用例仅写入resources.mjs末尾用例，尚未执行。
 
 
 ### 发布实现范围
@@ -529,7 +519,7 @@ CI/Release的规范身份、标题、版本前缀和正式版本记录标志已�
 
 ### 产品独立资源与唯一依赖供给
 
-本产品的scripts/resources.mjs拥有资源解析、来源与摘要验证、缺件取得、可写视图和失败条件。PRODUCT_DEPENDENCY_ROOT是可选只读供给；没有供给时使用源码外的本产品原件存储，产品需求仍只由当前源码、声明和锁决定。依赖索引读取仅接受schema_version=2及packages、git_sources、pods，不恢复旧目录或整锁快照。
+本产品的scripts/resources.mjs独立拥有需求解析、准备配方、来源与摘要验证、可写视图和失败条件。独立执行时由产品获取、保存与复用缺件；经控制台执行时由控制台按产品声明准备、保存并供给，产品核验并使用。PRODUCT_DEPENDENCY_ROOT仅是现存只读路径输入，缺少路径或原件不得在控制台执行模式下触发产品自行下载；实际供给接入仍需代码改造与验收。依赖索引读取仅接受schema_version=2及packages、git_sources、pods，不恢复旧目录或整锁快照。
 
 Maven的具体JAR、AAR、POM、module及分类器文件统一由packages的group:artifact、version、准确上游URL、SHA256和SRI定位objects中的原件。产品在本轮work/dependencies/maven按上游分区复制独占文件；不复制Gradle二进制元数据、锁和下载状态。产品生成本轮GRADLE_USER_HOME/init.d初始化脚本，只在自身已声明的同源仓库之前加入本轮原件视图，缺件仍按产品原仓库解析，明确离线则失败。Gradle解析、工程状态和后续编译都属于同一产品任务。
 
@@ -568,3 +558,85 @@ Pod由pods中的name、version、checksum匹配当前Podfile.lock；spec保存�
 
 
 本产品资源验真将下载运输元数据与源码工具编译身份分开：仅在源码工具证明和本产品声明的比较副本中，验证并移除archive.mirrors与upstream_patches各项mirrors。镜像须为非空、无重复、无控制字符/空白、无账号/口令/片段的准确规范HTTPS地址数组；错误格式直接失败。官方来源URL、版本、归档字节摘要、kind/root/executable、补丁来源/摘要/顺序、前置与依赖闭包、其它位置同名字段及未知字段继续严格比较。Xcode/POSIX输入、recipe.source和source.archive/source.gem摘要、原回执清单及入口独占规则不变；比较不改写原证明、声明或回执，不改变原件/登记/配方/版本/锁和实际下载策略，不读取控制台登记作为产品版本或策略来源。既有回归使用完整本仓资源实现及纯合成物理证明，逐次重算清单，验证运输差异可复用与真正输入漂移必须失败；测试不启动工具或冒充真实编译交付。
+
+
+## 独立塔塔门禁与资料回归
+
+本仓 `.github/tatagate/index.mjs` 是本机与GitHub共用的唯一门禁实现，`contracts.json`只登记本仓准确GitHub身份、已有流程与真实Node入口。GitHub在本仓main推送时自动运行 `tatagate.yml`，检出并核对该push的同一已保存SHA；其它仓库的工作树、门禁、私有规则和人工开发凭证均不是输入。
+
+门禁检查独立Git根、准确HTTPS origin、当前受检提交及提交范围；本机只接受main，远端只接受准确仓库的main push。源码语法、真实代码注释上下文、临时残留、传输来源、所属根技术文档和受控测试登记分别检查。实现变化必须在同一范围同步所属文档与有内容的回归差异；空白调整不构成同步证据。代码与资料的语义、注释是否准确、回归是否覆盖产品功能仍须由本仓开发与最终真实验收逐项复核，非空文件或摘要不能证明业务正确。
+
+Node清单从本仓Git已跟踪的真实测试逐项核对，漏登记、重复、失效和空入口失败；执行时必须有每份登记文件与最终汇总的完整成功回执。零用例、漏文件、失败、跳过、待办、取消及重复汇总均失败。所属产品流程、声明、资源版本与Workflow权限的回归归本仓 `scripts/flow.test.mjs`，不让其它仓库代验本产品。
+
+门禁的工具与依赖需求、固定来源、准备配方、完整验真及同版复用合同统一由本仓 `scripts/resources.mjs` 拥有；门禁只调用公开接口，不维护第二份工具版本或配方。按当前职责规范，独立执行由产品获取和保存资源，经控制台执行由控制台准备和供给；下述既有接口与验收记录不代表控制台供给接入已完成。`prepareGateResources`准备本仓独占资源现场，`verifyGateResourceDelivery`回读准确来源、完整对象、执行器、宿主闭包和工作环境，`gateResourcePlan`从本仓既有声明派生来源。既有tools模块如存在仅转发产品资源接口。Linux门禁新增Ubuntu 24.04 x64宿主交付，macOS门禁复用本仓既有生产资源准备；不改生产流程顺序、工具版本、产品原锁或不可变原件。
+
+固定Git输入只从本仓声明或门禁明确的40位提交取得，不消费其它产品当前main。独立执行的依赖原件归产品独立资源库，经控制台执行的依赖原件由控制台保存供给，任务缓存和编译数据归本轮target；已有多平台产品按本仓首个登记平台的test现场分配，单平台使用target/test。`gateLanguageView`使用受检Git快照与产品现有安全解包器物化本轮target工程视图，正式源码、声明和锁只读；Git包仅在任务视图元数据中投影为已验真的固定输入。
+
+`ownedLanguageTests`按本仓已有原锁与公开入口派生适用语言调度，`validateLanguageResult`核对实际非空执行结果。有Cargo锁的工作区执行离线原锁的全部测试目标及文档测试；Flutter项目执行原有正式测试入口或完整analyze/test；已有Vitest业务套件与TypeScript公开回归实际执行。Node依赖先准备独占视图；需要实际编译产物的既有测试先调用所属产品原Build入口。依赖缺失、宿主不适用、工具加载失败或语言结果不完整均失败，不以跳过或零退出码代替通过。
+
+取消、超时及任何非成功结论都是失败，长进程通过本产品 `runResourceProcess` 传播取消并确认整组退出；退出未确认时 `gateCleanupAllowed` 拒绝清理现场。
+
+本轮只完善门禁实现、资料、注释和回归源码，尚未运行测试、门禁、编译、签名或安装。全部获准步骤实现完成后在最终统一验收中运行，随后按每仓准确保存SHA推送并核对该SHA的GitHub push门禁；未验收不得登记为已完成。
+
+
+## 独立功能门禁
+
+本仓 `.github/tatagate/` 只检查本仓提交。本产品现有功能检查主题为：MLS和设备会话、认证传输、群控与附件、存储保护、通话和聊天组件。已有真实入口为：native真实宿主；test中的MLS/session/transport/storage/widget等；宿主缺失及skip均失败。`contracts.json` 的 `functions` 只映射本仓已有用例路径、实际执行器、所属工程及具名用例，不复刻业务字段或算法；源码及公开接口继续是业务真源。当前登记 54 件既有测试来源（cargo 1 件、flutter 47 件、node 6 件），新增或移除用例须同步映射，遗漏、失效和重复必须拒绝。
+
+Node完整报告逐文件核对；Flutter和Vitest从实际机器结果读取本仓具名套件完成数；Rust按准确原锁工作区及所属包运行全目标和文档测试，核对具名用例；Python调用实际unittest套件，拒绝零用例、失败、跳过、预期失败和意外成功。适用的原生门禁回读真实XCTest结果。执行回执绑定本仓、本次工作根和同一HEAD SHA，历史回执、加载事件、总数非空或单独零退出码均不足以证明全部功能检查成功。门禁协议夹具只证明核验器和调用边界，不能替代实际产品功能验收。
+
+门禁资源仍由本仓 `scripts/resources.mjs` 准备和验真，实际用例需要的Cargo/npm原锁纳入本仓闭包。固定SDK只按本仓声明的同一40位提交建立本轮工程，不能读取邻仓或跟随main。Linux使用现有准确Ubuntu x64门禁宿主；本机使用原macOS ARM资源入口。Flutter需要的真实MLS、SDK ABI及适用Isar宿主在用例前准备，验证普通文件、当前工作边界及实际加载；缺库即失败，不设置跳过或替身。资源与全部测试临时数据只归本产品target内准确平台现场，不改变生产平台、生产工具版本、依赖版本或锁。
+
+main推送自动触发本仓同SHA `tatagate.yml`，不调度其它产品门禁或CI/Release。中文注释、真实接口、所属文档与回归同步检查继续执行。当前只准备实现、注释和用例，未运行测试、语法检查、门禁、下载或编译。浏览器交互、真机、真实API/服务/数据库环境及适用平台不能由登记清单、单元测试或编译替代，须在整项实现后的统一验收逐项核对。
+
+本地调用的既有协调目录参数只用于核对请求身份；实际测试工作根和本次功能回执由门禁自行在本仓target建立，不向快照旁协调目录写入产品状态。独立入口与控制台固定调用共享同一实现与退出结论。
+
+
+本仓门禁回归执行边界：完整门禁包含本仓全部已登记真实测试；需要编译输入的既有用例由所属入口准备，禁止读取其它轮次生成物。嵌套Node回归启动独立运行器时，仅清除父运行器内部NODE_TEST_CONTEXT，产品工具和门禁输入继续保留；实际逐文件及最终结果仍拒绝零用例、遗漏、跳过和失败。回归夹具的Git/Shell来自已验真公开工具输入，禁止回退系统路径；工具转发模块不承担门禁CLI，直接参数拒绝由本仓实际门禁入口负责。 此次修正候选来自统一回归真实失败；整项真实功能验收、已保存提交门禁及同SHA远端结果尚未完成，不能据此登记为全部通过。
+
+功能清单核验回读本仓实际Git跟踪源码，使用明确的本仓上游排除边界；漏登记、重复、不存在的入口或Rust具名用例集合不一致均失败。归档消费者仍属于本仓功能检查，不因上游目录豁免而排除。
+
+本产品源码工具依赖准备仅返回源码外归档存储中的验真输入映射；工具候选不创建旧originals目录，也不清理不存在的目录。原始归档及编译输入仍由既有工具对象和回执完整保存，错误归档、缺前置工具、编译失败、缺输出及越界继续失败。修正后的配方形成自身对象身份，不覆盖历史原件；测试夹具遵守同一目录合同。
+
+## 2026-10-08 服务模块接线与 lib 目录收口
+
+lib 下直接按 attachment、call、core、direct、group、mls、protocol、runtime、storage、transport、ui 分工，公开入口保留 lib/tatachat_sdk.dart。原 src 层已删除，没有旧路径别名；五份 proto 及生成代码仅移动，不改变协议字节或存储 schema。
+
+Host.requestChatAccess 返回 ChatAccess(realtimeUrl, accessToken, expiresAtMillis)。地址必须是完整 wss://<origin>/api/tatachat/realtime，无用户信息、查询或片段；SDK 不解析不透明 accessToken，不落盘或输出它。每次物理连接取得新许可，账户、绑定范围和修订在请求前后固定复核。附件地址由同主机/端口派生 https://<origin>/api/tatachat/attachments/{id}/chunks/{index}，TLS 和禁止重定向在实际请求上执行。
+
+连接按代际丢弃迟到结果，等待许可、握手、Ready、当前命令各有12秒截止；队列最多128条，控制帧最多2MiB，分块最多4MiB。临近许可到期60秒即停止 socket 与所属 HTTP 请求。关闭失败保留可重试资源，不能把失败 Ready 或未回收请求当已完成关闭。系统通知只承载无正文 chat_wake。
+
+账户补拉单飞，每批最多100条，先验密和本机精确持久收据再 ACK。字节裁剪的短批仍继续；仅空批收敛。无 ACK 进展按1/2/4秒最多三次补拉后等待下次外部触发；一轮最多32批或15秒，仍有进展时安排250毫秒后续轮次。停止、擦除和换绑拒绝旧结果及迟到 ACK；云端七天密文暂存不会替代本机永久历史。
+
+附件沿用原待发记录的创建时间、ID、受众和密文摘要，先用幂等 complete 核对 Ready 回执；未知网络/写入/完成结果保留原密文，禁止自动 abort 或写成功标记。未得到完成证明时仅以同元数据继续 begin/分块；用户取消、受众失效或到期仍归现有终结清理入口。
+
+本次完成源码、用例与文档准备，实际分析、测试、原生及 Worker/App 联调留第5步。门禁映射和两项生成/Release路径已按确认的最终差异正式应用：三件传输测试改名、两件连接/补拉测试纳入现有门禁，协议生成读取 lib/protocol，Release回归读取 lib/storage/system_protected_storage.dart；本次未运行这些流程。尚无新 SDK 提交，固定消费者仍是原真实 SHA，不能据此声称新 API 已由正式依赖消费。
+
+
+## scripts目录与分析/ABI输入
+
+scripts直属目录仅ci、release；两者直接承载execute.mjs与test.mjs，ci/native.mjs提供锁定Isar宿主路径校验，release/index.mjs保留实际版本/来源校验。旧check层不存在；无人调用且无公开合同的ci/index.mjs已删除。根CHANGELOG.md已删除，Release不再要求或打包该文件。其它根脚本仍分别承担Build、资源、远端流程、协议生成、原生编译或发布，不能将必要实现当作无用文件删除。
+
+唯一C ABI头为scripts/tatachat_sdk.h，移动不改变内容或导出符号；原生Framework仅从该处复制。分析配置唯一为scripts/analysis_options.yaml，严格语言和lint规则/生成文件排除保持；Build、门禁、CI派生工程与公开Flutter视图都调用同一materializeAnalysisOptions，将源配置字节显式复制到本轮工程根供Flutter/Dart自动发现。正式根不重建同名文件、转发壳或链接；公开视图复用须回读配置与源字节一致。Release源闭集只包含这两件scripts输入，不打包开发/CI脚本、私有任务或产品技术文档。
+
+
+## 本机固定执行目录
+
+target直属仅允许build、test两个固定目录，不建立平台、ci、release、publish或tmp固定目录。平台仍属于任务身份。编译器必需的内部目录只在本轮执行时存在；本轮工具全部退出、结果核验和记录完成后，成功或失败都清空对应现场。同产品共用固定编译根的任务串行领取，禁止清理其他活动任务。测试现场归test，测试结束清空。最终编译包也属于本轮现场，不保留在target根；控制台自身更新先完成既有原子安装，再清空build。远端CI、Release继续在GitHub执行，不建立本机固定流程目录。
+
+历史验收路径保留原记录；本节为当前本机目录规则。
+
+
+## 统一联调第4步：资源验真与同文件回归
+
+资源实现与完整回归唯一位于本仓 scripts/resources.mjs，测试置于正式代码末尾；不保留单独的 resources.test.mjs、转发壳或第二测试入口文件。直接普通导入、资源准备和Build不会加载node:test或注册末尾用例。准确Node测试入口为 node --test scripts/resources.mjs；直接执行 node scripts/resources.mjs test 也只进入同一末尾用例。门禁functions与node_tests登记该实际源码路径，逐文件真实执行数、失败、跳过、取消及遗漏判定保持。
+
+资源源码仍接受生产实现检查。门禁同步证据单独提取末尾实际代码，与准确Git基线比较；只有正式实现变化不能冒充测试更新，注释或字符串中的伪造测试块不成立。资源生产部分仅使用Node内置模块；末尾测试才按需读取本仓Build与门禁接口，不依赖控制台私有源码。
+
+Pod供给先验证官方spec URL、供给SHA256与CocoaPods锁checksum，再物化发布树。固定CocoaPods Core 1.16.2的Specification#checksum读取spec文件原字节SHA1；preparePods继续使用交付的准确Ruby和CocoaPods调用官方方法回读。JSON内容相等或重新序列化后的新字节不能替代锁定原件。官方实现依据为 https://github.com/CocoaPods/Core/blob/1.16.2/lib/cocoapods-core/specification.rb 。共享原件中的错误spec据实拒绝，本步不修改供给登记、锁、版本或永久原件。
+
+两端只允许官方CDN到同一Specs路径的单跳HTTPS分发，第二次请求禁止重定向；查询、片段、凭据、错源、错路径、超限或取消均失败。独立执行按本仓锁取得和验真，经控制台执行只核验所供原件；供给失败不隐式切成独立下载。
+
+ZIP/TAR、受控XZ和Pod发布树物化前，在本轮独占候选内逐目录探测真实文件系统是否能保留每个准确成员名称。README与Readme以及仅大小写不同的父目录必须保留各自字节；无法表示时在写入成员前明确失败。名称不改写、不删减、不自动升级原件，取消或探测失败清理准确本轮探测目录；解包失败清理本轮目标。区分大小写工作文件系统的实际创建、挂载和运行验收仍须单独准确授权，工作根只归本产品target/build或target/test。
+
+新增及保留用例涵盖供给错锁摘要、官方分发边界、大小写目录与文件、真实名称预检取消、XZ提取失败与取消、普通导入副作用及末尾测试同步证据。合成Pod的checksum来自夹具spec准确字节，不使用假锁摘要。当前仅准备代码和用例，未执行测试、语法检查、门禁、编译、资源下载、签名、安装或真实联调，不能据此报告完整资源准备与Build通过。

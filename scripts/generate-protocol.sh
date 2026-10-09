@@ -2,7 +2,7 @@
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-protocol_dir="$root/lib/src/protocol"
+protocol_dir="$root/lib/protocol"
 # 所有独立入口的工具临时状态归本产品target；宿主已交付的产品工作根继续归当前任务。
 PRODUCT_TEMP_SCRIPT="${BASH_SOURCE[0]}"
 while [[ -L "$PRODUCT_TEMP_SCRIPT" ]]; do

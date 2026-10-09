@@ -5,14 +5,17 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tatachat_sdk/tatachat_sdk.dart';
 
 void main() {
-  test('公开入口从同一 HTTPS 根派生唯一 WSS 地址', () {
-    final access = TataChatServerAccess(
-      tataChatServerUrl: Uri.parse('https://chat.example.com'),
-      tataChatServerToken: 'test-token',
+  test('公开入口接收完整 WSS 地址并派生同源 HTTPS 分块', () {
+    final access = ChatAccess(
+      realtimeUrl: Uri.parse('wss://chat.example.com/api/tatachat/realtime'),
+      accessToken: 'test-token',
       expiresAtMillis: 200000,
     );
     access.validate(1000);
-    expect(access.realtimeUrl.toString(), 'wss://chat.example.com/realtime');
+    expect(
+      access.realtimeUrl.toString(),
+      'wss://chat.example.com/api/tatachat/realtime',
+    );
   });
 
   test('启动调用运行时且并发只建立一次同步，停止关闭全部登记资源', () async {

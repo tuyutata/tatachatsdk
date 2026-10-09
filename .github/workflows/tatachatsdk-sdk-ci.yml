@@ -116,7 +116,7 @@ jobs:
           cargo-target/aarch64-apple-ios-sim/release/libtatachat_sdk.dylib
           cargo-target/aarch64-apple-darwin/release/libtatachat_sdk.dylib
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/check/execute.mjs" workflow-step 0
+      run: node "$GITHUB_WORKSPACE/scripts/ci/execute.mjs" workflow-step 0
     - name: 恢复上一次成功的CI增量缓存
       continue-on-error: true
       uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684
@@ -124,33 +124,33 @@ jobs:
         path: "${{ steps.tatachatsdk_ci_sdk__check__ci_cache.outputs.success_paths }}"
         key: "${{ steps.tatachatsdk_ci_sdk__check__ci_cache.outputs.restore_key }}"
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/check/execute.mjs" workflow-step 1
+      run: node "$GITHUB_WORKSPACE/scripts/ci/execute.mjs" workflow-step 1
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/check/execute.mjs" workflow-step 2
+      run: node "$GITHUB_WORKSPACE/scripts/ci/execute.mjs" workflow-step 2
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/check/execute.mjs" workflow-step 3
+      run: node "$GITHUB_WORKSPACE/scripts/ci/execute.mjs" workflow-step 3
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/check/execute.mjs" workflow-step 4
+      run: node "$GITHUB_WORKSPACE/scripts/ci/execute.mjs" workflow-step 4
     - id: tatachatsdk_ci_sdk__check__flutter-version
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/check/execute.mjs" workflow-step 5
+      run: node "$GITHUB_WORKSPACE/scripts/ci/execute.mjs" workflow-step 5
     - name: 安装 Flutter
       uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
       with:
         flutter-version: "${{ steps.tatachatsdk_ci_sdk__check__flutter-version.outputs.version }}"
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/check/execute.mjs" workflow-step 6
+      run: node "$GITHUB_WORKSPACE/scripts/ci/execute.mjs" workflow-step 6
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/check/execute.mjs" workflow-step 7
+      run: node "$GITHUB_WORKSPACE/scripts/ci/execute.mjs" workflow-step 7
     - shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/check/execute.mjs" workflow-step 8
+      run: node "$GITHUB_WORKSPACE/scripts/ci/execute.mjs" workflow-step 8
     - working-directory: "${{ github.workspace }}/target/ci/tatachatsdk/build-source"
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/check/execute.mjs" workflow-step 9
+      run: node "$GITHUB_WORKSPACE/scripts/ci/execute.mjs" workflow-step 9
     - env:
         ANDROID_NDK_HOME: "${{ env.ANDROID_HOME }}/ndk/28.2.13676358"
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/check/execute.mjs" workflow-step 10
+      run: node "$GITHUB_WORKSPACE/scripts/ci/execute.mjs" workflow-step 10
     - if: "${{ success() }}"
       name: 上传准确 TataChatSDK CI 原生候选
       uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -166,7 +166,7 @@ jobs:
       env:
         CI_CACHE_TERMINAL_STATE: failure
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/check/execute.mjs" workflow-step 11
+      run: node "$GITHUB_WORKSPACE/scripts/ci/execute.mjs" workflow-step 11
     - if: "${{ failure() && !cancelled() && steps.tatachatsdk_ci_sdk__check__ci_cache.outcome == 'success' }}"
       name: 保存本次失败的CI增量缓存
       id: tatachatsdk_ci_sdk__check__ci_cache_save_failure
@@ -181,12 +181,12 @@ jobs:
         GH_TOKEN: "${{ github.token }}"
         CI_CACHE_TERMINAL_STATE: failure
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/check/execute.mjs" workflow-step 12
+      run: node "$GITHUB_WORKSPACE/scripts/ci/execute.mjs" workflow-step 12
     - if: "${{ success() }}"
       env:
         CI_CACHE_TERMINAL_STATE: success
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/check/execute.mjs" workflow-step 13
+      run: node "$GITHUB_WORKSPACE/scripts/ci/execute.mjs" workflow-step 13
     - if: "${{ success() }}"
       name: 保存本次成功的CI增量缓存
       id: tatachatsdk_ci_sdk__check__ci_cache_save_success
@@ -201,4 +201,4 @@ jobs:
         GH_TOKEN: "${{ github.token }}"
         CI_CACHE_TERMINAL_STATE: success
       shell: bash
-      run: node "$GITHUB_WORKSPACE/scripts/ci/check/execute.mjs" workflow-step 14
+      run: node "$GITHUB_WORKSPACE/scripts/ci/execute.mjs" workflow-step 14

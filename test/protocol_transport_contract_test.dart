@@ -3,6 +3,27 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tatachat_sdk/tatachat_sdk.dart';
 
 void main() {
+  test('完整WSS控制入口与同origin HTTPS分块是唯一公开地址合同', () {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final access = ChatAccess(
+      realtimeUrl: Uri.parse('wss://chat.example.test/api/tatachat/realtime'),
+      accessToken: 'opaque-token',
+      expiresAtMillis: now + 120000,
+    );
+    access.validate(now);
+    expect(
+      access.attachmentChunkUrl('attachment-a', 3).toString(),
+      'https://chat.example.test/api/tatachat/attachments/attachment-a/chunks/3',
+    );
+    expect(
+      () => ChatAccess(
+        realtimeUrl: Uri.parse('wss://chat.example.test/realtime'),
+        accessToken: 'opaque-token',
+        expiresAtMillis: now + 120000,
+      ).validate(now),
+      throwsStateError,
+    );
+  });
   test('one message keeps distinct OpenMLS ciphertext per device', () {
     final message = EncryptedMessage(
       messageId: 'message-a',
@@ -30,23 +51,23 @@ void main() {
   test('network endpoints fail closed unless encrypted', () {
     final now = DateTime.now().millisecondsSinceEpoch;
     expect(
-      () => TataChatServerAccess(
-        tataChatServerUrl: Uri.parse(
+      () => ChatAccess(
+        realtimeUrl: Uri.parse(
           'ws'
           '://chat.example.test',
         ),
-        tataChatServerToken: 'token',
+        accessToken: 'token',
         expiresAtMillis: now + 120000,
       ).validate(now),
       throwsStateError,
     );
     expect(
-      () => TataChatServerAccess(
-        tataChatServerUrl: Uri.parse(
+      () => ChatAccess(
+        realtimeUrl: Uri.parse(
           'http'
           '://chat.example.test',
         ),
-        tataChatServerToken: 'token',
+        accessToken: 'token',
         expiresAtMillis: now + 120000,
       ).validate(now),
       throwsStateError,

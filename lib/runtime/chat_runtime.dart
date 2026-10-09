@@ -58,7 +58,7 @@ class ChatRuntimeAccount {
   final String displayName;
 }
 
-/// 宿主只注入公开身份、权益、平台推送和短期 TataChatServer 凭证。
+/// 宿主只注入公开身份、权益、平台推送和短期 聊天服务模块凭证。
 abstract interface class ChatRuntimeHost {
   ChatPushBridge get push;
   ChatMediaLimitPolicy get mediaLimits;
@@ -67,7 +67,7 @@ abstract interface class ChatRuntimeHost {
 
   Future<ChatRuntimeAccount?> currentAccount({String? expectedAccountId});
 
-  Future<TataChatServerAccess> requestTataChatServerAccess({
+  Future<ChatAccess> requestChatAccess({
     required ChatRuntimeAccount account,
     required ChatDevice identity,
   });
@@ -1395,7 +1395,7 @@ class _ChatSignalContext {
 
 /// 宿主用户 Chat 运行态编排服务。
 ///
-/// 页面层不直接操作 OpenMLS、TataChatServer 瞬时转发、近场通道和 Isar。
+/// 页面层不直接操作 OpenMLS、聊天服务模块瞬时转发、近场通道和 Isar。
 /// 读取宿主账户事实，先离线准备SDK自有MLS身份，再建立聊天连接。
 /// 连接时请求宿主短期服务凭证，本地文件由SDK自己的系统保护存储承载。
 class ChatRuntimeCore {
@@ -1419,7 +1419,7 @@ class ChatRuntimeCore {
            transportFactory ??
            (({
              required ChatDevice identity,
-             required TataChatServerAccessProvider accessProvider,
+             required ChatAccessProvider accessProvider,
            }) => ChatServerConnection(
              identity: identity,
              accessProvider: accessProvider,
@@ -1522,6 +1522,11 @@ class ChatRuntimeCore {
   /// WSS 在线帧与连接后补拉可能命中同一密文；进程内先按既有 message_id 去重，
   /// 本机处理成功后只重试云端 ACK，不得再次推进同一个 OpenMLS 控制消息。
   final Set<String> _mailboxMessageReceipts = <String>{};
+  final Map<String, Future<void>> _mailboxDrains = {};
+  final Set<String> _mailboxDrainRequested = {};
+  final Map<String, Timer> _mailboxRetryTimers = {};
+  final Map<String, int> _mailboxRetryAttempts = {};
+  final Map<String, int> _mailboxEpochs = {};
   final Set<String> _outgoingRetryInFlight = <String>{};
   final Set<String> _keyPackagePublications = <String>{};
   final Map<String, Timer> _outboundRetryTimers = <String, Timer>{};
@@ -1534,6 +1539,8 @@ class ChatRuntimeCore {
   final Map<String, String> _accountContextKeys = {};
   final Map<String, int> _accountGenerations = {};
   final Set<String> _blockedAccountIds = <String>{};
+  // 初始化失败但关闭未成功的传输仍由 Runtime 持有，终态可继续重试回收。
+  final Set<ChatServiceTransport> _transportsPendingDisposal = {};
 
   /// AppLock 在触碰任何业务存储前先落盘 pending marker。
   ///
@@ -1543,9 +1550,8 @@ class ChatRuntimeCore {
     Future<Directory> Function()? documentsDirectoryProvider,
   }) {
     _processWipeRequested = true;
-    return _resolveWipeDocumentsRoot(
-      documentsDirectoryProvider,
-    ).then(_ChatCrossIsolateCoordinator.ensureWipePending);
+    return _resolveWipeDocumentsRoot(documentsDirectoryProvider)
+        .then(_ChatCrossIsolateCoordinator.ensureWipePending);
   }
 
   static Future<ChatPersistentWipeState> readPersistentAppDataWipeState({
@@ -1945,6 +1951,12 @@ class ChatRuntimeCore {
 
   Future<void> _close() async {
     _closed = true;
+    for (final timer in _mailboxRetryTimers.values) {
+      timer.cancel();
+    }
+    _mailboxRetryTimers.clear();
+    _mailboxRetryAttempts.clear();
+    _mailboxDrainRequested.clear();
     for (final timer in _outboundRetryTimers.values) {
       timer.cancel();
     }
@@ -2028,6 +2040,14 @@ class ChatRuntimeCore {
       ..._contextsPendingDisposal,
     }.toList(growable: false);
     await Future.wait<void>(<Future<void>>[
+      for (final transport in _transportsPendingDisposal.toList(
+        growable: false,
+      ))
+        _captureCleanupFailure(
+          '关闭未交接 Chat 传输',
+          () => _disposeUnownedTransport(transport),
+          failures,
+        ),
       for (final context in contexts)
         _captureCleanupFailure(
           '关闭 Chat 上下文',
@@ -2264,11 +2284,10 @@ class ChatRuntimeCore {
   ) {
     final key = '${context.bindingToken.accountId}|$conversationId';
     unawaited(
-      _runRuntimeOperation(
-        () => _outboundDeliveryGate.run(key, delivery),
-      ).catchError((Object _) {
-        // 静默后台投递失败不覆盖本地消息；队列事实仍在，下次重试继续发送。
-      }),
+      _runRuntimeOperation(() => _outboundDeliveryGate.run(key, delivery))
+          .catchError((Object _) {
+            // 静默后台投递失败不覆盖本地消息；队列事实仍在，下次重试继续发送。
+          }),
     );
   }
 
@@ -2533,6 +2552,10 @@ class ChatRuntimeCore {
     // 只能由明确的 converge/commit/discard 成功路径重新放行。
     _blockedAccountIds.add(accountId);
     _accountGenerations[accountId] = (_accountGenerations[accountId] ?? 0) + 1;
+    _mailboxRetryTimers.remove(accountId)?.cancel();
+    _mailboxRetryAttempts.remove(accountId);
+    _mailboxDrainRequested.remove(accountId);
+    _mailboxMessageReceipts.removeWhere((key) => key.startsWith('$accountId|'));
     final realtimeHub = _realtimeHubs[accountId];
     if (realtimeHub != null) await _closeRealtimeHub(realtimeHub);
     final invalidatedFlights = _readyFlights.entries
@@ -3251,7 +3274,7 @@ class ChatRuntimeCore {
       final resolved = await _resolveKeyPackages(context, userId);
       for (final keyPackage in resolved) {
         if (keyPackage.userId != userId) {
-          throw StateError('TataChatServer 返回的 KeyPackage user ID 与请求目标不一致');
+          throw StateError('聊天服务模块返回的 KeyPackage user ID 与请求目标不一致');
         }
       }
       packages.addAll(resolved);
@@ -3273,7 +3296,7 @@ class ChatRuntimeCore {
               keyPackage.notAfterMillis <= now ||
               !keyPackage.lastResort,
         )) {
-      throw StateError('TataChatServer 返回的 KeyPackage 当前不可用');
+      throw StateError('聊天服务模块返回的 KeyPackage 当前不可用');
     }
     return resolved;
   }
@@ -3722,6 +3745,7 @@ class ChatRuntimeCore {
         cipherFile: staged,
         cipherByteSize: cipherByteSize,
         cipherSha256: cipherSha256,
+        createdAtMillis: pending.createdAtMillis,
       );
       await _requireAttachmentAudience(
         context,
@@ -3733,8 +3757,7 @@ class ChatRuntimeCore {
         () => uploaded.writeAsString('uploaded', flush: true),
       );
     } catch (_) {
-      // transport 是上传事务唯一所有者，失败时已完成一次 abort；运行态禁止
-      // 再次中止同一 attachmentId，避免重复 encrypted object storage/D1 写入。
+      // 未知上传/完成结果保留原密文与同 ID 元数据，下次先核对幂等完成回执。
       rethrow;
     }
     try {
@@ -3826,9 +3849,8 @@ class ChatRuntimeCore {
     if (!await uploaded.exists()) {
       throw StateError('Chat 附件密文仍在后台上传');
     }
-    if (!(await context.crypto.pendingMessageResults(
-      pending.localMessageId,
-    )).any((r) => (r['result'] as Map)['application_wire_hex'] is String)) {
+    if (!(await context.crypto.pendingMessageResults(pending.localMessageId))
+        .any((r) => (r['result'] as Map)['application_wire_hex'] is String)) {
       await _requireAttachmentAudience(
         context,
         pending.conversationId,
@@ -3883,6 +3905,7 @@ class ChatRuntimeCore {
           cipherFile: staged,
           cipherByteSize: cipherByteSize,
           cipherSha256: cipherSha256,
+          createdAtMillis: pending.createdAtMillis,
         );
         await _requireAttachmentAudience(
           context,
@@ -3894,7 +3917,7 @@ class ChatRuntimeCore {
           () => uploaded.writeAsString('uploaded', flush: true),
         );
       } catch (_) {
-        // 上传事务负责网络失败中止；受众变化由准确待发动作终结入口清理。
+        // 网络未知结果不 abort；受众变化由准确待发动作终结入口清理。
         rethrow;
       }
       try {
@@ -3906,9 +3929,8 @@ class ChatRuntimeCore {
         // 上传标记是远端成功真值，缓存清理留给会话删除统一收口。
       }
     }
-    if (!(await context.crypto.pendingMessageResults(
-      pending.localMessageId,
-    )).any((r) => (r['result'] as Map)['application_wire_hex'] is String)) {
+    if (!(await context.crypto.pendingMessageResults(pending.localMessageId))
+        .any((r) => (r['result'] as Map)['application_wire_hex'] is String)) {
       await _requireAttachmentAudience(
         context,
         pending.conversationId,
@@ -4079,11 +4101,7 @@ class ChatRuntimeCore {
   Future<void> handleWake() async {
     final account = await _readAccount();
     final context = await _readyContext(account);
-    await _consumeMailboxBatch(
-      account,
-      context.transport,
-      await context.transport.fetchMailbox(),
-    );
+    await _drainMailbox(account, context.transport);
     await retryOutgoing();
   }
 
@@ -4199,6 +4217,11 @@ class ChatRuntimeCore {
   Future<void> _closeRealtimeHub(_ChatRealtimeHub hub) async {
     if (hub.closed) return;
     hub.closed = true;
+    final accountId = hub.account.accountId;
+    _mailboxEpochs[accountId] = (_mailboxEpochs[accountId] ?? 0) + 1;
+    _mailboxRetryTimers.remove(accountId)?.cancel();
+    _mailboxDrainRequested.remove(accountId);
+    _mailboxDrains.remove(accountId);
     hub.reconnectTimer?.cancel();
     hub.reconnectTimer = null;
     hub.listeners.clear();
@@ -4238,11 +4261,7 @@ class ChatRuntimeCore {
           try {
             await _runRuntimeOperation(() async {
               if (event is ChatMessageAvailableEvent) {
-                await _consumeMailboxBatch(
-                  account,
-                  signalContext.transport,
-                  await signalContext.transport.fetchMailbox(),
-                );
+                await _drainMailbox(account, signalContext.transport);
                 await onNotice();
               }
             });
@@ -4282,11 +4301,7 @@ class ChatRuntimeCore {
       // 必须先完成 WSS ready，再补拉可靠密文邮箱。建连后的新消息由 WSS
       // 立即交付，建连前的消息由本次补拉收敛，两者重叠时由 message_id
       // 和本机落库幂等去重；禁止留下“补拉结束、WSS 尚未建立”的丢失窗口。
-      await _consumeMailboxBatch(
-        account,
-        signalContext.transport,
-        await signalContext.transport.fetchMailbox(),
-      );
+      await _drainMailbox(account, signalContext.transport);
       _ensureActive();
       session.ensureOpen();
 
@@ -4295,15 +4310,11 @@ class ChatRuntimeCore {
           try {
             await _runRuntimeOperation(() async {
               final context = await _readyContext(account);
-              await _consumeMailboxBatch(
-                account,
-                context.transport,
-                await context.transport.fetchMailbox(),
-              );
+              await _drainMailbox(account, context.transport);
               await retryOutgoing();
             });
           } catch (_) {
-            // 未 ACK 密文仍在 TataChatServer；下次推送、启动或恢复前台继续补拉。
+            // 未 ACK 密文仍在 聊天服务模块；下次推送、启动或恢复前台继续补拉。
           }
         });
       }
@@ -4370,19 +4381,141 @@ class ChatRuntimeCore {
     );
   }
 
-  Future<void> _consumeMailboxBatch(
+  /// 启动/WSS/chat_wake 共用账户级单飞。短批可能来自字节裁剪，只有空批才收敛。
+  Future<void> _drainMailbox(
+    ChatRuntimeAccount account,
+    ChatServiceTransport transport,
+  ) {
+    final key = account.accountId;
+    final existing = _mailboxDrains[key];
+    if (existing != null) {
+      _mailboxDrainRequested.add(key);
+      return existing;
+    }
+    _mailboxRetryTimers.remove(key)?.cancel();
+    final generation = _accountGenerations[key] ?? 0;
+    final epoch = _mailboxEpochs[key] ?? 0;
+    late final Future<void> created;
+    created =
+        _runRuntimeOperation(() async {
+          final started = DateTime.now();
+          for (var page = 0; page < 32; page++) {
+            _mailboxDrainRequested.remove(key);
+            await _requireMailboxCurrent(account, generation, epoch);
+            final items = await transport.fetchMailbox();
+            await _requireMailboxCurrent(account, generation, epoch);
+            if (items.length > 100) throw StateError('聊天邮箱批量超过100条');
+            if (items.isEmpty) {
+              if (_mailboxDrainRequested.remove(key)) continue;
+              _mailboxRetryAttempts.remove(key);
+              return;
+            }
+            final acknowledged = await _consumeMailboxBatch(
+              account,
+              transport,
+              items,
+              generation,
+              epoch,
+            );
+            if (acknowledged == 0) {
+              transport.lastRealtimeDiagnosticCode = 'chat_mailbox_no_progress';
+              _scheduleMailboxRetry(
+                account,
+                transport,
+                generation,
+                epoch,
+                noProgress: true,
+              );
+              return;
+            }
+            _mailboxRetryAttempts.remove(key);
+            if (DateTime.now().difference(started) >=
+                const Duration(seconds: 15))
+              break;
+          }
+          _scheduleMailboxRetry(
+            account,
+            transport,
+            generation,
+            epoch,
+            noProgress: false,
+          );
+        }).whenComplete(() {
+          if (identical(_mailboxDrains[key], created))
+            _mailboxDrains.remove(key);
+        });
+    _mailboxDrains[key] = created;
+    return created;
+  }
+
+  void _scheduleMailboxRetry(
+    ChatRuntimeAccount account,
+    ChatServiceTransport transport,
+    int generation,
+    int epoch, {
+    required bool noProgress,
+  }) {
+    final key = account.accountId;
+    if (_closed ||
+        _processWipeRequested ||
+        _blockedAccountIds.contains(key) ||
+        (_accountGenerations[key] ?? 0) != generation ||
+        (_mailboxEpochs[key] ?? 0) != epoch ||
+        _mailboxRetryTimers.containsKey(key))
+      return;
+    final attempt = _mailboxRetryAttempts[key] ?? 0;
+    if (noProgress && attempt >= 3) return;
+    if (noProgress) _mailboxRetryAttempts[key] = attempt + 1;
+    _mailboxRetryTimers[key] = Timer(
+      noProgress
+          ? Duration(seconds: 1 << attempt)
+          : const Duration(milliseconds: 250),
+      () {
+        _mailboxRetryTimers.remove(key);
+        unawaited(
+          _runRuntimeOperation(() async {
+            await _requireMailboxCurrent(account, generation, epoch);
+            await _drainMailbox(account, transport);
+          }).catchError((Object _) {
+            /* 保留云端密文，下一次外部唤醒重试。 */
+          }),
+        );
+      },
+    );
+  }
+
+  Future<int> _consumeMailboxBatch(
     ChatRuntimeAccount account,
     ChatServiceTransport transport,
     List<ChatMailboxMessage> items,
+    int generation,
+    int epoch,
   ) async {
     final acknowledgedMessageIds = <String>[];
     for (final item in items) {
+      await _requireMailboxCurrent(account, generation, epoch);
       if (await _consumeMailboxMessage(account, transport, item)) {
         acknowledgedMessageIds.add(item.messageId);
       }
     }
     // 一批只发一次 ACK；单条失败不阻断同批其它密文，且失败条目不进入删除集合。
-    await transport.acknowledgeMailbox(acknowledgedMessageIds);
+    await _requireMailboxCurrent(account, generation, epoch);
+    if (acknowledgedMessageIds.isNotEmpty) {
+      await transport.acknowledgeMailbox(acknowledgedMessageIds);
+      await _requireMailboxCurrent(account, generation, epoch);
+    }
+    return acknowledgedMessageIds.length;
+  }
+
+  Future<void> _requireMailboxCurrent(
+    ChatRuntimeAccount account,
+    int generation,
+    int epoch,
+  ) async {
+    await _requireCurrentAccount(account, generation);
+    if ((_mailboxEpochs[account.accountId] ?? 0) != epoch) {
+      throw StateError('聊天同步已停止，拒绝旧补拉结果');
+    }
   }
 
   Future<bool> _consumeMailboxMessage(
@@ -4395,7 +4528,7 @@ class ChatRuntimeCore {
     if (!_mailboxMessageReceipts.contains(receiptKey)) {
       try {
         final context = await _readyContext(account);
-        await _runBindingFileMutation(
+        final accepted = await _runBindingFileMutation(
           context.bindingToken,
           () => _processMailboxMessage(
             context,
@@ -4403,9 +4536,12 @@ class ChatRuntimeCore {
             item.messageBytes,
           ),
         );
+        if (!accepted.contains(item.messageId)) {
+          throw StateError('聊天密文尚无本机精确持久收据');
+        }
         _mailboxMessageReceipts.add(receiptKey);
         processedNow = true;
-        // 单邮箱最多 1000 条；保留四倍窗口足以覆盖 ACK 瞬时失败，同时限制内存。
+        // 每批最多100条；4000条有界窗口覆盖 ACK 瞬时失败，不作为持久收据替代。
         while (_mailboxMessageReceipts.length > 4000) {
           _mailboxMessageReceipts.remove(_mailboxMessageReceipts.first);
         }
@@ -4446,6 +4582,10 @@ class ChatRuntimeCore {
     bool republishKeyPackage = false,
   }) async {
     _ensureActive();
+    await _requireCurrentAccount(
+      account,
+      _accountGenerations[account.accountId] ?? 0,
+    );
     if (_blockedAccountIds.contains(account.accountId)) {
       return Future<ChatRuntimeAccountContext>.error(
         StateError('Chat 账户上下文正在失效，禁止重新初始化'),
@@ -4454,9 +4594,13 @@ class ChatRuntimeCore {
     final knownKey = _accountContextKeys[account.accountId];
     final cached = knownKey == null ? null : _readyContexts[knownKey];
     if (cached != null) {
+      await _requireCurrentAccount(
+        cached.account,
+        _accountGenerations[account.accountId] ?? 0,
+      );
       if (republishKeyPackage) {
         // 每次账户级 WSS 重连前幂等重发同一枚 Last Resort KeyPackage。
-        await _publishCurrentKeyPackage(cached);
+        await _publishCurrentKeyPackage(cached, force: true);
       }
       return cached;
     }
@@ -4471,6 +4615,12 @@ class ChatRuntimeCore {
     late final Future<ChatRuntimeAccountContext> created;
     created = _buildAccountContext(account)
         .then((context) async {
+          try {
+            await _requireCurrentAccount(account, generation);
+          } catch (_) {
+            await _disposeContext(context);
+            rethrow;
+          }
           if (_processWipeRequested ||
               _closed ||
               (_accountGenerations[account.accountId] ?? 0) != generation) {
@@ -4565,8 +4715,11 @@ class ChatRuntimeCore {
       return context;
     } finally {
       if (!keepStateStore) {
-        if (transport != null) await transport.dispose();
-        stateStore.dispose();
+        try {
+          if (transport != null) await _disposeUnownedTransport(transport);
+        } finally {
+          stateStore.dispose();
+        }
       }
     }
   }
@@ -4576,14 +4729,33 @@ class ChatRuntimeCore {
     required ChatDevice identity,
     required SharedPreferences prefs,
   }) async {
+    final generation = _accountGenerations[account.accountId] ?? 0;
     final transport = _transportFactory(
       identity: identity,
-      accessProvider: () => _host.requestTataChatServerAccess(
-        account: account,
-        identity: identity,
-      ),
+      accessProvider: () async {
+        await _requireCurrentAccount(account, generation);
+        if (identity.userId != account.userId || identity.deviceId.isEmpty) {
+          throw StateError('聊天设备不属于当前账户');
+        }
+        final access = await _host.requestChatAccess(
+          account: account,
+          identity: identity,
+        );
+        await _requireCurrentAccount(account, generation);
+        access.validate(DateTime.now().millisecondsSinceEpoch);
+        return access;
+      },
     );
-    await transport.connect();
+    try {
+      await transport.connect();
+    } catch (_) {
+      try {
+        await _disposeUnownedTransport(transport);
+      } catch (_) {
+        transport.lastRealtimeDiagnosticCode = 'chat_transport_cleanup_failed';
+      }
+      rethrow;
+    }
     try {
       await _ensurePushEndpointWithRetry(
         account: account,
@@ -4595,6 +4767,12 @@ class ChatRuntimeCore {
       // 推送端点暂时不可用不能破坏已经建立的端到端加密会话。
     }
     return _ChatServiceContext(transport: transport);
+  }
+
+  Future<void> _disposeUnownedTransport(ChatServiceTransport transport) async {
+    _transportsPendingDisposal.add(transport);
+    await transport.dispose();
+    _transportsPendingDisposal.remove(transport);
   }
 
   Future<void> _ensurePushEndpoint({
@@ -4617,7 +4795,7 @@ class ChatRuntimeCore {
         // 已有未临期推送端点时，平台暂时取不到 Token 不能让整个 Chat 上下文失效。
         return;
       }
-      // 本机缓存只能证明上一次输入相同，不能证明 TataChatServer 端点仍存在。
+      // 本机缓存只能证明上一次输入相同，不能证明 聊天服务模块端点仍存在。
       // Token 可读时继续幂等登记，修复服务端删除失效端点后的永久失联。
       // Token 可读时始终继续幂等登记，不能用本机缓存推断服务端端点仍存在。
     }
@@ -4683,6 +4861,24 @@ class ChatRuntimeCore {
       throw StateError('宿主聊天账户已切换');
     }
     return account;
+  }
+
+  Future<void> _requireCurrentAccount(
+    ChatRuntimeAccount frozen,
+    int generation,
+  ) async {
+    _ensureActive();
+    final current = await _readAccount(expectedAccountId: frozen.accountId);
+    _ensureActive();
+    if (_blockedAccountIds.contains(frozen.accountId) ||
+        (_accountGenerations[frozen.accountId] ?? 0) != generation ||
+        current.accountId != frozen.accountId ||
+        current.userId != frozen.userId ||
+        current.bindingScope != frozen.bindingScope ||
+        current.bindingRevision != frozen.bindingRevision ||
+        current.hostIndex != frozen.hostIndex) {
+      throw StateError('聊天账户绑定已变化，拒绝旧请求结果');
+    }
   }
 
   static ChatBinding _bindingForAccount(ChatRuntimeAccount account) =>
@@ -4853,7 +5049,7 @@ class ChatRuntimeCore {
     await context.transport.acknowledgeAttachment(attachmentId);
   }
 
-  /// TataChatServer 邮箱的唯一入站 Message 边界；服务端路由身份与密文内身份必须一致。
+  /// 聊天服务模块邮箱的唯一入站 Message 边界；服务端路由身份与密文内身份必须一致。
   Future<List<String>> _processMailboxMessage(
     ChatRuntimeAccountContext context,
     String senderUserId,
@@ -4877,10 +5073,14 @@ class ChatRuntimeCore {
         await _groupFlow(context).processIncomingGroupMessage(messageBytes),
       );
     } else {
-      final result = await _messageFlow(
-        context,
-      ).processIncomingMessageBytes(messageBytes);
+      final result = await _messageFlow(context)
+          .processIncomingMessageBytes(messageBytes);
       accepted.addAll(result.acceptedMessages);
+      // Welcome 成功持久确认也可 ACK 自身；缓冲的 out_of_order 不能 ACK。
+      if (result.accepted &&
+          !accepted.any((item) => item.messageId == message.messageId)) {
+        accepted.add(message);
+      }
     }
     final hub = _realtimeHubs[context.account.accountId];
     if (hub != null && !hub.closed) {
@@ -4891,12 +5091,15 @@ class ChatRuntimeCore {
 
   /// 当前设备只发布由本机 OpenMLS 状态持有私有材料的同一枚 Last Resort KeyPackage。
   Future<void> _publishCurrentKeyPackage(
-    ChatRuntimeAccountContext context,
-  ) async {
+    ChatRuntimeAccountContext context, {
+    bool force = false,
+  }) async {
+    final generation = _accountGenerations[context.account.accountId] ?? 0;
+    await _requireCurrentAccount(context.account, generation);
     final publicationKey =
         '${context.account.userId}|${context.deviceId}|'
         '${context.localKeyPackage.keyPackageRef}';
-    if (_keyPackagePublications.contains(publicationKey)) return;
+    if (!force && _keyPackagePublications.contains(publicationKey)) return;
     final lastResort = context.localKeyPackage;
     if (lastResort.userId != context.account.userId ||
         lastResort.deviceId != context.deviceId) {
@@ -4912,6 +5115,7 @@ class ChatRuntimeCore {
       );
     }
     await context.transport.publishKeyPackage(lastResort);
+    await _requireCurrentAccount(context.account, generation);
     _keyPackagePublications.add(publicationKey);
   }
 

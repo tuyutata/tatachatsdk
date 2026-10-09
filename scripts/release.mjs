@@ -17,7 +17,7 @@ import {
 } from 'node:fs/promises';
 import { gzipSync, gunzipSync } from 'node:zlib';
 import { createHash } from 'node:crypto';
-import { temporaryRoot } from './build.mjs';
+import { temporaryRoot, materializeAnalysisOptions } from './build.mjs';
 const tmpdir=()=>temporaryRoot('sdk','tmp');
 import { basename, dirname, isAbsolute, join, posix, relative, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -29,12 +29,11 @@ const MANIFEST_NAME = 'release-manifest.json';
 const CHECKSUMS_NAME = 'SHA256SUMS';
 const RELEASE_ASSETS = [ARCHIVE_NAME];
 const SOURCE_ENTRIES = [
-  'CHANGELOG.md',
   'LICENSE',
-  'analysis_options.yaml',
+  'scripts/analysis_options.yaml',
   'pubspec.yaml',
   'pubspec.lock',
-  'tatachat_sdk.h',
+  'scripts/tatachat_sdk.h',
   'ios',
   'lib',
   'native',
@@ -158,9 +157,10 @@ async function flutterViewInputs(source) {
     }
   }
   await collect();
-  for (const file of ['pubspec.yaml', 'pubspec.lock', 'android/build.gradle.kts', ...FLUTTER_INPUTS.keys()]) {
+  for (const file of ['pubspec.yaml', 'pubspec.lock', 'scripts/analysis_options.yaml', 'android/build.gradle.kts', ...FLUTTER_INPUTS.keys()]) {
     if (!files.includes(file)) fail('Flutter入口缺少普通源文件：' + file);
   }
+  if (files.includes('analysis_options.yaml')) fail('Flutter源码存在重复分析配置');
   for (const file of FLUTTER_INPUTS.values()) {
     if (files.includes(file)) fail('Flutter源码存在重复平台入口');
   }
@@ -192,6 +192,7 @@ export async function createFlutterSourceView(source, output) {
       await symlink(join(source, file), destination);
     }
   }
+  materializeAnalysisOptions(source, output);
   return output;
 }
 
@@ -209,11 +210,11 @@ export async function assertFlutterSourceView(source, output) {
           throw error;
         })) fail('Flutter平台入口来源绑定无效');
   }
-  for (const name of ['pubspec.yaml', 'pubspec.lock']) {
+  for (const name of ['pubspec.yaml', 'pubspec.lock', 'analysis_options.yaml']) {
     const file = join(output, name);
     const info = await lstat(file);
     if (!info.isFile() || info.isSymbolicLink()
-        || !(await readFile(file)).equals(await readFile(join(source, name)))) {
+        || !(await readFile(file)).equals(await readFile(join(source, name === 'analysis_options.yaml' ? 'scripts/analysis_options.yaml' : name)))) {
       fail('Flutter工程Pub声明或锁文件漂移');
     }
   }

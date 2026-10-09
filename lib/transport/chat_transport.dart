@@ -1,9 +1,9 @@
 import '../core/chat_message.dart';
 
-/// TataChatSDK 只存在 TataChatServer 这一种远程传输。
+/// TataChatSDK 只存在 聊天服务模块这一种远程传输。
 enum ChatTransportType { server }
 
-/// 一条密文消息被 TataChatServer 明确接受后的结果。
+/// 一条密文消息被 聊天服务模块明确接受后的结果。
 class ChatDeliveryResult {
   const ChatDeliveryResult({
     required this.messageId,

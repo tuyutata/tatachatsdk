@@ -6,9 +6,12 @@
     "tatachatsdk.sdk.release"
   ],
   "node_tests": [
-    "scripts/ci/check/test.mjs",
+    "scripts/build.test.mjs",
+    "scripts/ci/test.mjs",
+    "scripts/flow.test.mjs",
     "scripts/release.test.mjs",
-    "scripts/release/check/test.mjs"
+    "scripts/release/test.mjs",
+    "scripts/resources.mjs"
   ],
   "checks": [
     "repository-contracts"
@@ -22,5 +25,352 @@
     "macOS ARM64",
     "macos-arm64",
     "macos_arm64"
+  ],
+  "github_repository": "tuyutata/tatachatsdk",
+  "functions": [
+    {
+      "function": "native/src/mls",
+      "path": "native/src/mls.rs",
+      "runner": "cargo",
+      "target": "native/Cargo.toml",
+      "package": "tatachat_sdk_native",
+      "cases": [
+        "corrupt_ciphertext_rejects_without_committing_or_aborting",
+        "identity_is_persistent_and_owner_scoped",
+        "requests_require_persistent_state_and_reject_unknown_fields",
+        "authentication_reuses_persistent_identity_without_mutating_chat_state",
+        "authentication_binds_every_field_and_is_separate_from_mls_protocol_labels",
+        "authentication_rejects_unsafe_inputs_and_raw_signing_fields",
+        "authentication_never_replaces_missing_corrupt_or_wrong_owner_identity",
+        "messages_survive_restart_before_host_commit",
+        "interrupted_temporary_write_does_not_replace_committed_identity",
+        "independent_transactions_are_serialized_and_results_are_not_lost",
+        "pending_ciphertext_and_receipts_use_same_owned_snapshot",
+        "openmls_smoke_remains_standard",
+        "state_file_is_private_and_links_are_rejected",
+        "attachment_cursor_archives_chunks_and_deletes_only_owned_protocol_group",
+        "attachment_registration_is_closed_scoped_and_bounded",
+        "attachment_rejects_noncanonical_registration_and_confirmation_overflow",
+        "welcome_rejects_a_valid_mls_signature_with_a_forged_device_credential"
+      ]
+    },
+    {
+      "function": "scripts/build.test",
+      "path": "scripts/build.test.mjs",
+      "runner": "node",
+      "target": "node"
+    },
+    {
+      "function": "scripts/ci/test",
+      "path": "scripts/ci/test.mjs",
+      "runner": "node",
+      "target": "node"
+    },
+    {
+      "function": "scripts/flow.test",
+      "path": "scripts/flow.test.mjs",
+      "runner": "node",
+      "target": "node"
+    },
+    {
+      "function": "scripts/release.test",
+      "path": "scripts/release.test.mjs",
+      "runner": "node",
+      "target": "node"
+    },
+    {
+      "function": "scripts/release/test",
+      "path": "scripts/release/test.mjs",
+      "runner": "node",
+      "target": "node"
+    },
+    {
+      "function": "scripts/resources",
+      "path": "scripts/resources.mjs",
+      "runner": "node",
+      "target": "node"
+    },
+    {
+      "function": "test/attachment/compressor_test",
+      "path": "test/attachment/compressor_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/attachment/content_test",
+      "path": "test/attachment/content_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/attachment/mime_test",
+      "path": "test/attachment/mime_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/attachment/mls_attachment_test",
+      "path": "test/attachment/mls_attachment_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/attachment/picker_test",
+      "path": "test/attachment/picker_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/attachment/probe_test",
+      "path": "test/attachment/probe_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/attachment/vault_test",
+      "path": "test/attachment/vault_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/call/coordinator_test",
+      "path": "test/call/coordinator_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/call/direct_test",
+      "path": "test/call/direct_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/call/flutter_peer_test",
+      "path": "test/call/flutter_peer_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/call/page_test",
+      "path": "test/call/page_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/call/signal_test",
+      "path": "test/call/signal_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/delivery_contract_test",
+      "path": "test/delivery_contract_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/group/control_test",
+      "path": "test/group/control_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/group/flow_test",
+      "path": "test/group/flow_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/group/primitives_test",
+      "path": "test/group/primitives_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/message_content_contract_test",
+      "path": "test/message_content_contract_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/message_proto_test",
+      "path": "test/message_proto_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/mls/ios_symbol_contract_test",
+      "path": "test/mls/ios_symbol_contract_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/mls/native_session_test",
+      "path": "test/mls/native_session_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/mls/native_test",
+      "path": "test/mls/native_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/mls/session_test",
+      "path": "test/mls/session_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/payload_test",
+      "path": "test/payload_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/protocol_transport_contract_test",
+      "path": "test/protocol_transport_contract_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/storage/history_display_test",
+      "path": "test/storage/history_display_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/storage/mls_contact_sync_test",
+      "path": "test/storage/mls_contact_sync_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/storage/route_store_test",
+      "path": "test/storage/route_store_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/storage/store_test",
+      "path": "test/storage/store_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/storage/system_protected_storage_test",
+      "path": "test/storage/system_protected_storage_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/tatachat_sdk_contract_test",
+      "path": "test/tatachat_sdk_contract_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/tatachat_sdk_mls_contract_test",
+      "path": "test/tatachat_sdk_mls_contract_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/tatachat_sdk_security_test",
+      "path": "test/tatachat_sdk_security_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/transport/chat_attachment_transport_test",
+      "path": "test/transport/chat_attachment_transport_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/transport/chat_transport_contract_test",
+      "path": "test/transport/chat_transport_contract_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/transport/chat_server_connection_test",
+      "path": "test/transport/chat_server_connection_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/ui/camera_capture_test",
+      "path": "test/ui/camera_capture_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/ui/chat_views_test",
+      "path": "test/ui/chat_views_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/ui/composer_action_panel_test",
+      "path": "test/ui/composer_action_panel_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/ui/conversation_page_test",
+      "path": "test/ui/conversation_page_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/ui/image_viewer_page_test",
+      "path": "test/ui/image_viewer_page_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/ui/message_adapter_test",
+      "path": "test/ui/message_adapter_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/ui/routes_test",
+      "path": "test/ui/routes_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/ui/sticker_pack_test",
+      "path": "test/ui/sticker_pack_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/ui/sticker_panel_test",
+      "path": "test/ui/sticker_panel_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/ui/voice_message_player_test",
+      "path": "test/ui/voice_message_player_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/transport/chat_connection_lifecycle_test",
+      "path": "test/transport/chat_connection_lifecycle_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    },
+    {
+      "function": "test/transport/chat_runtime_sync_test",
+      "path": "test/transport/chat_runtime_sync_test.dart",
+      "runner": "flutter",
+      "target": "flutter"
+    }
   ]
 }

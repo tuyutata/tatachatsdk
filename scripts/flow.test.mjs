@@ -202,3 +202,49 @@ for(const route of routes.filter(row=>row.flow==='release'&&row.recordsFormalRel
  releaseRun.conclusion='success';candidate.source_sha='b'.repeat(40);environment.PRODUCT_RELEASE_RETRY_CONTEXT=Buffer.from(JSON.stringify(candidate)).toString('base64');
  await assert.rejects(recoverRemote('release',route.platform,runID+1,'success',{environment,fetchImpl}),/成功CI/u);
 });
+
+// 公开Workflow和Job的真实文件只由所属产品本仓检查，不依赖其它仓检出。
+test('本仓声明、实际Workflow与准确主Job写权限闭合', async () => {
+ const { readdirSync, lstatSync } = await import('node:fs');
+ const expected=['tatagate.yml',...routes.map(route=>route.canonicalID.replaceAll('.','-')+'.yml')].sort();
+ assert.deepEqual(readdirSync(join(root,'.github/workflows')).sort(),expected);
+ assert.equal(declaration.product_id,"tatachatsdk");
+ assert.equal(declaration.entry,'scripts/build.mjs');
+ for(const route of routes){
+  const entry=declaration.platforms[route.platform]?.[route.flow]?.entry;
+  assert.equal(entry,'.github/workflows/'+route.canonicalID.replaceAll('.','-')+'.yml');
+  const file=join(root,entry),info=lstatSync(file);assert.ok(info.isFile()&&!info.isSymbolicLink());
+  const source=readFileSync(file,'utf8');
+  assert.ok(Buffer.byteLength(source)<500000,route.canonicalID);
+  assert.ok(source.includes('name: '+route.canonicalID));
+  assert.ok(source.includes('allowed=new Set(["'+route.canonicalID+'"])'));
+  assert.match(source,/^  flow:$/mu);
+  if(route.flow==='release'){
+   const main=source.match(/^  flow:\n([\s\S]*?)(?=^  [A-Za-z_][\w-]*:|$(?![\s\S]))/mu);
+   assert.ok(main,route.canonicalID);assert.match(main[1],/^      contents: write$/mu,route.canonicalID);
+  }
+ }
+});
+// 本产品scripts仅保留CI/Release两层；检查的是实际目录和Workflow调用路径。
+test('本仓脚本仅有ci和release目录且直接调用职责入口', async () => {
+ const {readdirSync}=await import('node:fs');
+ const scripts=join(root,'scripts');
+ assert.deepEqual(readdirSync(scripts,{withFileTypes:true}).filter(e=>e.isDirectory()).map(e=>e.name).sort(),['ci','release']);
+ assert.deepEqual(readdirSync(join(scripts,'ci')).sort(),['execute.mjs','native.mjs','test.mjs']);
+ assert.deepEqual(readdirSync(join(scripts,'release')).sort(),['execute.mjs','index.mjs','test.mjs']);
+ for(const flow of ['ci','release']){
+  const source=readFileSync(join(root,'.github/workflows/tatachatsdk-sdk-'+flow+'.yml'),'utf8');
+  assert.ok(source.includes('scripts/'+flow+'/execute.mjs'));assert.ok(!source.includes('/check/'));
+ }
+});
+
+test('本SDK独立入口声明自己的Rust工具和Cargo锁',()=>{
+ assert.equal(declaration.entry,'scripts/build.mjs');
+ assert.ok(declaration.platforms.sdk.tools.some(tool=>tool.id==='rust'));
+ assert.ok(declaration.platforms.sdk.locks.some(lock=>lock.ecosystem==='cargo'));
+});
+
+test('本SDK构建入口调用自己拥有的原生构建文件',()=>{
+ const source=readFileSync(join(root,'scripts/build.mjs'),'utf8');
+ assert.match(source,/scripts\/build-native\.sh/u);
+});

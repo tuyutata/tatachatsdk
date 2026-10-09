@@ -1,7 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:tatachat_sdk/src/storage/isar_core_bootstrap.dart';
+import 'package:tatachat_sdk/storage/isar_core_bootstrap.dart';
 import 'package:tatachat_sdk/tatachat_sdk.dart';
 
 /// Each test library owns an isolated physical database; no application storage keys.

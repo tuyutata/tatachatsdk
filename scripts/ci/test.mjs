@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, existsSync, rmSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
-import { testRoot as tmpdir } from '../../build.mjs';
+import { testRoot as tmpdir } from '../build.mjs';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
@@ -16,7 +16,7 @@ test('tatachatsdk.sdk.ci的check远端Job物理独立', () => {
 // 真实执行产品入口的只读拒绝分支，不联网、不编译、不读取任何发布凭据。
 test('独立 SDK Job 拒绝旧聚合仓、其它产品和缺少仓库身份', () => {
   const script = fileURLToPath(new URL('./execute.mjs', import.meta.url));
-  for (const repository of ['unregistered-owner/unregistered-product', 'crcfrcn/unregistered-product', 'tuyutata/tatachatserver', 'crcfrcn/citizensdk', '']) {
+  for (const repository of ['unregistered-owner/unregistered-product', 'crcfrcn/unregistered-product', 'tuyutata/tuyuserve', 'crcfrcn/citizensdk', '']) {
     const result = spawnSync(process.execPath, [script, 'workflow-step', '999'], {
       encoding: 'utf8', env: { ...process.env, GITHUB_REPOSITORY: repository },
     });
@@ -32,6 +32,10 @@ test('CI 临时工程来自完整 SDK 仓根且排除 Git 元数据', () => {
   const temporary = join(work, 'runner with spaces');
   mkdirSync(join(source, '.git'), { recursive: true });
   mkdirSync(join(source, 'lib'), { recursive: true });
+  mkdirSync(join(source, 'scripts'));
+  writeFileSync(join(source, 'scripts/build.mjs'), readFileSync(new URL('../build.mjs', import.meta.url)));
+  writeFileSync(join(source, 'scripts/flows.json'), readFileSync(new URL('../flows.json', import.meta.url)));
+  writeFileSync(join(source, 'scripts/analysis_options.yaml'), 'analyzer:\n  language:\n    strict-casts: true\n');
   mkdirSync(temporary);
   writeFileSync(join(source, '.git/config'), 'synthetic git metadata');
   writeFileSync(join(source, '.source'), 'controlled hidden source');
@@ -47,6 +51,8 @@ test('CI 临时工程来自完整 SDK 仓根且排除 Git 元数据', () => {
     assert.equal(readFileSync(join(output, 'lib/api.dart'), 'utf8'), 'controlled source');
     assert.equal(readFileSync(join(output, '.source'), 'utf8'), 'controlled hidden source');
     assert.equal(existsSync(join(output, '.git')), false);
+    assert.equal(readFileSync(join(output, 'analysis_options.yaml'),'utf8'),readFileSync(join(source, 'scripts/analysis_options.yaml'),'utf8'));
+    assert.equal(existsSync(join(source, 'analysis_options.yaml')),false);
     assert.equal(readFileSync(join(source, '.git/config'), 'utf8'), 'synthetic git metadata');
     const repeated = spawnSync(process.execPath, [fileURLToPath(new URL('./execute.mjs', import.meta.url)), 'workflow-step', '8'], {
       cwd: source, encoding: 'utf8', env: { ...process.env,
@@ -147,7 +153,7 @@ fs.appendFileSync(process.env.CALLS,tool+' '+process.argv.slice(2).join(' ')+'\\
     for(const fail of [false,true]){
       writeFileSync(log,'');
       const result=spawnSync(process.execPath,[fileURLToPath(new URL('./execute.mjs',import.meta.url)),'workflow-step','9'],{cwd:source,encoding:'utf8',env:{...process.env,
-        PATH:bin+':'+process.env.PATH,GITHUB_REPOSITORY:'tuyutata/tatachatsdk',GITHUB_WORKSPACE:fileURLToPath(new URL('../../../',import.meta.url)).replace(/\/$/,''),PUB_CACHE:cache,CARGO_TARGET_DIR:target,CALLS:log,...(fail?{FAIL_HOST:'1'}:{})}});
+        PATH:bin+':'+process.env.PATH,GITHUB_REPOSITORY:'tuyutata/tatachatsdk',GITHUB_WORKSPACE:fileURLToPath(new URL('../../',import.meta.url)).replace(/\/$/,''),PUB_CACHE:cache,CARGO_TARGET_DIR:target,CALLS:log,...(fail?{FAIL_HOST:'1'}:{})}});
       assert.equal(result.status,fail?74:0,result.stderr);
       const calls=readFileSync(log,'utf8');assert.equal(calls.includes('flutter test\n'),!fail);
       if(!fail)assert.ok(calls.indexOf('host\n')<calls.indexOf('flutter test\n'));

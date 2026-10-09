@@ -11,24 +11,27 @@ import '../mls/mls_boundary.dart';
 import '../protocol/attachment.pb.dart' as attachment_protocol;
 import '../protocol/chat_frame.pb.dart' as frame_protocol;
 import '../protocol/message.dart' as message_protocol;
+import 'chat_attachment_transport.dart';
 import 'chat_service_transport.dart';
 import 'chat_transport.dart';
-import 'tata_chat_server_attachment_transport.dart';
 
-abstract interface class TataChatServerSocket {
+abstract interface class ChatSocket {
   String? get protocol;
   Stream<Object?> get events;
   void add(List<int> bytes);
   Future<void> close();
 }
 
-typedef TataChatServerSocketConnector =
-    Future<TataChatServerSocket> Function(Uri uri, String bearerToken);
+typedef ChatSocketConnector = Future<ChatSocket> Function(
+  Uri uri,
+  String bearerToken,
+);
 
-final class _IoTataChatServerSocket implements TataChatServerSocket {
-  _IoTataChatServerSocket(this._socket);
+final class _IoChatSocket implements ChatSocket {
+  _IoChatSocket(this._socket, this._client);
 
   final WebSocket _socket;
+  final HttpClient _client;
 
   @override
   String? get protocol => _socket.protocol;
@@ -40,24 +43,97 @@ final class _IoTataChatServerSocket implements TataChatServerSocket {
   void add(List<int> bytes) => _socket.add(bytes);
 
   @override
-  Future<void> close() => _socket.close(WebSocketStatus.normalClosure);
+  Future<void> close() async {
+    _client.close(force: true);
+    await _socket.close(WebSocketStatus.normalClosure);
+  }
 }
 
-Future<TataChatServerSocket> _connectIoSocket(
+// 系统 WebSocket 握手仍负责 TLS/升级校验；在它取得的实际 HTTP 请求上关闭重定向。
+final class _HandshakeClient implements HttpClient {
+  _HandshakeClient(this.client);
+  final HttpClient client;
+  @override
+  Future<HttpClientRequest> openUrl(String method, Uri url) async {
+    final request = await client.openUrl(method, url);
+    request.followRedirects = false;
+    return request;
+  }
+
+  @override
+  void close({bool force = false}) => client.close(force: force);
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+Future<ChatSocket> _connectIoSocket(
   Uri uri,
   String bearerToken,
+  HttpClient client,
 ) async {
   if (uri.scheme != 'wss' || uri.host.isEmpty || uri.userInfo.isNotEmpty) {
     throw const ChatServerConnectionException('realtime_url_invalid');
   }
-  final socket = await WebSocket.connect(
-    uri.toString(),
-    headers: <String, String>{
-      HttpHeaders.authorizationHeader: 'Bearer $bearerToken',
-    },
-    protocols: const <String>['tatachatserver'],
-  );
-  return _IoTataChatServerSocket(socket);
+  var abandoned = false;
+  final opening =
+      WebSocket.connect(
+        uri.toString(),
+        headers: <String, String>{
+          HttpHeaders.authorizationHeader: 'Bearer $bearerToken',
+        },
+        protocols: const <String>['tatachat'],
+        maxPayloadLength: _maximumFrameBytes,
+        customClient: _HandshakeClient(client),
+      ).then((socket) async {
+        if (abandoned) {
+          await socket.close(WebSocketStatus.normalClosure);
+          throw const ChatServerConnectionException(
+            'realtime_connect_cancelled',
+          );
+        }
+        return _IoChatSocket(socket, client);
+      });
+  try {
+    return await opening.timeout(_responseDeadline);
+  } catch (_) {
+    abandoned = true;
+    client.close(force: true);
+    throw const ChatServerConnectionException('realtime_socket_failed');
+  }
+}
+
+const _responseDeadline = Duration(seconds: 12);
+const _maximumFrameBytes = 2 * 1024 * 1024;
+const _maximumQueuedCommands = 128;
+const _serverFailureCodes = <String>{
+  'invalid_request',
+  'forbidden',
+  'not_found',
+  'conflict',
+  'resource_limit',
+  'storage_unavailable',
+};
+
+final class _CloseAction {
+  _CloseAction(this.close);
+  final Future<void> Function() close;
+  Future<void>? flight;
+  bool done = false;
+  Future<void> run() {
+    if (done) return Future<void>.value();
+    final existing = flight;
+    if (existing != null) return existing.timeout(_responseDeadline);
+    late final Future<void> created;
+    created = Future<void>.sync(close)
+        .then((_) {
+          done = true;
+        })
+        .whenComplete(() {
+          if (identical(flight, created)) flight = null;
+        });
+    flight = created;
+    return created.timeout(_responseDeadline);
+  }
 }
 
 final class _MailboxMessage implements ChatMailboxMessage {
@@ -67,7 +143,8 @@ final class _MailboxMessage implements ChatMailboxMessage {
       recipientUserId = message.recipientUserId,
       recipientDeviceId = message.recipientDeviceId,
       conversationId = message.conversationId,
-      messageBytes = List<int>.unmodifiable(message.openmlsCiphertext),
+      // Runtime 要复核完整外层路由与原生收据；不能只交付里面的 MLS 密文。
+      messageBytes = List<int>.unmodifiable(message.writeToBuffer()),
       createdAtMillis = message.createdAtMillis.toInt();
 
   @override
@@ -97,29 +174,32 @@ final class _PendingCommand<T> {
   final bool Function(frame_protocol.ChatFrame frame) accept;
   final T Function(frame_protocol.ChatFrame frame) decode;
   final Completer<T> completer = Completer<T>();
+  Timer? deadline;
+  bool sent = false;
 }
 
 /// TataChatSDK 唯一正式传输。一个连接同一时刻只允许一个命令等待响应。
 final class ChatServerConnection implements ChatServiceTransport {
   ChatServerConnection({
     required this.identity,
-    required TataChatServerAccessProvider accessProvider,
-    TataChatServerSocketConnector? socketConnector,
-    TataChatServerHttpAdapterFactory? httpAdapterFactory,
+    required ChatAccessProvider accessProvider,
+    ChatSocketConnector? socketConnector,
+    ChatHttpAdapterFactory? httpAdapterFactory,
   }) : _accessProvider = accessProvider,
-       _socketConnector = socketConnector ?? _connectIoSocket,
-       _httpAdapterFactory =
-           httpAdapterFactory ?? (() => IoTataChatServerHttpAdapter());
+       _socketConnector = socketConnector,
+       _httpAdapterFactory = httpAdapterFactory ?? (() => IoChatHttpAdapter());
 
   final ChatDevice identity;
-  final TataChatServerAccessProvider _accessProvider;
-  final TataChatServerSocketConnector _socketConnector;
-  final TataChatServerHttpAdapterFactory _httpAdapterFactory;
+  final ChatAccessProvider _accessProvider;
+  final ChatSocketConnector? _socketConnector;
+  final ChatHttpAdapterFactory _httpAdapterFactory;
   final List<_PendingCommand<Object?>> _commands = <_PendingCommand<Object?>>[];
 
-  TataChatServerSocket? _socket;
+  ChatSocket? _socket;
+  HttpClient? _handshakeClient;
   StreamSubscription<Object?>? _subscription;
-  TataChatServerAttachmentTransport? _attachments;
+  ChatAttachmentTransport? _attachments;
+  ChatAccess? _access;
   Completer<void>? _connecting;
   Completer<void>? _ready;
   Timer? _pingTimer;
@@ -129,7 +209,11 @@ final class ChatServerConnection implements ChatServiceTransport {
   Future<void> Function(ChatServiceEvent event)? _onEvent;
   Future<void> Function()? _onDisconnected;
   bool _disposed = false;
-  bool _closing = false;
+  bool _readySuccess = false;
+  int _generation = 0;
+  int _realtimeOwner = 0;
+  Future<void>? _disconnecting;
+  final List<_CloseAction> _closeActions = [];
 
   @override
   ChatTransportType get type => ChatTransportType.server;
@@ -138,82 +222,159 @@ final class ChatServerConnection implements ChatServiceTransport {
   String? lastRealtimeDiagnosticCode;
 
   @override
-  Future<void> connect() {
+  Future<void> connect() async {
+    final closing = _disconnecting;
+    if (closing != null) await closing;
+    if (_closeActions.isNotEmpty) await _closeResources();
     if (_disposed) {
-      return Future<void>.error(
-        const ChatServerConnectionException('transport_disposed'),
-      );
+      throw const ChatServerConnectionException('transport_disposed');
     }
-    if (_socket != null && _ready?.isCompleted == true) {
-      return Future<void>.value();
+    if (_socket != null &&
+        _readySuccess &&
+        _access?.isUsable(DateTime.now().millisecondsSinceEpoch) == true) {
+      return;
+    }
+    if (_socket != null && _readySuccess) {
+      await _disconnect('realtime_access_expired', notify: true);
+      if (_disposed)
+        throw const ChatServerConnectionException('transport_disposed');
     }
     final connecting = _connecting;
     if (connecting != null) return connecting.future;
 
     final completer = Completer<void>();
     _connecting = completer;
-    unawaited(_connectOnce(completer));
+    final generation = ++_generation;
+    unawaited(_connectOnce(generation, completer));
     return completer.future;
   }
 
-  Future<void> _connectOnce(Completer<void> completer) async {
+  bool _current(int generation) => !_disposed && generation == _generation;
+
+  void _ensureCurrent(int generation) {
+    if (!_current(generation)) {
+      throw const ChatServerConnectionException('realtime_connect_cancelled');
+    }
+  }
+
+  Future<void> _connectOnce(int generation, Completer<void> completer) async {
     try {
-      final access = await _accessProvider();
+      final access = await _accessProvider().timeout(
+        _responseDeadline,
+        onTimeout: () => throw const ChatServerConnectionException(
+          'realtime_access_timeout',
+        ),
+      );
+      _ensureCurrent(generation);
       final now = DateTime.now().millisecondsSinceEpoch;
       access.validate(now);
-      final socket = await _socketConnector(
-        access.realtimeUrl,
-        access.tataChatServerToken,
-      );
-      if (socket.protocol != 'tatachatserver') {
-        await socket.close();
+      var abandoned = false;
+      final connector = _socketConnector;
+      Future<ChatSocket> socketFuture;
+      if (connector == null) {
+        final client = HttpClient();
+        _handshakeClient = client;
+        socketFuture = _connectIoSocket(
+          access.realtimeUrl,
+          access.accessToken,
+          client,
+        );
+      } else {
+        socketFuture = connector(access.realtimeUrl, access.accessToken);
+      }
+      final opening = socketFuture.then((socket) async {
+        if (abandoned || !_current(generation)) {
+          _closeActions.add(_CloseAction(socket.close));
+          await _closeResources();
+          throw const ChatServerConnectionException(
+            'realtime_connect_cancelled',
+          );
+        }
+        return socket;
+      });
+      late final ChatSocket socket;
+      try {
+        socket = await opening.timeout(_responseDeadline);
+      } catch (_) {
+        abandoned = true;
+        throw const ChatServerConnectionException('realtime_socket_failed');
+      }
+      _ensureCurrent(generation);
+      _handshakeClient = null; // 升级后由 _IoChatSocket 接管同一 client。
+      if (socket.protocol != 'tatachat') {
+        _closeActions.add(_CloseAction(socket.close));
+        await _closeResources();
         throw const ChatServerConnectionException('realtime_protocol_invalid');
       }
       _socket = socket;
+      _access = access;
+      _readySuccess = false;
       _ready = Completer<void>();
-      _subscription = socket.events.listen(
-        _handleSocketEvent,
-        onError: (Object error, StackTrace stackTrace) {
-          unawaited(_disconnect('realtime_stream_error', notify: true));
-        },
-        onDone: () {
-          unawaited(_disconnect('realtime_closed', notify: true));
-        },
-        cancelOnError: false,
-      );
-      final oldAttachments = _attachments;
-      _attachments = TataChatServerAttachmentTransport(
-        access: access,
-        adapter: _httpAdapterFactory(),
-      );
-      if (oldAttachments != null) await oldAttachments.dispose();
-      _scheduleExpiry(access.expiresAtMillis, now);
-      await _ready!.future.timeout(
-        const Duration(seconds: 12),
+      unawaited(_ready!.future.catchError((Object _) {}));
+      final readyFuture = _ready!.future.timeout(
+        _responseDeadline,
         onTimeout: () =>
             throw const ChatServerConnectionException('realtime_ready_timeout'),
       );
+      // 先接管 HTTP 所有权，之后每个异步阶段失败均由同一回收路径收口。
+      _attachments = ChatAttachmentTransport(
+        access: access,
+        adapter: _httpAdapterFactory(),
+      );
+      _subscription = socket.events.listen(
+        (event) {
+          if (_current(generation)) _handleSocketEvent(event);
+        },
+        onError: (Object error, StackTrace stackTrace) {
+          if (_current(generation)) _disconnectSafely('realtime_stream_error');
+        },
+        onDone: () {
+          if (_current(generation)) _disconnectSafely('realtime_closed');
+        },
+        cancelOnError: false,
+      );
+      _scheduleExpiry(access.expiresAtMillis, now);
+      await readyFuture;
+      _ensureCurrent(generation);
+      _readySuccess = true;
       _startPing();
       lastRealtimeDiagnosticCode = null;
-      completer.complete();
+      if (!completer.isCompleted) completer.complete();
     } catch (error, stackTrace) {
-      await _disconnect('realtime_connect_failed', notify: false);
       if (!completer.isCompleted) completer.completeError(error, stackTrace);
+      if (_current(generation)) {
+        try {
+          await _disconnect('realtime_connect_failed', notify: false);
+        } catch (_) {
+          lastRealtimeDiagnosticCode = 'realtime_cleanup_failed';
+        }
+      }
     } finally {
       if (identical(_connecting, completer)) _connecting = null;
     }
   }
 
   void _handleSocketEvent(Object? event) {
+    if (_access?.isUsable(DateTime.now().millisecondsSinceEpoch) != true) {
+      _disconnectSafely('realtime_access_expired');
+      return;
+    }
     if (event is! List<int>) {
-      unawaited(_disconnect('realtime_frame_not_binary', notify: true));
+      _disconnectSafely('realtime_frame_not_binary');
+      return;
+    }
+    if (event.isEmpty || event.length > _maximumFrameBytes) {
+      _disconnectSafely('realtime_frame_size_invalid');
       return;
     }
     frame_protocol.ChatFrame frame;
     try {
       frame = frame_protocol.ChatFrame.fromBuffer(event);
+      if (frame.unknownFields.isNotEmpty) {
+        throw const FormatException('unknown chat frame field');
+      }
     } catch (_) {
-      unawaited(_disconnect('realtime_frame_invalid', notify: true));
+      _disconnectSafely('realtime_frame_invalid');
       return;
     }
     final ready = _ready;
@@ -222,28 +383,25 @@ final class ChatServerConnection implements ChatServiceTransport {
         ready.completeError(
           const ChatServerConnectionException('realtime_ready_invalid'),
         );
-        unawaited(_disconnect('realtime_ready_invalid', notify: true));
+        _disconnectSafely('realtime_ready_invalid');
         return;
       }
       ready.complete();
-      _dispatchNext();
+      _readySuccess = true;
       return;
     }
 
     switch (frame.whichBody()) {
       case frame_protocol.ChatFrame_Body.ping:
-        final pong = frame_protocol.Pong()
-          ..sentAtMillis = frame.ping.sentAtMillis
-          ..serverTimeMillis = fixnum.Int64(
-            DateTime.now().millisecondsSinceEpoch,
-          );
-        _send(frame_protocol.ChatFrame()..pong = pong);
+        _disconnectSafely('realtime_frame_direction_invalid');
         return;
       case frame_protocol.ChatFrame_Body.pong:
         if (_pendingPing == frame.pong.sentAtMillis.toInt()) {
           _pendingPing = null;
           _pongDeadline?.cancel();
           _pongDeadline = null;
+        } else {
+          _disconnectSafely('realtime_pong_unmatched');
         }
         return;
       case frame_protocol.ChatFrame_Body.messageAvailable:
@@ -266,29 +424,35 @@ final class ChatServerConnection implements ChatServiceTransport {
     }
 
     if (_commands.isEmpty) {
-      unawaited(_disconnect('realtime_response_unmatched', notify: true));
+      _disconnectSafely('realtime_response_unmatched');
       return;
     }
     final current = _commands.first;
     if (frame.whichBody() == frame_protocol.ChatFrame_Body.failure) {
       _commands.removeAt(0);
+      current.deadline?.cancel();
       current.completer.completeError(
         ChatServerConnectionException(
-          frame.failure.code.isEmpty ? 'server_failure' : frame.failure.code,
+          _serverFailureCodes.contains(frame.failure.code)
+              ? frame.failure.code
+              : 'server_failure',
         ),
       );
       _dispatchNext();
       return;
     }
     if (!current.accept(frame)) {
-      unawaited(_disconnect('realtime_response_mismatch', notify: true));
+      _disconnectSafely('realtime_response_mismatch');
       return;
     }
     _commands.removeAt(0);
+    current.deadline?.cancel();
     try {
       current.completer.complete(current.decode(frame));
     } catch (error, stackTrace) {
       current.completer.completeError(error, stackTrace);
+      _disconnectSafely('realtime_response_invalid');
+      return;
     }
     _dispatchNext();
   }
@@ -299,14 +463,20 @@ final class ChatServerConnection implements ChatServiceTransport {
       if (_socket == null || _pendingPing != null) return;
       final sentAt = DateTime.now().millisecondsSinceEpoch;
       _pendingPing = sentAt;
-      _send(
-        frame_protocol.ChatFrame()
-          ..ping = (frame_protocol.Ping()..sentAtMillis = fixnum.Int64(sentAt)),
-      );
+      try {
+        _send(
+          frame_protocol.ChatFrame()
+            ..ping = (frame_protocol.Ping()
+              ..sentAtMillis = fixnum.Int64(sentAt)),
+        );
+      } catch (_) {
+        _disconnectSafely('realtime_send_failed');
+        return;
+      }
       _pongDeadline?.cancel();
       _pongDeadline = Timer(const Duration(seconds: 12), () {
         if (_pendingPing == sentAt) {
-          unawaited(_disconnect('realtime_pong_timeout', notify: true));
+          _disconnectSafely('realtime_pong_timeout');
         }
       });
     });
@@ -316,16 +486,21 @@ final class ChatServerConnection implements ChatServiceTransport {
     _expiryTimer?.cancel();
     final delay = math.max(0, expiresAtMillis - nowMillis - 60 * 1000);
     _expiryTimer = Timer(Duration(milliseconds: delay), () {
-      unawaited(_disconnect('realtime_access_expired', notify: true));
+      _disconnectSafely('realtime_access_expired');
     });
   }
 
   void _send(frame_protocol.ChatFrame frame) {
     final socket = _socket;
-    if (socket == null) {
+    if (socket == null ||
+        _access?.isUsable(DateTime.now().millisecondsSinceEpoch) != true) {
       throw const ChatServerConnectionException('realtime_not_connected');
     }
-    socket.add(frame.writeToBuffer());
+    final bytes = frame.writeToBuffer();
+    if (bytes.isEmpty || bytes.length > _maximumFrameBytes) {
+      throw const ChatServerConnectionException('realtime_frame_size_invalid');
+    }
+    socket.add(bytes);
   }
 
   Future<T> _command<T>({
@@ -334,6 +509,12 @@ final class ChatServerConnection implements ChatServiceTransport {
     required T Function(frame_protocol.ChatFrame frame) decode,
   }) async {
     await connect();
+    if (_commands.length >= _maximumQueuedCommands) {
+      throw const ChatServerConnectionException('realtime_queue_full');
+    }
+    if (frame.writeToBuffer().length > _maximumFrameBytes) {
+      throw const ChatServerConnectionException('realtime_frame_size_invalid');
+    }
     final pending = _PendingCommand<T>(
       frame: frame,
       accept: accept,
@@ -345,11 +526,22 @@ final class ChatServerConnection implements ChatServiceTransport {
   }
 
   void _dispatchNext() {
-    if (_commands.isEmpty || _socket == null || _ready?.isCompleted != true) {
+    if (_commands.isEmpty || _socket == null || !_readySuccess) {
       return;
     }
-    if (_commands.length > 1 && _commands[1].completer.isCompleted) return;
-    _send(_commands.first.frame);
+    final command = _commands.first;
+    if (command.sent) return;
+    command.sent = true;
+    command.deadline = Timer(_responseDeadline, () {
+      if (_commands.isNotEmpty && identical(_commands.first, command)) {
+        _disconnectSafely('realtime_command_timeout');
+      }
+    });
+    try {
+      _send(command.frame);
+    } catch (_) {
+      _disconnectSafely('realtime_send_failed');
+    }
   }
 
   bool _success(frame_protocol.ChatFrame frame, String kind, {String? id}) {
@@ -400,20 +592,36 @@ final class ChatServerConnection implements ChatServiceTransport {
           ..limit = 100),
       accept: (frame) =>
           frame.whichBody() == frame_protocol.ChatFrame_Body.keyPackageBatch,
-      decode: (frame) => frame.keyPackageBatch.keyPackages
-          .map(
-            (value) => MlsKeyPackage(
-              userId: value.userId,
-              deviceId: value.deviceId,
-              keyPackageRef: value.keyPackageRef,
-              keyPackageBytes: List<int>.unmodifiable(value.keyPackage),
-              cipherSuite: value.cipherSuite,
-              notBeforeMillis: value.notBefore.toInt(),
-              notAfterMillis: value.notAfter.toInt(),
-              lastResort: value.lastResort,
-            ),
-          )
-          .toList(growable: false),
+      decode: (frame) {
+        if (frame.keyPackageBatch.keyPackages.length > 100) {
+          throw const ChatServerConnectionException(
+            'key_package_batch_invalid',
+          );
+        }
+        final devices = <String>{};
+        return frame.keyPackageBatch.keyPackages
+            .map((value) {
+              if (value.userId != recipientUserId ||
+                  value.deviceId.isEmpty ||
+                  !devices.add(value.deviceId) ||
+                  value.keyPackage.isEmpty) {
+                throw const ChatServerConnectionException(
+                  'key_package_identity_invalid',
+                );
+              }
+              return MlsKeyPackage(
+                userId: value.userId,
+                deviceId: value.deviceId,
+                keyPackageRef: value.keyPackageRef,
+                keyPackageBytes: List<int>.unmodifiable(value.keyPackage),
+                cipherSuite: value.cipherSuite,
+                notBeforeMillis: value.notBefore.toInt(),
+                notAfterMillis: value.notAfter.toInt(),
+                lastResort: value.lastResort,
+              );
+            })
+            .toList(growable: false);
+      },
     );
   }
 
@@ -463,34 +671,52 @@ final class ChatServerConnection implements ChatServiceTransport {
   Future<List<ChatMailboxMessage>> fetchMailbox() {
     return _command<List<ChatMailboxMessage>>(
       frame: frame_protocol.ChatFrame()
-        ..syncMessages = (frame_protocol.SyncMessages()..limit = 1000),
+        ..syncMessages = (frame_protocol.SyncMessages()..limit = 100),
       accept: (frame) =>
           frame.whichBody() == frame_protocol.ChatFrame_Body.messageBatch,
-      decode: (frame) => frame.messageBatch.messages
-          .map((message) {
-            final value = _MailboxMessage(message);
-            if (value.recipientUserId != identity.userId ||
-                value.recipientDeviceId != identity.deviceId) {
-              throw const ChatServerConnectionException(
-                'mailbox_identity_invalid',
-              );
-            }
-            return value;
-          })
-          .toList(growable: false),
+      decode: (frame) {
+        if (frame.messageBatch.messages.length > 100) {
+          throw const ChatServerConnectionException('mailbox_batch_invalid');
+        }
+        final ids = <String>{};
+        return frame.messageBatch.messages
+            .map((message) {
+              final value = _MailboxMessage(message);
+              if (value.recipientUserId != identity.userId ||
+                  value.recipientDeviceId != identity.deviceId ||
+                  value.messageId.isEmpty ||
+                  !ids.add(value.messageId) ||
+                  value.messageBytes.isEmpty) {
+                throw const ChatServerConnectionException(
+                  'mailbox_identity_invalid',
+                );
+              }
+              return value;
+            })
+            .toList(growable: false);
+      },
     );
   }
 
   @override
-  Future<void> acknowledgeMailbox(List<String> messageIds) {
-    if (messageIds.isEmpty) return Future<void>.value();
-    final value = frame_protocol.AcknowledgeMessages()
-      ..messageIds.addAll(messageIds);
-    return _command<void>(
-      frame: frame_protocol.ChatFrame()..acknowledgeMessages = value,
-      accept: (frame) => _success(frame, 'messages.acknowledged'),
-      decode: (_) {},
-    );
+  Future<void> acknowledgeMailbox(List<String> messageIds) async {
+    if (messageIds.any((id) => id.isEmpty)) {
+      throw const ChatServerConnectionException('mailbox_ack_invalid');
+    }
+    final ids = messageIds.toSet().toList(growable: false);
+    for (var offset = 0; offset < ids.length; offset += 100) {
+      final batch = ids.sublist(offset, math.min(ids.length, offset + 100));
+      final value = frame_protocol.AcknowledgeMessages()
+        ..messageIds.addAll(batch);
+      await _command<void>(
+        frame: frame_protocol.ChatFrame()..acknowledgeMessages = value,
+        accept: (frame) =>
+            _success(frame, 'messages.acknowledged') &&
+            frame.success.ids.length == batch.length &&
+            frame.success.ids.toSet().containsAll(batch),
+        decode: (_) {},
+      );
+    }
   }
 
   @override
@@ -522,9 +748,14 @@ final class ChatServerConnection implements ChatServiceTransport {
     required File cipherFile,
     required int cipherByteSize,
     required String cipherSha256,
+    required int createdAtMillis,
   }) async {
     if (cipherByteSize <= 0 ||
+        cipherByteSize > chatAttachmentChunkBytes * 10000 ||
+        createdAtMillis <= 0 ||
+        !RegExp(r'^[A-Za-z0-9_-]{1,128}$').hasMatch(attachmentId) ||
         recipientUserIds.isEmpty ||
+        recipientUserIds.length > 256 ||
         recipientUserIds.any((value) => value.isEmpty)) {
       throw const ChatServerConnectionException('attachment_metadata_invalid');
     }
@@ -572,7 +803,10 @@ final class ChatServerConnection implements ChatServiceTransport {
       ..chunks.addAll(chunks)
       ..cipherByteSize = fixnum.Int64(cipherByteSize)
       ..cipherSha256 = actualWholeHash
-      ..createdAtMillis = fixnum.Int64(DateTime.now().millisecondsSinceEpoch);
+      ..createdAtMillis = fixnum.Int64(createdAtMillis);
+    // 只有 Ready 是完成证明。未得到证明时以原元数据继续幂等 begin；
+    // storage_unavailable 也可能是缺块断言失败，不能据此 abort 或声称成功。
+    if (await _attachmentIsComplete(attachmentId)) return;
     await _command<void>(
       frame: frame_protocol.ChatFrame()
         ..beginAttachment = (frame_protocol.BeginAttachment()
@@ -580,8 +814,9 @@ final class ChatServerConnection implements ChatServiceTransport {
       accept: (frame) => _success(frame, 'attachment.begun', id: attachmentId),
       decode: (_) {},
     );
+    if (await _attachmentIsComplete(attachmentId)) return;
 
-    try {
+    {
       final attachments = _attachments;
       if (attachments == null) {
         throw const ChatServerConnectionException('attachment_not_connected');
@@ -600,20 +835,31 @@ final class ChatServerConnection implements ChatServiceTransport {
       } finally {
         await input.close();
       }
-      await _command<void>(
-        frame: frame_protocol.ChatFrame()
-          ..completeAttachment = (frame_protocol.CompleteAttachment()
-            ..attachmentId = attachmentId),
-        accept: (frame) =>
-            frame.whichBody() ==
-                frame_protocol.ChatFrame_Body.attachmentReady &&
-            frame.attachmentReady.attachmentId == attachmentId,
-        decode: (_) {},
-      );
-    } catch (_) {
-      try {
-        await abortAttachment(attachmentId);
-      } catch (_) {}
+      await _completeAttachment(attachmentId);
+    }
+  }
+
+  Future<void> _completeAttachment(String attachmentId) => _command<void>(
+    frame: frame_protocol.ChatFrame()
+      ..completeAttachment = (frame_protocol.CompleteAttachment()
+        ..attachmentId = attachmentId),
+    accept: (frame) =>
+        frame.whichBody() == frame_protocol.ChatFrame_Body.attachmentReady &&
+        frame.attachmentReady.attachmentId == attachmentId,
+    decode: (_) {},
+  );
+
+  Future<bool> _attachmentIsComplete(String attachmentId) async {
+    try {
+      await _completeAttachment(attachmentId);
+      return true;
+    } on ChatServerConnectionException catch (error) {
+      if (const {
+        'not_found',
+        'conflict',
+        'storage_unavailable',
+      }.contains(error.code))
+        return false;
       rethrow;
     }
   }
@@ -632,6 +878,7 @@ final class ChatServerConnection implements ChatServiceTransport {
     if (!RegExp(r'^[0-9a-f]{64}$').hasMatch(normalizedHash)) {
       throw const ChatServerConnectionException('attachment_hash_invalid');
     }
+    await connect();
     final attachments = _attachments;
     if (attachments == null) {
       throw const ChatServerConnectionException('attachment_not_connected');
@@ -698,20 +945,54 @@ final class ChatServerConnection implements ChatServiceTransport {
   }) async {
     _onEvent = onEvent;
     _onDisconnected = onDisconnected;
+    final owner = ++_realtimeOwner;
     await connect();
     var active = true;
     return () async {
       if (!active) return;
-      active = false;
+      if (owner != _realtimeOwner) {
+        active = false;
+        return;
+      }
       _onEvent = null;
       _onDisconnected = null;
       await _disconnect('realtime_stopped', notify: false);
+      active = false;
     };
   }
 
-  Future<void> _disconnect(String code, {required bool notify}) async {
-    if (_closing) return;
-    _closing = true;
+  void _disconnectSafely(String code) {
+    unawaited(
+      _disconnect(code, notify: true).catchError((Object _) {
+        lastRealtimeDiagnosticCode = 'realtime_cleanup_failed';
+      }),
+    );
+  }
+
+  Future<void> _closeResources() async {
+    var failed = false;
+    await Future.wait(
+      List<_CloseAction>.of(_closeActions).map((action) async {
+        try {
+          await action.run();
+        } catch (_) {
+          failed = true;
+        }
+        if (action.done) _closeActions.remove(action);
+      }),
+    );
+    if (failed) {
+      throw const ChatServerConnectionException('realtime_cleanup_failed');
+    }
+  }
+
+  Future<void> _disconnect(String code, {required bool notify}) {
+    final existing = _disconnecting;
+    if (existing != null) return existing;
+    // 代际先失效，再等待资源关闭。迟到 provider/socket 和旧 stream 不能重新交付。
+    ++_generation;
+    _readySuccess = false;
+    _access = null;
     lastRealtimeDiagnosticCode = code;
     _pingTimer?.cancel();
     _pongDeadline?.cancel();
@@ -722,46 +1003,70 @@ final class ChatServerConnection implements ChatServiceTransport {
     _pendingPing = null;
     final subscription = _subscription;
     final socket = _socket;
+    final handshakeClient = _handshakeClient;
+    _handshakeClient = null;
+    final attachments = _attachments;
     _subscription = null;
     _socket = null;
+    _attachments = null;
     final ready = _ready;
     _ready = null;
+    final connecting = _connecting;
+    _connecting = null;
+    if (connecting != null && !connecting.isCompleted) {
+      connecting.completeError(ChatServerConnectionException(code));
+    }
     if (ready != null && !ready.isCompleted) {
       ready.completeError(ChatServerConnectionException(code));
     }
     final pending = List<_PendingCommand<Object?>>.from(_commands);
     _commands.clear();
     for (final command in pending) {
+      command.deadline?.cancel();
       if (!command.completer.isCompleted) {
         command.completer.completeError(ChatServerConnectionException(code));
       }
     }
-    try {
-      if (subscription != null) await subscription.cancel();
-    } catch (_) {}
-    try {
-      if (socket != null) await socket.close();
-    } catch (_) {}
-    _closing = false;
-    if (notify && !_disposed) {
-      final callback = _onDisconnected;
-      if (callback != null) {
-        try {
-          await callback();
-        } catch (_) {}
-      }
+    if (handshakeClient != null) {
+      _closeActions.add(
+        _CloseAction(() async {
+          handshakeClient.close(force: true);
+        }),
+      );
     }
+    if (subscription != null)
+      _closeActions.add(_CloseAction(subscription.cancel));
+    if (socket != null) _closeActions.add(_CloseAction(socket.close));
+    if (attachments != null)
+      _closeActions.add(_CloseAction(attachments.dispose));
+    final callback = notify && !_disposed ? _onDisconnected : null;
+    late final Future<void> created;
+    created =
+        () async {
+          try {
+            await _closeResources();
+          } finally {
+            if (callback != null && !_disposed) {
+              try {
+                await callback().timeout(_responseDeadline);
+              } catch (_) {
+                /* 回调不改变资源关闭结果。 */
+              }
+            }
+          }
+        }().whenComplete(() {
+          if (identical(_disconnecting, created)) _disconnecting = null;
+        });
+    _disconnecting = created;
+    return created;
   }
 
   @override
   Future<void> dispose() async {
-    if (_disposed) return;
     _disposed = true;
     _onEvent = null;
     _onDisconnected = null;
     await _disconnect('transport_disposed', notify: false);
-    final attachments = _attachments;
-    _attachments = null;
-    if (attachments != null) await attachments.dispose();
+    await _closeResources();
   }
 }

@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  final source = File('lib/src/runtime/chat_runtime.dart').readAsStringSync();
+  final source = File('lib/runtime/chat_runtime.dart').readAsStringSync();
 
   test('独立MLS附件落盘后才异步HTTPS上传，普通消息不等待附件', () {
     final prepare = source.indexOf(
@@ -34,9 +34,7 @@ void main() {
       source,
       contains('member != content.attachmentSenderMemberIdentity'),
     );
-    final application = File(
-      'lib/src/mls/mls_attachment.dart',
-    ).readAsStringSync();
+    final application = File('lib/mls/mls_attachment.dart').readAsStringSync();
     expect(
       application,
       matches(RegExp(r'crypto\.groupCreateMessage\(\s*group,\s*payload\s*\)')),
@@ -46,7 +44,7 @@ void main() {
   });
 
   test('mailbox acknowledgement follows successful local persistence', () {
-    final batch = source.indexOf('Future<void> _consumeMailboxBatch');
+    final batch = source.indexOf('Future<int> _consumeMailboxBatch');
     final consumeCall = source.indexOf('await _consumeMailboxMessage(', batch);
     final acknowledge = source.indexOf('acknowledgeMailbox(', batch);
     final consume = source.indexOf('Future<bool> _consumeMailboxMessage');
@@ -84,10 +82,9 @@ void main() {
     expect(source, contains('fetchMailbox()'));
   });
 
-  test('TataChatServer 邮箱密文必须匹配当前用户和当前设备', () {
-    final transportSource = File(
-      'lib/src/transport/chat_server_connection.dart',
-    ).readAsStringSync();
+  test('聊天服务模块 邮箱密文必须匹配当前用户和当前设备', () {
+    final transportSource = File('lib/transport/chat_server_connection.dart')
+        .readAsStringSync();
 
     expect(
       transportSource,
