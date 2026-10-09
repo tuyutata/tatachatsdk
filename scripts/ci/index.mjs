@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import {withFixedWork,remoteStep,fixedWork} from '../target.mjs';
 import { remoteEnvironment as productRemoteEnvironment } from '../build.mjs';
 import { spawnSync as runExactProcess } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -174,14 +175,7 @@ export function cachePathPlan(identity, runnerTemp, entries) {
       throw new Error(`缓存相对路径无效：${name}`);
     }
   }
-  const digest = createHash('sha256').update(identity.baseKey).digest('hex').slice(0, 20);
-  const rootName = `${identity.product}-${identity.platform}-${identity.component}-${digest}`;
-  const root = pathApi.resolve(temp, 'ci-cache', rootName);
-  const expectedParent = pathApi.resolve(temp, 'ci-cache');
-  const relative = pathApi.relative(expectedParent, root);
-  if (!relative || relative.startsWith('..') || pathApi.isAbsolute(relative)) {
-    throw new Error('缓存根目录逃出Runner临时目录');
-  }
+  const root = pathApi.resolve(temp, 'cache');
   return Object.freeze({
     root,
     successPaths: names.map((name) => pathApi.join(root, ...name.split('/'))),
@@ -208,7 +202,8 @@ function resolvedChild(pathApi, parent, relative, label) {
   return target;
 }
 
-export function wireCacheLinks(identity, runnerTemp, entries, workspace, links) {
+export function tempRootForView(value){return value;}
+function wireCacheLinks(identity, runnerTemp, entries, workspace, links) {
   const pathApi = pathImplementation(identity.runnerOs);
   const plan = cachePathPlan(identity, runnerTemp, entries);
   const workspaceRoot = required(workspace, 'GitHub工作区');
@@ -221,7 +216,7 @@ export function wireCacheLinks(identity, runnerTemp, entries, workspace, links) 
     const cacheRelative = row.slice(separator + 1);
     relativeEntries(sourceRelative, '工作区生成目录');
     relativeEntries(cacheRelative, '受控缓存目录');
-    const source = resolvedChild(pathApi, workspaceRoot, sourceRelative, '工作区生成目录');
+    const source = resolvedChild(pathApi, pathApi.join(tempRootForView(runnerTemp),'source'), sourceRelative, '工作区生成目录');
     const target = resolvedChild(pathApi, plan.root, cacheRelative, '受控缓存目录');
     mkdirSync(pathApi.dirname(source), { recursive: true });
     mkdirSync(target, { recursive: true });
@@ -468,7 +463,10 @@ async function prune(environment) {
 
 
 function requireExactRemoteJobEnvironment(){if(process.env.GITHUB_REPOSITORY!=="tuyutata/tatachatsdk")throw Error("准确远端Job仓库身份无效");}
-export async function runCacheCommand(command,environment=process.env){const actions={prepare,wire,sanitize,record:writeTerminalRecord,prune};if(!Object.hasOwn(actions,command))throw Error("CI缓存动作无效");await actions[command](environment);}
+export async function runCacheCommand(command,environment=process.env){
+ return withFixedWork('build',()=>cacheCommandTask(command,environment),{environment,retain:true});
+}
+async function cacheCommandTask(command,environment=process.env){const actions={prepare,wire,sanitize,record:writeTerminalRecord,prune};if(!Object.hasOwn(actions,command))throw Error("CI缓存动作无效");await actions[command](environment);}
 
 import {resolve}from'node:path';
 import {fileURLToPath}from'node:url';

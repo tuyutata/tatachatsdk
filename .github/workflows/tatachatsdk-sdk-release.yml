@@ -127,3 +127,7 @@ jobs:
           --tag "$VERSION_TAG" --source-sha "$SOURCE_SHA" \
           --title "塔塔聊天SDK · Release · SDK" --notes "$notes" --latest false \
           --assets "$GITHUB_WORKSPACE/target/release/tatachatsdk/release/tatachatsdk.tgz"
+    - name: 清空本产品固定构建目录
+      if: always()
+      shell: bash
+      run: node "$GITHUB_WORKSPACE/scripts/target.mjs" finish build

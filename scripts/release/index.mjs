@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import {withFixedWorkSync,claimFixedWork,releaseFixedWork} from '../target.mjs';
 // RELEASE_BUILD: full; CARGO_INCREMENTAL=0; 单平台目录不重复包装 sdk。
 
 import { spawnSync } from 'node:child_process';
@@ -312,7 +313,8 @@ function createGitHubRelease(values) {
   }
 }
 
-function main() {
+function main(){return withFixedWorkSync('build',()=>mainTask(),{retain:process.env.GITHUB_ACTIONS==='true'});}
+function mainTask(){
   const [command, subcommand, ...argumentsList] = process.argv.slice(2);
   const values = parseOptions(argumentsList);
   if (command === 'dependencies' && subcommand === 'check') checkDependencies(values.scope);

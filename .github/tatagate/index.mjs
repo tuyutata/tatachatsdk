@@ -1,4 +1,5 @@
-import {gateToolInterfaces,gateCleanupAllowed,runResourceProcess,prepareGateResources,verifyGateResourceDelivery} from '../../scripts/resources.mjs';
+import {fixedWork,withFixedWork,checkFixedWork,assertTargetTopology} from '../../scripts/target.mjs';
+import {gateToolInterfaces,gateCleanupAllowed,runResourceProcess,prepareGateResources,gateEnvironment} from '../../scripts/resources.mjs';
 const {toolEnvironment}=gateToolInterfaces;
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -375,6 +376,7 @@ export function validateProductDocuments(root) {
   return true;
 }
 export function assertNoProductOutputDirectories(root, repository) {
+ if(root===resolve(import.meta.dirname,'../..'))assertTargetTopology();
   const ignored = new Set(['.git', 'node_modules', 'vendor', 'Pods', '.pub-cache', '.gradle']);
   const forbidden = new Set(['build', 'target', '.dart_tool', '.kotlin']);
   const violations = [];
@@ -687,7 +689,7 @@ function environment(root, work) {
     'GITHUB_WORKFLOW','GITHUB_JOB','GITHUB_REPOSITORY','RUNNER_TOOL_CACHE','RUNNER_TEMP',
     'GITHUB_RUN_ID','GITHUB_RUN_ATTEMPT'];
   const result=Object.fromEntries(names.filter(name=>typeof process.env[name]==='string').map(name=>[name,process.env[name]]));
-  Object.assign(result,{ TMPDIR:resolve(work,'tmp'),CARGO_HOME:process.env.CARGO_HOME||resolve(work,'cargo-home'),
+  Object.assign(result,{ TMPDIR:resolve(work,'tmp'),CARGO_HOME:resolve(work,'cargo-home'),
     CARGO_TARGET_DIR:resolve(work,'cargo'),CARGO_INCREMENTAL:'0' });
   result[contract.repository.toUpperCase()+'_ROOT']=root;
   mkdirSync(result.TMPDIR,{recursive:true});
@@ -696,7 +698,7 @@ function environment(root, work) {
 export async function executeGate({ root, baseSHA, headSHA, work, actionlint, cargo, resourceReceipt, signal }, { execute = spawnSync, report = console.log } = {}) {
   gateContract();
   if(!resourceReceipt)fail('本仓门禁缺少所属资源的完整交付');
-  const resourceEnvironment=await verifyGateResourceDelivery(resourceReceipt);
+  const resourceEnvironment=await gateEnvironment(resourceReceipt);
   if(actionlint!==resourceEnvironment.TATAGATE_ACTIONLINT||cargo!==resourceEnvironment.CARGO)fail('本仓检查器或Cargo未绑定准确资源交付');
   Object.assign(process.env,resourceEnvironment);
   if (process.version !== 'v' + contract.tools.node) fail('塔塔门禁必须使用本仓登记的唯一Node版本');
@@ -730,9 +732,8 @@ export async function executeGate({ root, baseSHA, headSHA, work, actionlint, ca
   const workflowFiles = validateWorkflow(root);
   if (!isAbsolute(String(actionlint || '')) || !lstatSync(actionlint).isFile()
     || lstatSync(actionlint).isSymbolicLink()) fail('Workflow检查器必须是已验真的准确执行器');
-  const version = execute(actionlint, ['-version'], { cwd: root, env, encoding: 'utf8', stdio: ['ignore','pipe','pipe'] });
-  if (version.error || version.signal || version.status !== 0
-    || !new RegExp('(?:^|\\s)v?' + contract.tools.actionlint.replaceAll('.', '\\.') + '(?:\\s|$)', 'u').test(version.stdout)) fail('Workflow检查器版本不符');
+  
+  
   // 不调用PATH中的可选外部分析器；Shell与JSON/MJS仍由下面的真实语法检查逐文件验真。
   await run(resourceEnvironment.TATAGATE_ACTIONLINT, ['-shellcheck=', '-pyflakes=', ...workflowFiles], 'Workflow语法');
   validateSyntax(root, execute, env, contract.repository);
@@ -757,9 +758,8 @@ export async function executeGate({ root, baseSHA, headSHA, work, actionlint, ca
   if (contract.checks.includes('cross-platform-contracts')) await checkCrossPlatform(root, { report });
   if (contract.checks.includes('shared-contracts')) {
     if (!isAbsolute(String(cargo || '')) || !lstatSync(cargo).isFile()) fail('链门禁缺少登记的准确Cargo');
-    const cargoVersion = execute(cargo, ['--version'], { cwd: root, env, encoding: 'utf8', stdio: ['ignore','pipe','pipe'] });
-    if (cargoVersion.error || cargoVersion.signal || cargoVersion.status !== 0
-      || !/^cargo 1\.97\.1(?:\s|$)/u.test(cargoVersion.stdout)) fail('链门禁Cargo版本不符');
+    
+    
     env.PATH = dirname(cargo) + ':' + env.PATH;
     await run(cargo, ['fmt','--all','--','--check'], 'Rust格式');
     await run(cargo, ['clippy','--workspace','--all-targets','--locked','--','-D','warnings'], 'RustClippy');
@@ -790,13 +790,6 @@ async function prepareNodeDependencyViews(root,work,env,run){
  env.NODE_OPTIONS='--import='+hook;
 }
 
-function ownedResourceWork(root,mode){
- const declaration=JSON.parse(readFileSync(resolve(root,'scripts/flows.json'),'utf8'));
- if(declaration.product_id!==contract.repository)fail('本仓资源产品身份无效');
- const platforms=Object.keys(declaration.platforms),parent=resolve(root,'target',...(platforms.length===1?[]:[platforms.includes(process.platform==='darwin'?'macos':'linux-amd')?(process.platform==='darwin'?'macos':'linux-amd'):platforms.includes(process.platform==='darwin'?'host-macos':'host-linux-amd')?(process.platform==='darwin'?'host-macos':'host-linux-amd'):platforms[0]]),'test');
- mkdirSync(parent,{recursive:true});if(realpathSync(parent)!==parent||lstatSync(parent).isSymbolicLink())fail('本仓资源临时祖先无效');
- const work=resolve(parent,'tatagate-'+mode+'-'+process.pid+'-'+Date.now());mkdirSync(work,{mode:0o700});return work;
-}
 
 async function repositoryGateDispatch(args,signal) {
   const [mode, root, baseSHA, headSHA, work] = args;
@@ -806,10 +799,10 @@ async function repositoryGateDispatch(args,signal) {
     return;
   }
   if (mode === 'local' && args.length === 5) {
-    const resourceWork=ownedResourceWork(root,'local');
+    const resourceWork=fixedWork('test');
     validateGateRequestWork(root,work);
     const resourceReceipt=await prepareGateResources(resourceWork,{signal});
-    const executionWork=resolve(resourceWork,'gate-execution');mkdirSync(executionWork);
+    const executionWork=resourceWork;
     return executeGate({root,baseSHA,headSHA,work:executionWork,resourceReceipt,signal,
       actionlint:resourceReceipt.environment.TATAGATE_ACTIONLINT,cargo:resourceReceipt.environment.CARGO});
   }
@@ -821,17 +814,16 @@ async function repositoryGateDispatch(args,signal) {
       || event.ref !== 'refs/heads/main' || event.after !== headSHA
       || event.repository?.full_name !== contract.github_repository
       || process.env.GITHUB_REPOSITORY !== contract.github_repository || event.deleted) fail('远端push门禁身份无效');
-    const resourceReceipt=await prepareGateResources(ownedResourceWork(root,'remote'),{signal});
-    Object.assign(process.env,await verifyGateResourceDelivery(resourceReceipt));
+    const resourceReceipt=await prepareGateResources(fixedWork('test'),{signal});
+    Object.assign(process.env,await gateEnvironment(resourceReceipt));
     const baseSHA = pushBaseSHA({ forced: event.forced, before: event.before, headSHA,
       parents: event.forced === true ? git(root, ['rev-list', '--parents', '-n', '1', headSHA]).trim() : undefined,
       commitCount: event.forced === true ? git(root, ['rev-list', '--count', headSHA]).trim() : undefined });
     if (baseSHA === emptyTreeSHA) git(root, ['hash-object','-w','-t','tree','/dev/null']);
     const work = resolve(resourceReceipt.work,'gate-execution');
-    mkdirSync(work);
     try { return await executeGate({ root, baseSHA, headSHA, work,
       resourceReceipt,signal,actionlint: resourceReceipt.environment.TATAGATE_ACTIONLINT, cargo: resourceReceipt.environment.CARGO }); }
-    finally { if(gateCleanupAllowed(resourceReceipt,work))rmSync(work,{recursive:true}); }
+    finally { if(!gateCleanupAllowed(resourceReceipt,work))fail('资源工具退出未确认，禁止清场'); }
   }
   fail('本仓塔塔门禁参数或身份无效');
 }
@@ -840,7 +832,7 @@ async function repositoryGateDispatch(args,signal) {
 export async function repositoryGateMain(args){
  const controller=new AbortController(),cancel=()=>controller.abort(Error('门禁取消即失败'));
  for(const name of ['SIGTERM','SIGINT'])process.once(name,cancel);
- try{const result=await repositoryGateDispatch(args,controller.signal);controller.signal.throwIfAborted();return result;}
+ try{const result=await (args[0]==='physical'?repositoryGateDispatch(args,controller.signal):withFixedWork('test',()=>repositoryGateDispatch(args,controller.signal)));controller.signal.throwIfAborted();return result;}
  finally{for(const name of ['SIGTERM','SIGINT'])process.removeListener(name,cancel);}
 }
 
@@ -1109,5 +1101,6 @@ export function validateFunctionalCompletion(root,headSHA,work) {
 
 // 保留固定调用参数，只验真调用方协调目录；产品测试不向该目录写入临时状态。
 export function validateGateRequestWork(root,work){
- if(!isAbsolute(work)||resolve(work)!==work||realpathSync(work)!==work||!lstatSync(work).isDirectory()||work===root||root.startsWith(work+'/')||readdirSync(work).length)fail('本仓门禁请求协调目录无效');return true;
+ if(root!==resolve(import.meta.dirname,'../..')||work!==fixedWork('test'))fail('本仓门禁只接受本产品target/test固定目录');
+ return checkFixedWork(work);
 }

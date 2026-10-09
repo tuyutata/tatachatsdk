@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import {fixedScratch} from './target.mjs';
 
 import { constants as fsConstants } from 'node:fs';
 import {
@@ -516,7 +517,7 @@ export async function buildRelease({ source, native, output, archive, gitSha, so
   if(!header.isFile()||header.isSymbolicLink())fail('C头文件必须是native下唯一普通原件');
   for(const obsolete of ['scripts/tatachat_sdk.h','stickers/tatachat_sdk.h']){if(await lstat(join(source,obsolete)).then(()=>true,error=>{if(error.code==='ENOENT')return false;throw error;}))fail('C头文件存在旧路径副本：'+obsolete);}
 
-  const temporary = await mkdtemp(join(tmpdir(), 'tatachatsdk-release-'));
+  const temporary = await fixedScratch(join(tmpdir(), 'tatachatsdk-release-'));
   const packageRoot = join(temporary, 'tatachatsdk');
   try {
     await mkdir(packageRoot, { recursive: true });
