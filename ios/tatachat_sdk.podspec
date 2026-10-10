@@ -1,6 +1,6 @@
 framework_path = 'TataChatSDK.xcframework'
 unless Dir.exist?(File.join(__dir__, framework_path))
-  raise "缺少 #{framework_path}，先运行 scripts/build-native.sh ios"
+  raise "缺少 #{framework_path}，先运行 node scripts/build.mjs native ios"
 end
 
 Pod::Spec.new do |spec|

@@ -20,7 +20,7 @@ String? chatSdkNativeSkipReason() {
   } on Object catch (_) {
     _reason =
         'libtatachat_sdk native library is unavailable; build it with '
-        './scripts/build-native.sh before native integration tests';
+        'node scripts/build.mjs native host before native integration tests';
   }
   return _reason;
 }

@@ -2,28 +2,16 @@
   "schema": 1,
   "repository": "tatachatsdk",
   "workflows": [
-    "tatachatsdk.sdk.ci",
-    "tatachatsdk.sdk.release"
+    "release-sdk.yml"
   ],
   "node_tests": [
     "scripts/build.mjs",
-    "scripts/flow.mjs",
-    "scripts/release.mjs",
-    "scripts/resources.mjs",
-    "scripts/ci/index.mjs",
-    "scripts/ci/sdk.mjs",
-    "scripts/release/index.mjs",
-    "scripts/release/sdk.mjs",
-    "scripts/target.mjs"
+    "scripts/publish.mjs",
+    ".github/workflows/release-sdk.mjs"
   ],
   "checks": [
     "repository-contracts"
   ],
-  "tools": {
-    "node": "25.2.1",
-    "actionlint": "1.7.12",
-    "rust": null
-  },
   "platform_forbidden_values": [
     "macOS ARM64",
     "macos-arm64",
@@ -346,50 +334,14 @@
       "target": "node"
     },
     {
-      "function": "scripts/flow",
-      "path": "scripts/flow.mjs",
+      "function": "scripts/publish",
+      "path": "scripts/publish.mjs",
       "runner": "node",
       "target": "node"
     },
     {
-      "function": "scripts/release",
-      "path": "scripts/release.mjs",
-      "runner": "node",
-      "target": "node"
-    },
-    {
-      "function": "scripts/resources",
-      "path": "scripts/resources.mjs",
-      "runner": "node",
-      "target": "node"
-    },
-    {
-      "function": "scripts/ci/index",
-      "path": "scripts/ci/index.mjs",
-      "runner": "node",
-      "target": "node"
-    },
-    {
-      "function": "scripts/ci/sdk",
-      "path": "scripts/ci/sdk.mjs",
-      "runner": "node",
-      "target": "node"
-    },
-    {
-      "function": "scripts/release/index",
-      "path": "scripts/release/index.mjs",
-      "runner": "node",
-      "target": "node"
-    },
-    {
-      "function": "scripts/release/sdk",
-      "path": "scripts/release/sdk.mjs",
-      "runner": "node",
-      "target": "node"
-    },
-    {
-      "function": "scripts/target.test",
-      "path": "scripts/target.mjs",
+      "function": ".github/workflows/release-sdk",
+      "path": ".github/workflows/release-sdk.mjs",
       "runner": "node",
       "target": "node"
     }

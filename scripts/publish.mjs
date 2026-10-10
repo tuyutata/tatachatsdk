@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import {fixedScratch} from './target.mjs';
+import { mkdirSync } from 'node:fs';
 
 import { constants as fsConstants } from 'node:fs';
 import {
@@ -18,10 +18,8 @@ import {
 } from 'node:fs/promises';
 import { gzipSync, gunzipSync } from 'node:zlib';
 import { createHash } from 'node:crypto';
-import { temporaryRoot, materializeAnalysisOptions, analysisOptionsBytes } from './build.mjs';
-const tmpdir=()=>temporaryRoot('sdk','tmp');
-import { basename, dirname, isAbsolute, join, posix, relative, resolve, sep } from 'node:path';
-import { pathToFileURL, fileURLToPath } from 'node:url';
+import { basename, dirname, isAbsolute, join, posix, resolve, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const PRODUCT_ID = 'tatachatsdk';
 const PACKAGE_NAME = 'tatachat_sdk';
@@ -31,7 +29,6 @@ const CHECKSUMS_NAME = 'SHA256SUMS';
 const RELEASE_ASSETS = [ARCHIVE_NAME];
 const SOURCE_ENTRIES = [
   'LICENSE',
-  'scripts/build.mjs',
   'pubspec.yaml',
   'pubspec.lock',
   'ios',
@@ -107,119 +104,6 @@ function normalizeRelativePath(value) {
   return normalized;
 }
 
-
-// 仓库仅保存扁平入口；Flutter要求的包路径只在调用方本轮工程中装配。
-const FLUTTER_INPUTS = new Map([
-  ['android/TataChatSdkPlugin.java', 'android/src/main/java/chat/tata/sdk/TataChatSdkPlugin.java'],
-  ['android/AndroidManifest.xml', 'android/src/main/AndroidManifest.xml'],
-]);
-const FLUTTER_GENERATED = new Set([
-  '.git', '.dart_tool', '.gradle', '.kotlin', '.pub-cache', '.symlinks', 'Pods',
-  'build', 'target', 'node_modules', 'TataChatSDK.xcframework',
-]);
-
-async function flutterViewRoots(source, output) {
-  for (const value of [source, output]) {
-    if (typeof value !== 'string' || !isAbsolute(value) || resolve(value) !== value
-        || dirname(value) === value) fail('Flutter工程必须使用规范绝对路径');
-    let current = value;
-    while (true) {
-      const info = await lstat(current).catch(error => {
-        if (error.code === 'ENOENT') return null;
-        throw error;
-      });
-      if (info && (!info.isDirectory() || info.isSymbolicLink())) {
-        fail('Flutter工程祖先必须为普通目录');
-      }
-      if (dirname(current) === current) break;
-      current = dirname(current);
-    }
-  }
-  const inside = (root, candidate) => {
-    const part = relative(root, candidate);
-    return part === '' || (!isAbsolute(part) && part !== '..' && !part.startsWith('..' + sep));
-  };
-  if (inside(output,source)||inside(source,output)&&!output.startsWith(join(source,'target')+sep)) fail('Flutter工程与源码必须分离');
-  if (await realpath(source) !== source) fail('Flutter源码根不规范');
-}
-
-async function flutterViewInputs(source) {
-  const files = [];
-  async function collect(directory = '') {
-    for (const name of (await readdir(join(source, directory))).sort()) {
-      if (FLUTTER_GENERATED.has(name)) continue;
-      const file = directory ? directory + '/' + name : name;
-      const info = await lstat(join(source, file));
-      if (info.isSymbolicLink()) fail('Flutter源码禁止链接：' + file);
-      if (info.isDirectory()) await collect(file);
-      else if (info.isFile()) files.push(file);
-      else fail('Flutter源码类型无效：' + file);
-    }
-  }
-  await collect();
-  for (const file of ['pubspec.yaml', 'pubspec.lock', 'scripts/build.mjs', 'android/build.gradle.kts', ...FLUTTER_INPUTS.keys()]) {
-    if (!files.includes(file)) fail('Flutter入口缺少普通源文件：' + file);
-  }
-  if (files.includes('analysis_options.yaml')) fail('Flutter源码存在重复分析配置');
-  for (const file of FLUTTER_INPUTS.values()) {
-    if (files.includes(file)) fail('Flutter源码存在重复平台入口');
-  }
-  const manifest = await readFile(join(source, 'pubspec.yaml'), 'utf8');
-  const plugin = await readFile(join(source, 'android/TataChatSdkPlugin.java'), 'utf8');
-  if (!/^name: tatachat_sdk\r?$/mu.test(manifest)
-      || !/      android:\r?\n        package: chat\.tata\.sdk\r?\n        pluginClass: TataChatSdkPlugin\r?\n/u.test(manifest)
-      || !/^package chat\.tata\.sdk;\r?$/mu.test(plugin)
-      || !/\bclass TataChatSdkPlugin\b/u.test(plugin)) fail('Flutter插件身份与声明不一致');
-  return files;
-}
-
-/** 先完整校验再装配，Pub声明独立可写，平台入口保持唯一源码绑定。 */
-export async function createFlutterSourceView(source, output) {
-  await flutterViewRoots(source, output);
-  const files = await flutterViewInputs(source);
-  const existing = await lstat(output).catch(error => {
-    if (error.code === 'ENOENT') return null;
-    throw error;
-  });
-  if (existing) fail('Flutter工程已存在，禁止叠加');
-  await mkdir(output, { recursive: true, mode: 0o700 });
-  for (const file of files) {
-    const destination = join(output, FLUTTER_INPUTS.get(file) ?? file);
-    await mkdir(dirname(destination), { recursive: true, mode: 0o700 });
-    if (file === 'pubspec.yaml' || file === 'pubspec.lock') {
-      await copyFile(join(source, file), destination, fsConstants.COPYFILE_EXCL);
-    } else {
-      await symlink(join(source, file), destination);
-    }
-  }
-  materializeAnalysisOptions(source, output);
-  return output;
-}
-
-/** 复用前验证平台入口和Pub声明；拒绝来源漂移、链接目录或第二份入口。 */
-export async function assertFlutterSourceView(source, output) {
-  await flutterViewRoots(source, output);
-  await flutterViewInputs(source);
-  for (const [input, mapped] of FLUTTER_INPUTS) {
-    const entry = join(output, mapped);
-    await flutterViewRoots(source, dirname(entry));
-    if (!(await lstat(entry)).isSymbolicLink()
-        || await realpath(entry) !== join(source, input)
-        || await lstat(join(output, input)).then(() => true, error => {
-          if (error.code === 'ENOENT') return false;
-          throw error;
-        })) fail('Flutter平台入口来源绑定无效');
-  }
-  for (const name of ['pubspec.yaml', 'pubspec.lock', 'analysis_options.yaml']) {
-    const file = join(output, name);
-    const info = await lstat(file);
-    if (!info.isFile() || info.isSymbolicLink()
-        || !(await readFile(file)).equals(name==='analysis_options.yaml'?analysisOptionsBytes(source):await readFile(join(source,name)))) {
-      fail('Flutter工程Pub声明或锁文件漂移');
-    }
-  }
-  return output;
-}
 
 async function copySourceTree(source, destination, relativePath) {
   const sourcePath = join(source, relativePath);
@@ -517,7 +401,22 @@ export async function buildRelease({ source, native, output, archive, gitSha, so
   if(!header.isFile()||header.isSymbolicLink())fail('C头文件必须是native下唯一普通原件');
   for(const obsolete of ['scripts/tatachat_sdk.h','stickers/tatachat_sdk.h']){if(await lstat(join(source,obsolete)).then(()=>true,error=>{if(error.code==='ENOENT')return false;throw error;}))fail('C头文件存在旧路径副本：'+obsolete);}
 
-  const temporary = await fixedScratch(join(tmpdir(), 'tatachatsdk-release-'));
+  if (!isAbsolute(output) || resolve(output) !== output || dirname(output) === output) {
+    fail('正式包输出目录必须为规范绝对路径');
+  }
+  const parent = dirname(output);
+  const parentInfo = await lstat(parent);
+  if (!parentInfo.isDirectory() || parentInfo.isSymbolicLink() || await realpath(parent) !== parent) {
+    fail('正式包输出父目录必须为真实普通目录');
+  }
+  const existingOutput = await lstat(output).catch(error => {
+    if (error.code === 'ENOENT') return null;
+    throw error;
+  });
+  if (existingOutput && (!existingOutput.isDirectory() || existingOutput.isSymbolicLink()
+      || await realpath(output) !== output)) fail('正式包输出目录无效');
+  // 发布临时包只属于本次输出目录的相邻现场，完成后按本轮准确路径清理。
+  const temporary = await mkdtemp(join(parent, '.tatachatsdk-release-'));
   const packageRoot = join(temporary, 'tatachatsdk');
   try {
     await mkdir(packageRoot, { recursive: true });
@@ -593,12 +492,6 @@ function parseArguments(argv) {
 }
 
 async function main() {
-  if (['flutter-source-view', 'verify-flutter-source-view'].includes(process.argv[2])) {
-    if (process.argv.length !== 5) fail('用法：release.mjs <flutter-source-view|verify-flutter-source-view> SOURCE OUTPUT');
-    const action = process.argv[2] === 'flutter-source-view' ? createFlutterSourceView : assertFlutterSourceView;
-    process.stdout.write(await action(process.argv[3], process.argv[4]) + '\n');
-    return;
-  }
   const { command, options } = parseArguments(process.argv.slice(2));
   if (command === 'verify' || command === 'verify-assets') {
     const directory = options.get('directory');
@@ -625,20 +518,13 @@ async function main() {
 
 const directInvocation=Boolean(!process.execArgv.some(value=>/^(?:-e|--eval(?:=|$)|--input-type(?:=|$))/u.test(value)) && process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url));
 const testInvocation=directInvocation && (process.argv[2]==='test'||process.env.NODE_TEST_CONTEXT==='child-v8'&&process.argv.length===2);
-if(directInvocation&&!testInvocation){
-  main().catch((error) => {
-    process.stderr.write(`${error.message}\n`);
-    process.exitCode = 1;
-  });
-}
+if(directInvocation&&!testInvocation)main().catch(error=>{process.stderr.write(String(error?.message||error)+'\n');process.exitCode=1;});
 
 // 正式实现结束；以下回归仅在本文件作为测试入口时注册。
 if (testInvocation) {
-const {BUILD_SHELL_SOURCES,analysisOptionsBytes}=await import('./build.mjs');
 const {default: assert}=await import('node:assert/strict');
 const { spawnSync }=await import('node:child_process');
 const { chmod, lstat, mkdtemp, mkdir, readFile, realpath, rm, symlink, writeFile }=await import('node:fs/promises');
-const { testRoot: tmpdir }=await import('./build.mjs');
 const { join }=await import('node:path');
 const {default: test}=await import('node:test');
 const { fileURLToPath }=await import('node:url');
@@ -648,112 +534,7 @@ const { gzipSync, gunzipSync }=await import('node:zlib');
 
 const SHA = '0123456789abcdef0123456789abcdef01234567';
 
-test('protocol generator uses only TataChatSDK exact tools', async () => {
-  const dependencyPath = fileURLToPath(new URL('./dependencies.mjs', import.meta.url));
-  const dependencySource = (await readFile(new URL('./resources.mjs',import.meta.url),'utf8')).split('const protocolDependencies = await (async()=>{')[1].split('return {main};')[0];
-  const generator = BUILD_SHELL_SOURCES.protocol;
-  const contract = JSON.parse(await readFile(new URL('./dependencies.json', import.meta.url), 'utf8'));
-  assert.equal(contract.tools.protoc.version, '35.0');
-  assert.equal(contract.tools.protoc.source,
-    'https://github.com/protocolbuffers/protobuf/releases/tag/v35.0');
-  assert.deepEqual(Object.keys(contract.tools.protoc.archives).sort(),
-    ['linux-amd', 'linux-arm', 'macos', 'windows']);
-  assert.equal(contract.tools.protoc_plugin.version, '25.0.0');
-  assert.equal(contract.tools.protoc_plugin.source,
-    'https://pub.dev/packages/protoc_plugin/versions/25.0.0');
-  assert.deepEqual(contract.tools.protoc_plugin.archive, {
-    url: 'https://pub.dev/api/archives/protoc_plugin-25.0.0.tar.gz',
-    sha256: 'd1ea363e9118f954d9d482c2f7281c5ff5149b059e68672d1faa564d49091f05',
-    executable: 'protoc-gen-dart',
-  });
-  assert.match(dependencySource, /PUB_CACHE: pubCache/u);
-  assert.match(dependencySource, /'pub'\s*,\s*'get'\s*,\s*\.\.\.\(offline/u);
-  assert.match(dependencySource, /'--enforce-lockfile'/u);
-  assert.match(dependencySource, /'compile'\s*,\s*'exe'/u);
-  assert.match(dependencySource, /'--packages='\s*\+\s*packageConfig/u);
-  assert.doesNotMatch(dependencySource, /'global', 'activate'/u);
-  assert.doesNotMatch(dependencySource,/fileInventory|verifiedArchive|版本验真/);
-  assert.match(dependencySource, /offline\s*\?\s*\['--offline'\]\s*:\s*\[\]/u);
-  assert.match(dependencySource,/protoc_plugin准备目录无效/);
-  assert.doesNotMatch(dependencySource,/version\.stdout\.trim/);
-  assert.match(generator, /dependencies[.]mjs" prepare protoc /u);
-  assert.match(generator, /dependencies[.]mjs" prepare protoc_plugin sdk/u);
-  assert.match(generator, /--plugin="protoc-gen-dart=\$plugin_executable"/u);
-  const pathLookup = new RegExp(['command', '-v', 'protoc'].join(' '), 'u');
-  assert.doesNotMatch(generator, pathLookup);
-  assert.doesNotMatch(generator, /(^|\s)protoc\s+\\/mu);
-
-  const invalid = spawnSync(process.execPath, [dependencyPath], { encoding: 'utf8' });
-  assert.notEqual(invalid.status, 0);
-  assert.match(invalid.stderr, /TataChatSDK工具参数无效/u);
-  const sourceWork = spawnSync(process.execPath,
-    [dependencyPath, 'prepare', 'protoc', 'macos', fileURLToPath(new URL('../', import.meta.url))],
-    { encoding: 'utf8' });
-  assert.notEqual(sourceWork.status, 0);
-  assert.match(sourceWork.stderr,/固定目录/);
-});
-
-test('protocol tool preparer refuses an alternate work root',async()=>{const result=spawnSync(process.execPath,[new URL('./dependencies.mjs',import.meta.url).pathname,'prepare','protoc_plugin','sdk',new URL('../target/test/other',import.meta.url).pathname],{encoding:'utf8'});assert.notEqual(result.status,0);assert.match(result.stderr,/固定目录/);});
-
-
-// 离线拒绝用例阻断网络和工具进程；若错误路径触发它们，真实准备入口必须使断言失败。
-const offlineGuard = 'data:text/javascript,' + encodeURIComponent([
-  "import childProcess from 'node:child_process';",
-  "import { syncBuiltinESMExports } from 'node:module';",
-  "globalThis.fetch = () => { process.stderr.write('UNEXPECTED_NETWORK\\n'); throw new Error('UNEXPECTED_NETWORK'); };",
-  "childProcess.spawnSync = () => { process.stderr.write('UNEXPECTED_TOOL\\n'); throw new Error('UNEXPECTED_TOOL'); };",
-  'syncBuiltinESMExports();',
-].join('\n'));
-
-function offlinePreparation(tool, platform, work, flag = '1') {
-  const dependencyPath = fileURLToPath(new URL('./dependencies.mjs', import.meta.url));
-  const result = spawnSync(process.execPath, [
-    '--import', offlineGuard, dependencyPath, 'prepare', tool, platform, work,
-  ], {
-    encoding: 'utf8',
-    timeout: 5_000,
-    env: { ...process.env, TATACHATSDK_PROTOCOL_OFFLINE: flag },
-  });
-  assert.equal(result.error, undefined);
-  assert.equal(result.signal, null);
-  assert.equal(result.status, 1);
-  assert.equal(result.stdout, '');
-  assert.doesNotMatch(result.stderr, /UNEXPECTED_NETWORK|UNEXPECTED_TOOL/u);
-  return result;
-}
-
-test('协议准备器在创建目录前拒绝非法离线参数', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'tatachatsdk-offline-option-'));
-  try {
-    const work = join(root, 'work');
-    for (const flag of ['', '0', 'true', '2']) {
-      const result = offlinePreparation('protoc', 'macos', work, flag);
-      assert.match(result.stderr, /离线参数仅接受1/u);
-      await assert.rejects(lstat(work), { code: 'ENOENT' });
-    }
-  } finally { await rm(root, { recursive: true, force: true }); }
-});
-
-test('协议工具离线缺件由本产品入口失败并清空固定根',async()=>{const {withFixedWork,workEnvironment,fixedWork}=await import('./target.mjs'),{readdir}=await import('node:fs/promises');for(const [tool,platform]of [['protoc','macos'],['protoc_plugin','sdk']]){await withFixedWork('test',async work=>{const result=spawnSync(process.execPath,[new URL('./dependencies.mjs',import.meta.url).pathname,'prepare',tool,platform,work],{encoding:'utf8',env:workEnvironment({...process.env,TATACHATSDK_PROTOCOL_OFFLINE:'1'}),timeout:5000});assert.equal(result.status,1);assert.equal(result.stdout,'');assert.match(result.stderr,/离线工具原件缺失/);});assert.deepEqual(await readdir(fixedWork('test')),[]);}});
-
-test('损坏归档按实际解包失败，失败不返回工具路径',async()=>{const {withFixedWork,workEnvironment,fixedWork}=await import('./target.mjs'),{readdir}=await import('node:fs/promises');for(const [tool,platform,name,folder]of [['protoc','macos','protoc-35.0-osx-aarch_64.zip','protoc'],['protoc_plugin','sdk','protoc_plugin-25.0.0.tar.gz','plugin']]){await withFixedWork('test',async work=>{const directory=join(work,folder);await mkdir(directory);await writeFile(join(directory,name),'not an archive');const result=spawnSync(process.execPath,[new URL('./dependencies.mjs',import.meta.url).pathname,'prepare',tool,platform,work],{encoding:'utf8',env:workEnvironment({...process.env,TATACHATSDK_PROTOCOL_OFFLINE:'1'}),timeout:5000});assert.equal(result.status,1);assert.equal(result.stdout,'');assert.doesNotMatch(result.stderr,/摘要|版本验真/);assert.ok(result.stderr.length>0);});assert.deepEqual(await readdir(fixedWork('test')),[]);}});
-
-test('native build and CocoaPods consume only TataChatSDK product directories', async () => {
-  const native = BUILD_SHELL_SOURCES.native;
-  const podspec = await readFile(new URL('../ios/tatachat_sdk.podspec', import.meta.url), 'utf8');
-  for (const name of [
-    'TATACHATSDK_WORK_DIR',
-    'TATACHATSDK_NATIVE_ANDROID_DIR',
-    'TATACHATSDK_NATIVE_IOS_DIR',
-    'TATACHATSDK_NATIVE_MACOS_DIR',
-  ]) assert.match(native, new RegExp(name));
-  assert.match(native, /TataChatSDK可写目录必须是源码外绝对路径/u);
-  assert.doesNotMatch(native, /PACKAGE_IOS_DIR|\/Users\//u);
-  assert.match(podspec, /framework_path = 'TataChatSDK\.xcframework'/u);
-  assert.match(podspec, /Dir\.exist\?\(File\.join\(__dir__, framework_path\)\)/u);
-  assert.match(podspec, /spec\.vendored_frameworks = framework_path/u);
-  assert.doesNotMatch(podspec, /TATACHATSDK_APPLE_FRAMEWORK_DIR|Pathname|relative_path_from|File\.symlink|\/Users\//u);
-});
+const tmpdir=()=>{const path=join(fileURLToPath(new URL('..',import.meta.url)),'target/test');mkdirSync(path,{recursive:true});return path;};
 
 // 每个夹具都使用隔离临时目录，验证完成后必须连同伪造产物一起清理。
 async function fixture() {
@@ -765,7 +546,6 @@ async function fixture() {
   for (const file of [
     'LICENSE',
     'README.md',
-    'scripts/build.mjs',
     'pubspec.yaml',
     'pubspec.lock',
     'native/tatachat_sdk.h',
@@ -833,78 +613,6 @@ test('builds and verifies one deterministic TataChatSDK package', async () => {
   } finally {
     await rm(item.root, { recursive: true, force: true });
   }
-});
-
-
-// 平台布局属于SDK；测试实际装配和回读，不用字符串匹配替代来源隔离。
-async function flutterViewFixture(t) {
-  const root = await realpath(await mkdtemp(join(tmpdir(), 'tatachatsdk-view-')));
-  t.after(() => rm(root, { recursive: true, force: true }));
-  const source = join(root, 'source'), output = join(root, 'view');
-  await mkdir(join(source, 'android'), { recursive: true });
-  await mkdir(join(source, 'scripts'));
-  await writeFile(join(source, 'scripts/build.mjs'), await readFile(new URL('./build.mjs',import.meta.url)));
-  await writeFile(join(source, 'pubspec.yaml'),
-    'name: tatachat_sdk\nflutter:\n  plugin:\n    platforms:\n      android:\n        package: chat.tata.sdk\n        pluginClass: TataChatSdkPlugin\n');
-  await writeFile(join(source, 'pubspec.lock'), 'packages: {}\n');
-  await writeFile(join(source, 'android/TataChatSdkPlugin.java'),
-    'package chat.tata.sdk;\npublic class TataChatSdkPlugin {}\n');
-  await writeFile(join(source, 'android/AndroidManifest.xml'), '<manifest/>\n');
-  await writeFile(join(source, 'android/build.gradle.kts'), '// fixture\n');
-  return { root, source, output };
-}
-
-test('Flutter视图装配唯一Android入口且Pub写入不改变源码', async t => {
-  const { source, output } = await flutterViewFixture(t);
-  await mkdir(join(source, 'build'));
-  await writeFile(join(source, 'build/old'), 'ignored');
-  await createFlutterSourceView(source, output);
-  const plugin = join(output, 'android/src/main/java/chat/tata/sdk/TataChatSdkPlugin.java');
-  assert.equal(await realpath(plugin), join(source, 'android/TataChatSdkPlugin.java'));
-  assert.equal(await realpath(join(output, 'android/src/main/AndroidManifest.xml')),
-    join(source, 'android/AndroidManifest.xml'));
-  await assert.rejects(lstat(join(output, 'android/TataChatSdkPlugin.java')), { code: 'ENOENT' });
-  await assert.rejects(lstat(join(output, 'build')), { code: 'ENOENT' });
-  assert.equal(await assertFlutterSourceView(source, output), output);
-  await assert.rejects(createFlutterSourceView(source, output), /已存在/u);
-  const original = await readFile(join(source, 'pubspec.yaml'), 'utf8');
-  await writeFile(join(output, 'pubspec.yaml'), 'name: changed\n');
-  assert.equal(await readFile(join(source, 'pubspec.yaml'), 'utf8'), original);
-  await assert.rejects(assertFlutterSourceView(source, output), /漂移/u);
-});
-
-test('Flutter视图拒绝回写源码、链接、身份不符和重复入口', async t => {
-  const { root, source, output } = await flutterViewFixture(t);
-  await assert.rejects(createFlutterSourceView(source, join(source, 'view')), /必须分离/u);
-  await symlink(source, join(root, 'alias'), 'dir');
-  await assert.rejects(createFlutterSourceView(join(root, 'alias'), output), /普通目录/u);
-  await symlink(join(source, 'pubspec.yaml'), join(source, 'linked'));
-  await assert.rejects(createFlutterSourceView(source, output), /禁止链接/u);
-  await rm(join(source, 'linked'));
-  const plugin = join(source, 'android/TataChatSdkPlugin.java');
-  const bytes = await readFile(plugin);
-  await writeFile(plugin, 'package wrong;\nclass TataChatSdkPlugin {}\n');
-  await assert.rejects(createFlutterSourceView(source, output), /身份/u);
-  await writeFile(plugin, bytes);
-  const duplicate = join(source, 'android/src/main/java/chat/tata/sdk');
-  await mkdir(duplicate, { recursive: true });
-  await writeFile(join(duplicate, 'TataChatSdkPlugin.java'), bytes);
-  await assert.rejects(createFlutterSourceView(source, output), /重复/u);
-  await assert.rejects(lstat(output), { code: 'ENOENT' });
-});
-
-test('Flutter视图拒绝入口替换为副本并支持产品独立命令', async t => {
-  const { source, output } = await flutterViewFixture(t);
-  const script = fileURLToPath(new URL('./release.mjs', import.meta.url));
-  const run = command => spawnSync(process.execPath, [script, command, source, output], { encoding: 'utf8' });
-  const created = run('flutter-source-view');
-  assert.equal(created.status, 0, created.stderr);
-  assert.equal(run('verify-flutter-source-view').status, 0);
-  const entry = join(output, 'android/src/main/java/chat/tata/sdk/TataChatSdkPlugin.java');
-  const bytes = await readFile(entry);
-  await rm(entry);
-  await writeFile(entry, bytes);
-  await assert.rejects(assertFlutterSourceView(source, output), /来源绑定/u);
 });
 
 test('rejects the wrong source SHA', async () => {
@@ -1041,22 +749,14 @@ test('正式包从现存源码生成介绍且不回写源码', async () => {
   } finally { await rm(item.root, { recursive: true, force: true }); }
 });
 
-// 配置移动后，真实公开工程必须保留完整规则；复用不得接受被改动或链接的根配置。
-test('Flutter公开视图绑定scripts分析配置且拒绝漂移与旧根配置',async t=>{
- const {source,output}=await flutterViewFixture(t);await createFlutterSourceView(source,output);
- const input=join(source,'scripts/build.mjs'),options=join(output,'analysis_options.yaml');
- assert.equal(await readFile(options,'utf8'),analysisOptionsBytes(source).toString());assert.equal((await lstat(options)).isSymbolicLink(),false);
- await writeFile(options,'changed');await assert.rejects(assertFlutterSourceView(source,output),/漂移/);
- await writeFile(options,analysisOptionsBytes(source));await assertFlutterSourceView(source,output);
- await writeFile(join(source,'analysis_options.yaml'),'duplicate');await assert.rejects(assertFlutterSourceView(source,output),/重复分析配置/);
-});
-test('Release包含唯一原生头及分析声明，排除删除文档和作业脚本',async()=>{
+test('Release包含唯一原生头且不携带编译脚本',async()=>{
  const item=await fixture();try{
   await item.build();
   const contents=gunzipSync(await readFile(join(item.output,'tatachatsdk.tgz')));
-  for(const file of ['native/tatachat_sdk.h','scripts/build.mjs'])assert.ok(contents.includes(Buffer.from(file)));
+  assert.ok(contents.includes(Buffer.from('native/tatachat_sdk.h')));
+  const manifest=await verifyReleaseAssets(item.output,{expectedGitSha:SHA,softwareVersion:'1.0.0'});
+  assert.ok(manifest.files.every(file=>!file.path.startsWith('scripts/')));
   assert.equal(contents.includes(Buffer.from('CHANGELOG.md')),false);
-  assert.equal(contents.includes(Buffer.from('scripts/ci/execute.mjs')),false);
  }finally{await rm(item.root,{recursive:true,force:true});}
 });
 
