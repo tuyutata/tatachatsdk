@@ -62,6 +62,57 @@ function regular(path){const value=fs.lstatSync(path);if(!value.isFile()||value.
 function readOwner(work){const path=join(work,'.active.json');if(!fs.existsSync(path))return null;regular(path);let value;try{value=JSON.parse(fs.readFileSync(path,'utf8'));}catch{fail('任务标记损坏，禁止清场');}
  if(value.schema!==1||value.product_id!==product||value.work!==work||!Number.isSafeInteger(value.pid)||value.pid<1||typeof value.nonce!=='string'||!Array.isArray(value.groups)||!value.groups.every(pid=>Number.isSafeInteger(pid)&&pid>1))fail('任务标记身份无效');return value;
 }
+function dependencyVolume(work){return {image:join(work,'filesystem.sparseimage'),mount:join(work,'dependencies')};}
+function systemTool(work,command,args,{input,timeout=120000}={}){
+ const temporary=join(work,'tmp');directory(temporary,true);
+ const result=spawnSync(command,args,{input,encoding:'utf8',timeout,maxBuffer:32*1024**2,env:{PATH:'/usr/bin:/bin:/usr/sbin:/sbin',HOME:process.env.HOME||work,TMPDIR:temporary}});
+ if(result.error||result.signal||result.status!==0)fail('区分大小写依赖视图系统工具失败：'+command.slice(command.lastIndexOf('/')+1));return result.stdout;
+}
+function mountedDependencyImage(work){
+ const {image,mount}=dependencyVolume(work),source=systemTool(work,'/usr/bin/hdiutil',['info','-plist']),json=systemTool(work,'/usr/bin/plutil',['-convert','json','-o','-','-'],{input:source});
+ let images;try{images=JSON.parse(json).images;}catch{fail('磁盘映像挂载清单无效');}
+ if(!Array.isArray(images))fail('磁盘映像挂载清单无效');
+ const matching=images.filter(item=>item?.['image-path']===image),occupants=images.flatMap(item=>(item?.['system-entities']||[]).filter(entity=>entity?.['mount-point']===mount).map(()=>item));
+ if(matching.length>1||occupants.some(item=>item?.['image-path']!==image))fail('依赖挂载点被其它映像占用');
+ if(!matching.length)return null;
+ const mounted=(matching[0]['system-entities']||[]).filter(entity=>entity?.['mount-point']);
+ if(mounted.length!==1||mounted[0]['mount-point']!==mount)fail('依赖映像挂载身份漂移');
+ return mounted[0];
+}
+function verifyDependencyVolume(work){
+ const {image,mount}=dependencyVolume(work),file=fs.lstatSync(image),root=directory(work),view=directory(mount);
+ if(!file.isFile()||file.isSymbolicLink()||file.nlink!==1||!file.size||fs.realpathSync(image)!==image||view.dev===root.dev||!mountedDependencyImage(work))fail('区分大小写依赖映像身份无效');
+ // 实际文件系统必须同时保留原件的两种大小写名称，不以映像声明代替读回。
+ const probe=join(mount,'.case-'+randomUUID());fs.mkdirSync(probe,{mode:0o700});
+ try{for(const name of ['README.md','Readme.md'])fs.writeFileSync(join(probe,name),'test',{flag:'wx',mode:0o600});
+  const names=fs.readdirSync(probe);if(names.length!==2||!names.includes('README.md')||!names.includes('Readme.md'))fail('依赖视图不能保留原件准确名称');}
+ finally{fs.rmSync(probe,{recursive:true,force:true});}
+}
+function ensureDependencyVolume(work,{run_id,signal}={}){
+ if(work!==fixedWork('build/sdk'))fail('依赖映像只允许SDK编译任务');checkFixedWork(work);
+ const owner=readOwner(work),session=sessions.getStore();
+ if(!owner||!alive(owner.pid)||!(session?.owner.nonce===owner.nonce||run_id&&owner.run_id===run_id))fail('依赖映像没有当前任务所有权');
+ const {image,mount}=dependencyVolume(work),existing=mountedDependencyImage(work);
+ if(existing){verifyDependencyVolume(work);return mount;}
+ if(fs.existsSync(image))fail('依赖映像存在但未准确挂载');
+ if(fs.existsSync(mount)){directory(mount);if(fs.readdirSync(mount).length||fs.lstatSync(mount).dev!==fs.lstatSync(work).dev)fail('依赖挂载点已被占用');}
+ else fs.mkdirSync(mount,{mode:0o700});
+ signal?.throwIfAborted();
+ systemTool(work,'/usr/bin/hdiutil',['create','-type','SPARSE','-size','64g','-fs','Case-sensitive APFS','-volname','TataChatSDKDependencies','-quiet',image],{timeout:600000});
+ signal?.throwIfAborted();
+ systemTool(work,'/usr/bin/hdiutil',['attach','-nobrowse','-noautoopen','-mountpoint',mount,'-quiet',image],{timeout:600000});
+ verifyDependencyVolume(work);signal?.throwIfAborted();return mount;
+}
+function releaseDependencyVolume(work,nonce){
+ if(work!==fixedWork('build/sdk'))return;
+ const {image,mount}=dependencyVolume(work),mounted=fs.existsSync(mount)&&fs.lstatSync(mount).dev!==fs.lstatSync(work).dev;
+ if(!fs.existsSync(image)&&!mounted)return;
+ if(!nonce||readOwner(work)?.nonce!==nonce)fail('依赖映像不属于本轮任务');
+ const entry=mountedDependencyImage(work);
+ if(mounted){if(!entry)fail('依赖挂载点身份未知，保留任务现场');systemTool(work,'/usr/bin/hdiutil',['detach','-quiet',mount],{timeout:120000});
+  if(mountedDependencyImage(work)||fs.existsSync(mount)&&fs.lstatSync(mount).dev!==fs.lstatSync(work).dev)fail('依赖映像卸载未确认，保留任务现场');}
+ else if(entry)fail('依赖映像仍挂载在其它位置');
+}
 function alive(pid,group=false){try{process.kill(group&&process.platform!=='win32'?-pid:pid,0);return true;}catch(error){if(error.code==='ESRCH')return false;return true;}}
 function writeOwner(owner){regular(join(owner.work,'.active.json'));fs.writeFileSync(join(owner.work,'.active.json'),JSON.stringify(owner)+'\n',{mode:0o600});}
 function writable(path){const value=fs.lstatSync(path);if(value.isDirectory()&&!value.isSymbolicLink()){if(fs.realpathSync(path)!==path)fail('清理路径漂移');fs.chmodSync(path,value.mode|0o700);for(const name of fs.readdirSync(path))writable(join(path,name));}}
@@ -79,8 +130,9 @@ function assertSupplyExited(work){
   if((record.pid!==process.pid&&alive(record.pid))||record.groups.some(pid=>alive(pid,true)))fail('资源工具退出未确认');
  }
 }
-function empty(work,keep=[]){
+function empty(work,keep=[],nonce){
  assertSupplyExited(work);
+ releaseDependencyVolume(work,nonce);
  const before=directory(work);
  for(const name of fs.readdirSync(work)){if(keep.includes(name))continue;const path=join(work,name);removeTree(path);}
  const after=directory(work);if(before.dev!==after.dev||before.ino!==after.ino||fs.readdirSync(work).some(name=>!keep.includes(name)))fail('固定工作目录未完全清空或被替换');
@@ -99,7 +151,7 @@ function clearFixedWork(work){
  if(owner&&!(owner.state==='retained'&&owner.pid===process.pid)&&(!session||session.owner.work!==work||session.owner.nonce!==owner.nonce))fail('固定工作目录属于其他活跃任务');
  if(owner&&owner.groups.some(pid=>alive(pid,true)))fail('工具后代退出未确认，禁止清场');
  if(fs.existsSync(join(work,'.product-build.lock')))fail('产品编译进程仍持有守卫，禁止清场');
- const value=short(work,()=>{empty(work,owner&&!(owner.state==='retained'&&owner.pid===process.pid)?['.active.json','.claim.lock']:['.claim.lock']);if(isBuildWork(work)&&fs.readdirSync(work).length===0)fs.rmdirSync(work);});return value;
+ const value=short(work,()=>{empty(work,owner&&!(owner.state==='retained'&&owner.pid===process.pid)?['.active.json','.claim.lock']:['.claim.lock'],session?.owner.work===work?session.owner.nonce:owner?.pid===process.pid?owner.nonce:undefined);if(isBuildWork(work)&&fs.readdirSync(work).length===0)fs.rmdirSync(work);});return value;
 }
 function claimFixedWork(scope,{environment=process.env,retain=false,run_id}={}){
  const work=checkFixedWork(fixedWork(scope),{create:true}),current=sessions.getStore();
@@ -162,7 +214,7 @@ function releaseFixedWork(session,{unsafe=false}={}){
   if(unsafe||groups.length){writeOwner({...owner,groups,state:'unsafe'});fail('工具后代退出未确认，保留守卫并禁止任务完成');}
   if(session.retain){writeOwner({...owner,groups:[],state:'retained'});return;}
   if(fs.existsSync(join(work,'.product-build.lock')))fail('产品编译守卫未释放，禁止完成');
-  empty(work,['.claim.lock']);if(isBuildWork(work))fs.rmdirSync(work);
+  empty(work,['.claim.lock'],session.owner.nonce);if(isBuildWork(work))fs.rmdirSync(work);
  });return value;
 }
 function withFixedWorkSync(scope,action,options={}){
@@ -187,15 +239,15 @@ function finishFixedWork(work,{run_id}={}){
   }
   if(fs.existsSync(join(work,'.product-build.lock')))fail('产品守卫尚未释放');
   if(run_id&&fs.existsSync(join(work,'build-result.json'))){regular(join(work,'build-result.json'));if(JSON.parse(fs.readFileSync(join(work,'build-result.json'),'utf8')).run_id!==run_id)fail('结果任务编号不符');}
-  empty(work,['.claim.lock']);if(isBuildWork(work))fs.rmdirSync(work);
+  empty(work,['.claim.lock'],owner?.nonce);if(isBuildWork(work))fs.rmdirSync(work);
  });return value;
 }
 function taskScope(work){checkFixedWork(work);return work===fixedWork('test')?'test':'build/'+relative(fixedWork('build'),work);}
 
 
-return {fixedWork,checkFixedWork,checkScratchPath,fixedScratch,assertTargetTopology,clearFixedWork,claimFixedWork,trackFixedProcess,trackWorkProcess,workEnvironment,prepareSourceView,retainWork,releaseFixedWork,withFixedWorkSync,withFixedWork,finishFixedWork,taskScope};
+return {fixedWork,checkFixedWork,checkScratchPath,fixedScratch,assertTargetTopology,clearFixedWork,claimFixedWork,trackFixedProcess,trackWorkProcess,workEnvironment,prepareSourceView,retainWork,releaseFixedWork,withFixedWorkSync,withFixedWork,finishFixedWork,taskScope,ensureDependencyVolume};
 })();
-const {fixedWork,checkFixedWork,checkScratchPath,fixedScratch,assertTargetTopology,clearFixedWork,claimFixedWork,trackFixedProcess,trackWorkProcess,workEnvironment,prepareSourceView,retainWork,releaseFixedWork,withFixedWorkSync,withFixedWork,finishFixedWork,taskScope}=targetInternals;
+const {fixedWork,checkFixedWork,checkScratchPath,fixedScratch,assertTargetTopology,clearFixedWork,claimFixedWork,trackFixedProcess,trackWorkProcess,workEnvironment,prepareSourceView,retainWork,releaseFixedWork,withFixedWorkSync,withFixedWork,finishFixedWork,taskScope,ensureDependencyVolume}=targetInternals;
 export {fixedWork,checkFixedWork,checkScratchPath,fixedScratch,assertTargetTopology,clearFixedWork,claimFixedWork,trackFixedProcess,trackWorkProcess,workEnvironment,prepareSourceView,retainWork,releaseFixedWork,withFixedWorkSync,withFixedWork,finishFixedWork,taskScope};
 export const finishBuild=finishFixedWork;
 
@@ -2035,6 +2087,8 @@ async function materializeResources(platform,work,previous={},options={}){
  const receipt={schema:1,product_id:requirement.product_id,platform,work,tools:Object.fromEntries(library.installed),dependencies:{},archives:{},environment:{},offline:true};for(const key of ['run_id','program_digest'])if(previous[key]!==undefined)receipt[key]=previous[key];
  for(const id of ['posix','bash','grep','sed'])await installTool(library,toolDefinitions.find(x=>x.id===id),options);receipt.tools=Object.fromEntries(library.installed);const foundation=await productFoundation(library,async(_,t)=>library.installed.get(t.id));receipt.environment=await appleEnvironment(library,options);receipt.environment.PATH=[receipt.environment.PATH,foundation.path,...[...library.installed].filter(([id])=>id!=='posix').map(([,x])=>dirname(x.path))].filter(Boolean).join(':');receipt.environment.PRODUCT_WORK_DIR=work;
  if(android)Object.assign(receipt.environment,await installAndroidResources(options));receipt.tools=Object.fromEntries(library.installed);
+ // 原件名称与字节必须原样保留；依赖视图在本任务的区分大小写APFS中跨资源阶段复用。
+ ensureDependencyVolume(work,{run_id:previous.run_id,signal:options.signal});
  for(const source of requirement.sources)await gitCheckout(source,join(work,'git-sources',source.name),options);
  // 归属扩展由本产品判断：prepare产生的原生源码根也只能在同一work中消费。
  const groups=new Map();for(const lock of requirement.locks){const name=lock.source_package||'own';if(!groups.has(name))groups.set(name,[]);groups.get(name).push(lock);}for(const [name,locks]of groups){const base=name==='own'?root:owner.resourceSourceRoot(name,work);await directory(base);const files=kind=>locks.filter(x=>x.ecosystem===kind).map(x=>{if(!safePath(x.path))fail('锁路径越界');return join(base,x.path);}),target=join(work,'dependencies',name);await directory(target,true);let result={request:JSON.stringify(locks)};
@@ -2626,6 +2680,17 @@ test('原件README与Readme及同名大小写目录必须完整保留或提前�
   assert.equal(hash(await readFile(input)),digest);
  }
 });
+test('SDK真实区分大小写依赖视图完整解包两份原名原字节',async()=>{
+ await withFixedWork('build/sdk',async work=>{
+  const mount=ensureDependencyVolume(work),input=join(work,'names.tgz'),output=join(mount,'names');
+  await writeFile(input,tar([{name:'README.md',body:'upper-original'},{name:'Readme.md',body:'mixed-original'}]));
+  await extractArchive(input,output);
+  assert.equal(await readFile(join(output,'README.md'),'utf8'),'upper-original');
+  assert.equal(await readFile(join(output,'Readme.md'),'utf8'),'mixed-original');
+  assert.notEqual((await lstat(join(output,'README.md'))).ino,(await lstat(join(output,'Readme.md'))).ino);
+ });
+ assert.equal((await readdir(fixedWork('build'))).length,0);
+});
 test('名称预检取消只清理本轮探测目录并保护既有成员',async t=>{
  const area=await sandbox(t),sentinel=join(area,'keep');await writeFile(sentinel,'preserve');
  await assert.rejects(verifyArchiveNames(area,['README','Readme'],AbortSignal.abort(Error('取消名称预检'))),/取消名称预检/);
@@ -3045,6 +3110,44 @@ test('平台编译现场独立领取且结束删除',async()=>{
   await both;assert.equal(fs.readFileSync(join(work,'platform'),'utf8'),platform);
  })));
  assert.deepEqual(joined.sort(),platforms.sort());for(const platform of platforms)assert.equal(fs.existsSync(fixedWork('build/'+platform)),false);
+});
+
+test('SDK编译依赖映像真实保留大小写名称并在任务结束后卸载清空',async()=>{
+ const work=fixedWork('build/sdk');
+ await withFixedWork('build/sdk',async owned=>{
+  const mount=ensureDependencyVolume(owned),image=join(owned,'filesystem.sparseimage'),device=fs.statSync(mount).dev;
+  assert.equal(mount,join(owned,'dependencies'));assert.equal(fs.lstatSync(image).isFile(),true);
+  assert.notEqual(device,fs.statSync(owned).dev);
+  fs.writeFileSync(join(mount,'README.md'),'upper',{flag:'wx'});
+  fs.writeFileSync(join(mount,'Readme.md'),'mixed',{flag:'wx'});
+  assert.deepEqual(fs.readdirSync(mount).filter(name=>['README.md','Readme.md'].includes(name)).sort(),['README.md','Readme.md']);
+  assert.notEqual(fs.statSync(join(mount,'README.md')).ino,fs.statSync(join(mount,'Readme.md')).ino);
+  assert.equal(ensureDependencyVolume(owned),mount);assert.equal(fs.statSync(mount).dev,device);
+ });
+ assert.equal(fs.existsSync(work),false);
+});
+
+test('SDK依赖映像预先取消和伪造未挂载镜像均失败且清空本任务现场',async()=>{
+ const work=fixedWork('build/sdk');
+ await withFixedWork('build/sdk',async owned=>{
+  assert.throws(()=>ensureDependencyVolume(owned,{signal:AbortSignal.abort(Error('取消依赖视图'))}),/取消依赖视图/);
+  const image=join(owned,'filesystem.sparseimage');assert.equal(fs.existsSync(image),false);
+  fs.writeFileSync(image,'伪造映像',{flag:'wx'});
+  assert.throws(()=>ensureDependencyVolume(owned),/存在但未准确挂载/);
+ });
+ assert.equal(fs.existsSync(work),false);
+});
+
+test('调度资源阶段以任务编号复用镜像，结果消费后由公开收尾卸载',async()=>{
+ const work=fixedWork('build/sdk'),run_id='123456789';
+ await withFixedWork('build/sdk',async()=>{}, {run_id,retain:true});
+ try{
+  assert.throws(()=>ensureDependencyVolume(work,{run_id:'987654321'}),/没有当前任务所有权/);
+  const mount=ensureDependencyVolume(work,{run_id});
+  assert.equal(ensureDependencyVolume(work,{run_id}),mount);
+  assert.equal(fs.lstatSync(join(work,'filesystem.sparseimage')).isFile(),true);
+ }finally{finishBuild(work,{run_id});}
+ assert.equal(fs.existsSync(work),false);
 });
 
 test('固定根拒绝任意任务目录、平台目录和外部临时根',()=>{
