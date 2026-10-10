@@ -2,6 +2,7 @@
 // 本产品独立拥有资源需求、工程准备与编译；公开回执仅提供验真资源，不提供执行命令。
 import {spawn,spawnSync} from 'node:child_process';
 import {AsyncLocalStorage} from 'node:async_hooks';
+import {Socket} from 'node:net';
 import {rmSync,constants as fsConstants,chmodSync,closeSync,openSync,readlinkSync,unlinkSync,copyFileSync,existsSync,lstatSync,mkdirSync,readFileSync,readdirSync,realpathSync,symlinkSync,writeFileSync} from 'node:fs';
 import {dirname,isAbsolute,join,parse,relative,resolve,sep} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
@@ -3124,6 +3125,65 @@ test('Flutter公开视图使用编译独立分析配置并拒绝漂移',async t=
  await writeFile(options,'changed');await assert.rejects(assertFlutterSourceView(source,output),/漂移/);
  await writeFile(options,ANALYSIS_OPTIONS);await assertFlutterSourceView(source,output);
  await writeFile(join(source,'analysis_options.yaml'),'duplicate');await assert.rejects(assertFlutterSourceView(source,output),/重复分析配置/);
+});
+
+// 实际打开子进程FD4，避免只注入资源客户端而漏掉生产Socket构造分支。
+test('调度资源FD4正常交付、拒绝和断管均不切换独立获取',async()=>{
+ const work=fixedWork('build/sdk'),runId='123456789',module=new URL('./build.mjs',import.meta.url).href;
+ const source=`import {execute} from ${JSON.stringify(module)};
+const work=${JSON.stringify(work)},runId=${JSON.stringify(runId)};let built=false;
+try { const result=await execute('sdk',work,{run_id:runId},{environment:{PRODUCT_RESOURCE_FD:'4'},stages:{
+ requirements:()=>{},resources:async(_platform,_work,_request,options)=>{await options.supply({schema:1});return {run_id:runId};},
+ prepare:()=>{},build:()=>{built=true;return {schema:1,product_id:'tatachatsdk',platform:'sdk',work,completion:'compile-only',run_id:runId,files:[]};}
+ }});process.stdout.write(JSON.stringify({ok:true,built,result}));}
+catch(error){process.stdout.write(JSON.stringify({ok:false,built,error:String(error?.message||error)}));process.exitCode=1;}`;
+ for(const mode of ['success','rejected','closed']){
+  const child=spawn(process.execPath,['--input-type=module','-e',source],{
+   cwd:root,env:{PATH:process.env.PATH||''},stdio:['ignore','pipe','pipe','ignore','pipe'],
+  });
+  let stdout='',stderr='',pending='',requests=0,invalidRequest=null;
+  child.stdout.on('data',chunk=>{stdout+=chunk;});child.stderr.on('data',chunk=>{stderr+=chunk;});
+  child.stdio[4].on('data',chunk=>{
+   pending+=chunk.toString('utf8');let end;
+   while((end=pending.indexOf('\n'))>=0){const line=pending.slice(0,end);pending=pending.slice(end+1);
+    try{
+     const request=JSON.parse(line);requests++;
+     if(request.operation!=='prepare'||requests>(mode==='success'?2:1))throw Error('资源请求次数或身份无效');
+     if(mode==='closed')child.stdio[4].destroy();
+     else child.stdio[4].write(JSON.stringify(mode==='success'
+      ?{id:request.id,ok:true,value:{schema:1}}:{id:request.id,ok:false,error:'合成供给失败'})+'\n');
+    }catch(error){invalidRequest=error;child.stdio[4].destroy();child.kill('SIGKILL');}
+   }
+  });
+  const timeout=setTimeout(()=>child.kill('SIGKILL'),5000);
+  try{
+   const code=await new Promise((resolve,reject)=>{child.once('error',reject);child.once('close',resolve);});
+   assert.equal(invalidRequest,null,stderr);
+   assert.equal(requests,mode==='success'?2:1,stderr);
+   const result=JSON.parse(stdout);
+   if(mode==='success'){
+    assert.equal(code,0,stderr);assert.equal(result.ok,true);assert.equal(result.built,true);
+    assert.equal(result.result.completion,'compile-only');
+   }else{
+    assert.equal(code,1,stderr);assert.equal(result.ok,false);assert.equal(result.built,false);
+    assert.match(result.error,/合成供给失败|资源供给通道中断|资源供给失败/u);
+   }
+  }finally{
+   clearTimeout(timeout);
+   if(child.exitCode===null&&child.signalCode===null){
+    const stopped=new Promise(resolve=>child.once('close',resolve));child.kill('SIGKILL');await stopped;
+   }
+   if(existsSync(work)){
+    const owner=JSON.parse(readFileSync(join(work,'.active.json'),'utf8'));
+    assert.equal(owner.pid,child.pid);assert.equal(owner.run_id,runId);assert.deepEqual(owner.groups,[]);
+    try{process.kill(owner.pid,0);assert.fail('合成任务进程仍在运行');}
+    catch(error){if(error.code!=='ESRCH')throw error;}
+    const lock=join(work,'.product-build.lock');if(existsSync(lock))unlinkSync(lock);
+    finishBuild(work,{run_id:runId});
+   }
+  }
+  assert.equal(existsSync(work),false);
+ }
 });
 
 }
