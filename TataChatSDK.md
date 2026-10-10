@@ -668,7 +668,7 @@ Pod供给先验证官方spec URL、供给SHA256与CocoaPods锁checksum，再物�
 
 两端只允许官方CDN到同一Specs路径的单跳HTTPS分发，第二次请求禁止重定向；查询、片段、凭据、错源、错路径、超限或取消均失败。独立执行按本仓锁取得，经控制台执行只核验所供原件；供给失败不隐式切成独立下载。
 
-ZIP/TAR、受控XZ和Pod发布树物化前，在本轮独占候选内逐目录探测真实文件系统是否能保留每个准确成员名称。README与Readme以及仅大小写不同的父目录必须保留各自字节；无法表示时在写入成员前明确失败。名称不改写、不删减、不自动升级原件，取消或探测失败清理准确本轮探测目录；解包失败清理本轮目标。区分大小写工作文件系统的实际创建、挂载和运行验收仍须单独准确授权，工作根只归本产品target/build或target/test。
+ZIP/TAR、受控XZ和Pod发布树物化前，在本轮独占候选内逐目录探测真实文件系统是否能保留每个准确成员名称。README与Readme以及仅大小写不同的父目录必须保留各自字节；无法表示时在写入成员前明确失败。名称不改写、不删减、不自动升级原件，取消或探测失败清理准确本轮探测目录；解包失败清理本轮目标。区分大小写工作文件系统的创建、挂载和运行须有准确授权，工作根只归本产品target/build或target/test。获准的本机临时现场为target/build/filesystem.sparseimage，64GiB稀疏区分大小写APFS，挂载点仍为target/test；镜像从已领取的test生成，保留同一占用身份，挂载后核对nonce、pid和work。命令工作目录须在镜像外，后代退出与结果消费后清理镜像内现场、卸载，再由各自公开固定根收尾删除原目录内容及镜像；卸载不确定时保留两根守卫。
 
 新增及保留用例涵盖供给错锁摘要、官方分发边界、大小写目录与文件、真实名称预检取消、XZ提取失败与取消、普通导入副作用及末尾测试同步证据。合成Pod的checksum来自夹具spec准确字节，不使用假锁摘要。当前仅准备代码和用例，未执行测试、语法检查、门禁、编译、资源下载、签名、安装或真实联调，不能据此报告完整资源准备与Build通过。
 
@@ -691,3 +691,16 @@ Android资源准备直接复用本产品可选工具供给的payload路径，不
 资源复用直接消费已提供路径；POSIX配方只定位实际命令，不读取系统发行身份、采集输入摘要或复验Apple资源签名。源码工具候选不再保存配方摘要与POSIX摘要证明。Maven任务视图不再扫描完整树；Pub/Cargo仍由原生命令消费原锁与校验元数据，准备器不重复比较目录摘要。
 
 协议工具公开入口scripts/dependencies.mjs统一由本仓资源实现准备：只接受target/build或target/test，protoc直接解包、Dart插件通过明确的DART_EXECUTABLE调用Pub和编译；不探测protoc版本或比较插件全树。单独准备成功后按本产品结果保留/finish协议交接，失败与取消清场。协议生成输出只在同轮protocol目录，不写入作为输入的lib/protocol。
+
+资源回归的下载候选显式传入本轮test固定根，和镜像内夹具保持同卷，不借用build默认临时根。大小写名称用例在真实文件系统决定能否完整表示；已交付的libcrux-intrinsics0.0.6官方原件可经extractArchive完整展开，README.md与Readme.md必须同时保留各自原字节，不改声明、锁、上游名称或原件。此文件系统准备是临时开发现场，不修改宿主Data卷，也不表示SDK业务或正式Build已完成。
+
+
+## 第3步真实本机业务复验（2026-10-09）
+
+本轮在获准64GiB Case-sensitive APFS测试镜像内，经本仓公开resources('sdk',...)、resourceEnvironment、工程视图和runOwnedShell原生入口执行。声明与Cargo/Pub原锁不升级，源码根不产生Flutter缓存或原生编译产物。
+
+实际失败定位与修复均进入既有文件：scripts/build.mjs把python3映射到本产品准确Python入口并优先置于PATH，避免Xcode随包Python与产品PYTHONHOME混用；已有映射漂移明确拒绝，新增实际进程回归。scripts/resources.mjs的Pub原件物化按Pub实际缓存格式写入64字节校验文本，不附加换行；原件保留，复用与取消清理回归覆盖。test/transport/chat_runtime_sync_test.dart等待真实15秒批次预算后的自动补拉到空批，保留205条持久化、205次ACK与7次读取断言，不改生产预算。
+
+实际结果：build.mjs同文件Node回归16项、resources.mjs同文件回归45项、native/Cargo.toml all-targets原生17项、完整Flutter业务212项全部通过，0失败/跳过/取消。宿主MLS实际编译，真实MLS与Isar动态库成功加载；包含损坏密文拒绝、会话持久化与重启、附件流式处理及真实72MiB附件。现有部分RPC/推送/传输用例仍使用合成边界，此结果不代表真实云或移动设备联调。
+
+全部子进程退出后清空本轮镜像内现场，从镜像外成功卸载；公开固定根收尾清空target/build与target/test并删除镜像，保留两个固定目录。本轮未执行正式门禁、Git保存/推送、Workflow派发、云变更、签名或安装。

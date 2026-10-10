@@ -165,6 +165,7 @@ final class _Transport implements ChatServiceTransport {
   final acknowledged = <List<String>>[];
   final published = <MlsKeyPackage>[];
   Completer<List<ChatMailboxMessage>>? fetch;
+  Completer<void>? emptyMailbox;
   Completer<void>? enteredFetch;
   Future<void> Function(ChatServiceEvent)? onEvent;
   int fetches = 0,
@@ -207,9 +208,15 @@ final class _Transport implements ChatServiceTransport {
       enteredFetch!.complete();
     }
     try {
-      return fetch == null
+      final result = fetch == null
           ? messages.take(pageSize).toList()
           : await fetch!.future;
+      if (result.isEmpty &&
+          emptyMailbox != null &&
+          !emptyMailbox!.isCompleted) {
+        emptyMailbox!.complete();
+      }
+      return result;
     } finally {
       activeFetches--;
     }
@@ -337,7 +344,12 @@ void main() {
     await fixture.runtime.ensureReady('account-a');
     fixture.transport.messages.addAll(List.generate(205, (i) => _Message(i)));
     fixture.transport.pageSize = 37; // 模拟控制帧预算裁剪，不得按少于100提前退出。
+    fixture.transport.emptyMailbox = Completer<void>();
     await fixture.runtime.handleWake();
+    // 真实落库在并发测试中可能达到15秒批次预算；等待自动续拉实际读到空批。
+    await fixture.transport.emptyMailbox!.future.timeout(
+      const Duration(seconds: 30),
+    );
     expect(fixture.transport.messages, isEmpty);
     expect(fixture.transport.acknowledged.expand((ids) => ids), hasLength(205));
     expect(fixture.transport.fetches, 7);

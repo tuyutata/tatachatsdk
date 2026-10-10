@@ -112,7 +112,22 @@ export function resourceEnvironment(platform,work,receipt,base={}) {
  for(const [id,name]of Object.entries(aliases))if(receipt.tools[id])env[name]=receipt.tools[id].path;
  // POSIX旧Shell不进入正式PATH；基础工具只通过产品已验真的GNU投影交付。
  const paths=Object.entries(receipt.tools).filter(([id])=>id!=='posix').map(([,value])=>dirname(value.path));
- env.PATH=[...new Set([...paths,...(env.PATH||'').split(':')].filter(Boolean))].join(':');
+ // 官方命令名只投影到回执已交付的准确执行器，优先于Xcode随包的其它版本。
+ const commands=join(work,'build-tools'),entries=Object.entries({python3:env.PYTHON,cc:env.CC,'c++':env.CXX}).filter(([,path])=>path);
+ if(entries.length){
+  const existing=lstatSync(commands,{throwIfNoEntry:false});
+  if(existing&&(!existing.isDirectory()||existing.isSymbolicLink()||realpathSync(commands)!==commands))fail('构建工具目录经过链接或非目录');
+  if(!existing)mkdirSync(commands,{mode:0o700});
+  for(const [name,inputPath]of entries){
+   if(typeof inputPath!=='string'||!isAbsolute(inputPath)||resolve(inputPath)!==inputPath)fail('构建工具目标不是规范路径：'+name);
+   const target=realpathSync(inputPath),input=lstatSync(target);if(!input.isFile()||input.isSymbolicLink()||!(input.mode&0o111))fail('构建工具目标不是普通执行器：'+name);
+   if(name!=='python3'&&(!env.DEVELOPER_DIR||!inside(env.DEVELOPER_DIR,target)))fail('构建编译器越出当前Xcode');
+   const path=join(commands,name),prior=lstatSync(path,{throwIfNoEntry:false});
+   if(prior){if(!prior.isSymbolicLink()||readlinkSync(path)!==target||realpathSync(path)!==target)fail('构建工具入口漂移：'+name);}
+   else symlinkSync(target,path);
+  }
+ }
+ env.PATH=[...new Set([...(entries.length?[commands]:[]),...paths,...(env.PATH||'').split(':')].filter(Boolean))].join(':');
  if(env.GIT)env.PRODUCT_GIT_BIN=env.GIT;
  if(env.RUSTC)env.CARGO=join(dirname(env.RUSTC),'cargo');
  if(env.FLUTTER){env.FLUTTER_ROOT=dirname(dirname(env.FLUTTER));env.DART_EXECUTABLE=join(env.FLUTTER_ROOT,'bin/cache/dart-sdk/bin/dart');}
@@ -441,6 +456,19 @@ test('资源回执隔离产品、平台、工作根，直接交付工具路径�
   const env=resourceEnvironment(platform,work,receipt,{HOME:'/home',TOKEN:'private',INJECTED_CONTEXT:'/private'});
   assert.equal(env.TOKEN,undefined);assert.equal(env.INJECTED_CONTEXT,undefined);assert.equal(env.CARGO_NET_OFFLINE,'true');
   assert.equal(env[contract.product_id.toUpperCase()+'_WORK_DIR'],work);
+ }finally{removeFixture(work,{recursive:true});}
+});
+test('原生命令优先使用产品Python，已有映射漂移时拒绝',()=>{
+ const work=sandbox();try{
+  const receipt=fixture(work);receipt.tools.python={path:process.execPath};
+  const shadow=join(work,'shadow-bin');mkdirSync(shadow);symlinkSync('/usr/bin/false',join(shadow,'python3'));receipt.environment.PATH=shadow;
+  const env=resourceEnvironment(receipt.platform,work,receipt);
+  const commands=join(work,'build-tools'),python=join(commands,'python3');
+  assert.equal(env.PATH.split(':')[0],commands);
+  const output=spawnSync('python3',['-e','process.stdout.write("product-python-slot")'],{env:{PATH:env.PATH},encoding:'utf8'});
+  assert.equal(output.status,0);assert.equal(output.stdout,'product-python-slot');
+  fs.unlinkSync(python);fs.symlinkSync('/usr/bin/false',python);
+  assert.throws(()=>resourceEnvironment(receipt.platform,work,receipt),/入口漂移/);
  }finally{removeFixture(work,{recursive:true});}
 });
 test('原始锁需要的依赖必须显式交付，不能使用用户默认缓存',()=>{

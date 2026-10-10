@@ -1085,8 +1085,21 @@ async function parser(kind,options){const entry=parserDefinitions[kind],store=jo
 async function checkedLock(path){await regular(path);const s=await lstat(path);if(s.size>32*1024**2)fail('锁文件超限');return readFile(path,'utf8');}
 async function packageOriginal(entry,options){return acquireArchive(entry,{work:options.library.work,store:join(options.dependencyRoot||join(options.library.root,'..','rely'),'archives'),optional:options.optionalDependencies,offline:options.offline,fetcher:options.fetcher,signal:options.signal});}
 async function prepareNpm(locks,work,options){const cache=join(work,'npm');await directory(cache,true);const node=options.library.installed.get('node').path,require=createRequire(join(dirname(node),'../lib/node_modules/npm/bin/npm-cli.js')),cacache=require('cacache');for(const lock of locks){const document=JSON.parse(await checkedLock(lock));if(![2,3].includes(document.lockfileVersion)||!document.packages)fail('npm原始锁格式无效');for(const [path,entry]of Object.entries(document.packages)){if(!path||entry.link)continue;if(!entry.resolved||!entry.integrity||!entry.version)fail('npm包未锁定来源');const file=await packageOriginal({url:entry.resolved,integrity:entry.integrity},options);await cacache.put(join(cache,'_cacache'),'make-fetch-happen:request-cache:'+entry.resolved,await readFile(file),{integrity:entry.integrity,metadata:{time:Date.now(),url:entry.resolved,reqHeaders:{},resHeaders:{'content-type':'application/octet-stream'}}});}}return {npmCache:cache};}
+// Pub读取的内容摘要必须是准确64位十六进制文本，不能附加换行或其它字节。
+async function materializePubArchive(entry,cache,{signal}={}){
+ signal?.throwIfAborted();if(!safePath(entry.name)||entry.name.includes('/')||!/^[a-f0-9]{64}$/u.test(entry.sha256))fail('Pub归档坐标无效');
+ await regular(entry.file);
+ const target=join(cache,'hosted/pub.dev',entry.name),proof=join(cache,'hosted-hashes/pub.dev',entry.name+'.sha256');
+ await directory(dirname(target),true);await directory(dirname(proof),true);
+ if(await stat(target)){await directory(target);return target;}
+ if(await stat(proof))fail('Pub摘要存在但包目录缺失');
+ await extractArchive(entry.file,target,{signal});
+ try{signal?.throwIfAborted();await writeFile(proof,entry.sha256,{flag:'wx'});return target;}
+ catch(error){await rm(target,{recursive:true});throw error;}
+}
+
 async function preparePub(locks,cache,options){await directory(cache,true);const parse=await parser('yaml',options),files=[];for(const lock of locks){const d=parse(await checkedLock(lock));if(!d.packages)fail('Pub锁格式无效');for(const [name,entry]of Object.entries(d.packages)){if(['sdk','path'].includes(entry.source))continue;if(entry.source==='git'){const d=entry.description;if(!d||d.ref!==d['resolved-ref']||!options.sources?.some(x=>x.name===name&&x.url===d.url&&x.ref===d.ref))fail('Pub Git来源不属于产品固定闭包：'+name);continue;}if(entry.source!=='hosted'||entry.description?.name!==name||!['https://pub.dev','https://pub.dev/'].includes(entry.description.url)||!entry.description.sha256)fail('Pub来源未锁定');const coordinate={url:'https://pub.dev/api/archives/'+name+'-'+entry.version+'.tar.gz',sha256:entry.description.sha256};files.push({name:name+'-'+entry.version,sha256:coordinate.sha256,file:await packageOriginal(coordinate,options)});}}
- for(const entry of files){const target=join(cache,'hosted/pub.dev',entry.name),proof=join(cache,'hosted-hashes/pub.dev',entry.name+'.sha256');await directory(dirname(target),true);await directory(dirname(proof),true);if(await stat(target)){await directory(target);}else{await extractArchive(entry.file,target,{signal:options.signal});await writeFile(proof,entry.sha256+'\n',{flag:'wx'});}}
+ for(const entry of files)await materializePubArchive(entry,cache,{signal:options.signal});
  await directory(join(cache,'_temp'),true);return {pubCache:cache};}
 function gitCoordinate(source){const u=new URL(source.replace(/^git\+/u,''));const ref=u.searchParams.get('rev');if(u.protocol!=='https:'||u.hostname!=='github.com'||u.username||u.password||!u.pathname.endsWith('.git')||!/^[a-f0-9]{40}$/u.test(ref||'')||u.hash!=='#'+ref||[...u.searchParams.keys()].length!==1)fail('Git来源不是唯一锁定提交');return {url:u.origin+u.pathname,ref};}
 async function gitCheckout(source,target,options){
@@ -2085,22 +2098,31 @@ if(resourceTestInvocation){
  const {gzipSync}=await import('node:zlib');
 const hash=b=>createHash('sha256').update(b).digest('hex');
 async function sandbox(t){const root=await realpath(await fixedScratch(join(tmpdir(),contract.product_id+'-resources-')));t.after(()=>rm(root,{recursive:true,force:true}));return root;}
+// 下载候选与夹具明确归本轮test固定根，挂载卷也不借用build，保持同卷提交。
 const archive=(body,url='https://example.invalid/locked.tgz')=>({url,sha256:hash(body)});
 function tar(entries){const records=[];for(const {name,body='',type='0',target=''}of entries){const b=Buffer.from(body),h=Buffer.alloc(512);h.write(name,0,100);h.write('0000644\0',100);h.write('0000000\0',108);h.write('0000000\0',116);h.write(b.length.toString(8).padStart(11,'0')+'\0',124);h.write('00000000000\0',136);h.fill(32,148,156);h.write(type,156);h.write(target,157,100);h.write('ustar\0',257);h.write('00',263);h.write([...h].reduce((a,b)=>a+b,0).toString(8).padStart(6,'0')+'\0 ',148);records.push(h,b,Buffer.alloc((512-b.length%512)%512));}return gzipSync(Buffer.concat([...records,Buffer.alloc(1024)]));}
+test('Pub实际缓存格式不附加换行，复用和取消不改变原件',async t=>{
+ const area=await sandbox(t),file=join(area,'pub-original.tgz'),body=tar([{name:'pubspec.yaml',body:'name: example\nversion: 1.0.0\n'}]);await writeFile(file,body);
+ const entry={name:'example-1.0.0',sha256:hash(body),file},cache=join(area,'cache'),target=await materializePubArchive(entry,cache);
+ const proof=join(cache,'hosted-hashes/pub.dev/example-1.0.0.sha256');assert.equal(await readFile(proof,'utf8'),entry.sha256);assert.equal((await readFile(proof)).length,64);
+ assert.equal(await readFile(join(target,'pubspec.yaml'),'utf8'),'name: example\nversion: 1.0.0\n');
+ assert.equal(await materializePubArchive(entry,cache),target);assert.deepEqual(await readFile(file),body);
+ const canceled=join(area,'cancelled');await assert.rejects(materializePubArchive(entry,canceled,{signal:AbortSignal.abort(Error('取消Pub准备'))}),/取消Pub准备/);assert.equal(await stat(canceled),null);
+});
 test('按声明取得原件，复用路径不重新校验字节',async t=>{
  const root=await sandbox(t),entry=archive(Buffer.from('declared'));let requests=0;
- const options={store:root,fetcher:async()=>{requests++;return new Response('supplied');}};
+ const options={work:tmpdir(),store:root,fetcher:async()=>{requests++;return new Response('supplied');}};
  const file=await acquireArchive(entry,options);await chmod(file,0o600);await writeFile(file,'changed');
  assert.equal(await acquireArchive(entry,{...options,offline:true,fetcher:()=>assert.fail('离线联网')}),file);
  assert.equal(await readFile(file,'utf8'),'changed');assert.equal(requests,1);
 });
 test('取消自建摘要验真，离线缺件、非HTTPS和下载失败仍报错',async t=>{
  const root=await sandbox(t),entry=archive(Buffer.from('declared'));
- await assert.rejects(acquireArchive(entry,{store:root,offline:true}),/离线/);
+ await assert.rejects(acquireArchive(entry,{work:tmpdir(),store:root,offline:true}),/离线/);
  const url=new URL(entry.url);url.protocol='http:';
- await assert.rejects(acquireArchive({...entry,url:url.href},{store:root,fetcher:()=>assert.fail('明文联网')}),/HTTPS/);
- await assert.rejects(acquireArchive(entry,{store:root,fetcher:async()=>new Response('',{status:503})}),/获取失败/);
- const file=await acquireArchive(entry,{store:root,fetcher:async()=>new Response('delivered')});assert.equal(await readFile(file,'utf8'),'delivered');
+ await assert.rejects(acquireArchive({...entry,url:url.href},{work:tmpdir(),store:root,fetcher:()=>assert.fail('明文联网')}),/HTTPS/);
+ await assert.rejects(acquireArchive(entry,{work:tmpdir(),store:root,fetcher:async()=>new Response('',{status:503})}),/获取失败/);
+ const file=await acquireArchive(entry,{work:tmpdir(),store:root,fetcher:async()=>new Response('delivered')});assert.equal(await readFile(file,'utf8'),'delivered');
 });
 test('直接复用供给路径，合法硬链接及不同字节不触发验真',async t=>{
  const root=await sandbox(t),store=join(root,'store'),optional=join(root,'objects'),entry=archive(Buffer.from('declared')),source=join(optional,entry.sha256+'.blob');
@@ -2111,11 +2133,11 @@ test('直接复用供给路径，合法硬链接及不同字节不触发验真',
 test('取消下载清理本次候选；短锁只在提交阶段取得',async t=>{
  const root=await sandbox(t),entry=archive(Buffer.from('ab')),abort=new AbortController();
  const fetcher=async()=>new Response(new ReadableStream({start(controller){controller.enqueue(Buffer.from('a'));abort.abort();controller.close();}}));
- await assert.rejects(acquireArchive(entry,{store:root,fetcher,signal:abort.signal}));assert.deepEqual(await readdir(root),[]);
- let state;const file=await acquireArchive(entry,{store:root,fetcher:async()=>{state=await readdir(root);return new Response('ab');}});assert.deepEqual(state,[]);assert.equal(await readFile(file,'utf8'),'ab');
+ await assert.rejects(acquireArchive(entry,{work:tmpdir(),store:root,fetcher,signal:abort.signal}));assert.deepEqual(await readdir(root),[]);
+ let state;const file=await acquireArchive(entry,{work:tmpdir(),store:root,fetcher:async()=>{state=await readdir(root);return new Response('ab');}});assert.deepEqual(state,[]);assert.equal(await readFile(file,'utf8'),'ab');
 });
 test('同对象并发提交只保留一份验真原件，不留全局下载锁',async t=>{
- const root=await sandbox(t),body=Buffer.from('concurrent'),entry=archive(body);let calls=0;const options={store:root,fetcher:async()=>{calls++;await new Promise(r=>setTimeout(r,10));return new Response(body);}};
+ const root=await sandbox(t),body=Buffer.from('concurrent'),entry=archive(body);let calls=0;const options={work:tmpdir(),store:root,fetcher:async()=>{calls++;await new Promise(r=>setTimeout(r,10));return new Response(body);}};
  const paths=await Promise.all(Array.from({length:8},()=>acquireArchive(entry,options)));assert.equal(new Set(paths).size,1);assert.equal(await readFile(paths[0],'utf8'),'concurrent');assert.equal(calls,8);assert.deepEqual(await readdir(root),[paths[0].slice(root.length+1)]);
 });
 test('归档安全解包并隔离不同任务，拒绝路径和链接越界',async t=>{
@@ -2124,7 +2146,7 @@ test('归档安全解包并隔离不同任务，拒绝路径和链接越界',asy
  for(const [name,entries]of [['path',[{name:'../outside',body:'x'}]],['link',[{name:'package/a',body:'x'},{name:'package/b',type:'2',target:'../../outside'}]],['parent',[{name:'package/a',type:'2',target:'b'},{name:'package/a/child',body:'x'},{name:'package/b',body:'x'}]]]){const file=join(root,name+'.tgz');await writeFile(file,tar(entries));await assert.rejects(extractArchive(file,join(root,name),{prefix:name==='path'?'':'package'}),/越界|父目录/);assert.equal((await readdir(root)).includes(name),false);}
 });
 test('链接原件目录、重复成员与解包取消拒绝且不写第三方目录',async t=>{
- const root=await sandbox(t),external=join(root,'external'),link=join(root,'link');await mkdir(external);await symlink(external,link);await assert.rejects(acquireArchive(archive(Buffer.from('source')),{store:link,offline:true}),/链接/);assert.deepEqual(await readdir(external),[]);
+ const root=await sandbox(t),external=join(root,'external'),link=join(root,'link');await mkdir(external);await symlink(external,link);await assert.rejects(acquireArchive(archive(Buffer.from('source')),{work:tmpdir(),store:link,offline:true}),/链接/);assert.deepEqual(await readdir(external),[]);
  const input=join(root,'input.tgz');await writeFile(input,tar([{name:'a',body:'x'},{name:'a',body:'y'}]));await assert.rejects(extractArchive(input,join(root,'duplicate')),/重复/);
  const signal=AbortSignal.abort();await assert.rejects(extractArchive(input,join(root,'cancelled'),{signal}));assert.equal((await readdir(root)).includes('cancelled'),false);
 });
@@ -2243,9 +2265,9 @@ test('候选路径不属于当前工具摘要时在任何编译前失败', async
 
 test('空可选供给不阻断产品取得，npm SRI原件按准确来源复用',async t=>{
  const root=await sandbox(t),body=Buffer.from('sri-original'),entry={url:'https://example.invalid/sri.tgz',integrity:'sha512-'+createHash('sha512').update(body).digest('base64')};
- const file=await acquireArchive(entry,{store:join(root,'first'),optional:join(root,'absent'),fetcher:async()=>new Response(body)});assert.equal(await readFile(file,'utf8'),'sri-original');
+ const file=await acquireArchive(entry,{work:tmpdir(),store:join(root,'first'),optional:join(root,'absent'),fetcher:async()=>new Response(body)});assert.equal(await readFile(file,'utf8'),'sri-original');
  const optional=join(root,'shared/objects'),digest=hash(body),original=join(optional,digest+'.blob');await mkdir(dirname(original),{recursive:true});await writeFile(original,body);await writeFile(join(root,'shared/index.json'),JSON.stringify({schema_version:2,packages:[{archives:[{...entry,sha256:digest}]}],git_sources:[],pods:[]}));
- const cached=await acquireArchive(entry,{store:join(root,'second'),optional,offline:true,fetcher:()=>assert.fail('SRI供给命中联网')});assert.equal(await readFile(cached,'utf8'),'sri-original');
+ const cached=await acquireArchive(entry,{work:tmpdir(),store:join(root,'second'),optional,offline:true,fetcher:()=>assert.fail('SRI供给命中联网')});assert.equal(await readFile(cached,'utf8'),'sri-original');
 });
 
 test('Pod浮动tag必须由产品固定提交闭合，来源漂移或无摘要HTTP发行件失败',()=>{
