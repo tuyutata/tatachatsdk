@@ -1788,9 +1788,17 @@ async function installTool(library,tool,options,visiting=new Set()){
   options.signal?.throwIfAborted();await commitCandidate(canonical,target,{signal:options.signal});value=await lookup(target);library.installed.set(tool.id,value);return value;
  }finally{if(await stat(pending)){await permissions(pending,true);await rm(pending,{recursive:true});}}
 }
-async function parser(kind,options){const entry=parserDefinitions[kind],store=join(options.library.root,'parsers'),parserRoot=join(store,hash(JSON.stringify(entry)));await directoryCheck(options.library.root);await directoryCheck(options.library.work);await directoryCheck(store).catch(async e=>{if(e.code!=='ENOENT')throw e;await directoryCheck(options.library.root);await mkdir(store);});
- if(!await stat(parserRoot)){const file=await acquireArchive(entry,{work:options.library.work,store:join(options.library.root,'archives'),optional:options.optionalDependencies,offline:options.offline,fetcher:options.fetcher,signal:options.signal}),candidate=await fixedScratch(join(await resourceWork(options.library.work),'.parser-'));try{const payload=join(candidate,'payload');await extractArchive(file,payload,{prefix:'package',signal:options.signal});await permissions(candidate,false);await commitCandidate(candidate,parserRoot,{signal:options.signal});}finally{if(await stat(candidate)){await permissions(candidate,true);await rm(candidate,{recursive:true});}}}
- const payload=join(parserRoot,'payload');const mod=createRequire(import.meta.url)(payload);if(kind==='yaml')return text=>mod.parse(text,{uniqueKeys:true});const parse=text=>mod.parse(text);parse.stringify=mod.stringify;return parse;
+async function parser(kind,options){
+ const entry=parserDefinitions[kind],work=await resourceWork(options.library.work),parserRoot=join(work,'parsers',hash(JSON.stringify(entry))),payload=join(parserRoot,'payload');
+ await directoryCheck(options.library.root);await directoryCheck(options.library.work);
+ if(!await stat(payload)){
+  if(await stat(parserRoot))fail('本轮解析器现场不完整');
+  const file=await acquireArchive(entry,{work:options.library.work,store:join(options.library.root,'archives'),optional:options.optionalDependencies,offline:options.offline,fetcher:options.fetcher,signal:options.signal});
+  await directory(parserRoot,true);
+  try{await extractArchive(file,payload,{prefix:'package',signal:options.signal});}
+  catch(error){await rm(parserRoot,{recursive:true,force:true});throw error;}
+ }
+ const mod=createRequire(import.meta.url)(payload);if(kind==='yaml')return text=>mod.parse(text,{uniqueKeys:true});const parse=text=>mod.parse(text);parse.stringify=mod.stringify;return parse;
 }
 async function checkedLock(path){await regular(path);const s=await lstat(path);if(s.size>32*1024**2)fail('锁文件超限');return readFile(path,'utf8');}
 async function packageOriginal(entry,options){return acquireArchive(entry,{work:options.library.work,store:join(options.dependencyRoot||join(options.library.root,'..','rely'),'archives'),optional:options.optionalDependencies,offline:options.offline,fetcher:options.fetcher,signal:options.signal});}
@@ -1817,14 +1825,13 @@ async function gitCheckout(source,target,options){
  const environment={...cleanEnvironment(options.environment),PATH:(await productFoundation(options.library,async(_,t)=>options.library.installed.get(t.id))).path,GIT_CONFIG_NOSYSTEM:'1',GIT_CONFIG_GLOBAL:'/dev/null',GIT_TERMINAL_PROMPT:'0',HOME:options.library.work};
  const run=args=>exec(git,['-c','credential.helper=','-c','core.hooksPath=/dev/null','-c','protocol.file.allow=always',...args],{signal:options.signal,env:environment,maxBuffer:16*1024**2,timeout:600000});
  if(await stat(target)){await directory(target);await directory(join(target,'.git'));return target;}
- const store=join(options.dependencyRoot||join(options.library.root,'..','rely'),'git');await directory(store,true);const object=join(store,hash(JSON.stringify(source)));
- // bundle与其来源/摘要回执一起原子提交，避免并发读到只有bundle而没有回执的中间状态。
- const locateBundle=async path=>{const bundle=join(path,'source.bundle');return await stat(bundle)?bundle:null;};
- let bundle=await locateBundle(object);if(!bundle){const candidate=await fixedScratch(join(await resourceWork(options.library.work),'.git-'));try{const file=join(candidate,'source.bundle');let supplied;
+ // Git bundle仅在本任务内用于准确提交检出；原件库只保留供给方已有的锁定来源。
+ const bundle=join(await resourceWork(options.library.work),'git-bundles',hash(JSON.stringify(source))+'.bundle');await directory(dirname(bundle),true);
+ if(!await stat(bundle)){const candidate=await fixedScratch(join(await resourceWork(options.library.work),'.git-'));try{const file=join(candidate,'source.bundle');let supplied;
    if(options.optionalDependencies){const index=join(dirname(options.optionalDependencies),'index.json');if(await stat(index)){await regular(index);if((await lstat(index)).size>32*1024**2)fail('Git可选索引超限');const d=await readDependencySupply(options.optionalDependencies),coordinate='git+'+source.url+'?rev='+source.ref+'#'+source.ref,entry=d.git_sources?.find(x=>x.source===coordinate);if(entry){if(!/^[a-f0-9]{64}$/u.test(entry.sha256||''))fail('Git供给摘要无效');const original=join(options.optionalDependencies,entry.sha256+'.blob');await regular(original);supplied=original;}}}
    if(supplied)await copyFile(supplied,file,constants.COPYFILE_EXCL);else{if(options.offline)fail('离线缺少Git提交');const checkout=join(candidate,'repository');await mkdir(checkout);await run(['init','--quiet',checkout]);await run(['-C',checkout,'fetch','--no-tags',source.url,source.ref]);await run(['-C',checkout,'update-ref','refs/heads/locked',source.ref]);await run(['-C',checkout,'bundle','create',file,'refs/heads/locked']);await rm(checkout,{recursive:true});}
-   await writeFile(join(candidate,'receipt.json'),JSON.stringify({request:JSON.stringify(source),sha256:hash(await readFile(file))}),{flag:'wx'});await permissions(candidate,false);await commitCandidate(candidate,object,{signal:options.signal});bundle=await locateBundle(object);
-  }finally{if(await stat(candidate)){await permissions(candidate,true);await rm(candidate,{recursive:true});}}}
+   options.signal?.throwIfAborted();await rename(file,bundle);
+  }finally{await rm(candidate,{recursive:true,force:true});}}
  await directory(dirname(target),true);const pending=await fixedScratch(join(dirname(target),'.checkout-'));try{const checkout=join(pending,'source');await run(['clone','--quiet','--no-checkout','--',bundle,checkout]);await run(['-C',checkout,'remote','set-url','origin',source.url]);await run(['-C',checkout,'checkout','--quiet','--detach',source.ref]);options.signal?.throwIfAborted();await rename(checkout,target);}finally{await rm(pending,{recursive:true});}return gitCheckout(source,target,options);
 }
 // Git工作区包转为目录源时展开workspace继承，并把相对path依赖固定到同一锁中的准确版本。
@@ -1888,18 +1895,16 @@ async function preparePods(lockfile,work,options){const parse=await parser('yaml
  const handled=new Set();for(const item of lock.PODS||[]){const record=typeof item==='string'?item:Object.keys(item)[0],m=/^([^/( ]+)(?:\/[^ (]+)? \(([^)]+)\)$/u.exec(record);if(!m)fail('Pod锁记录无效');const [,name,version]=m;if(local.has(name)||handled.has(name))continue;handled.add(name);
   const checksum=lock['SPEC CHECKSUMS']?.[name];if(!/^[a-f0-9]{40}$/u.test(checksum||''))fail('Pod缺少锁定spec摘要');const key=version+'-'+checksum.slice(0,5),specPath=join(podHome,'cache/Pods/Specs/Release',name,key+'.podspec.json'),release=join(podHome,'cache/Pods/Release',name,key);
   const candidates=(supplied?.pods||[]).filter(x=>x.name===name&&x.version===version&&x.checksum===checksum);if(candidates.length>1)fail('Pod供给坐标重复');if(candidates.length){await materializePodSupply(candidates[0],options.optionalDependencies,podHome,{signal:options.signal});restored=true;}
-  const store=join(options.dependencyRoot||join(options.library.root,'..','rely'),'pods');await directory(store,true);const original=join(store,hash(JSON.stringify([name,version,checksum])));
-  const locatePod=async path=>await stat(join(path,'payload'))?path:null;
-  let object=await locatePod(original);if(!object){const candidate=await fixedScratch(join(await resourceWork(options.library.work),'.pod-'));try{const payload=join(candidate,'payload');await mkdir(payload);const specFile=join(payload,'spec.json');
+  // spec与源码只进入本轮CocoaPods视图，不另存共享派生Pod对象。
+  if(!await stat(specPath)||!await stat(release)){const candidate=await fixedScratch(join(await resourceWork(options.library.work),'.pod-'));try{const payload=join(candidate,'payload');await mkdir(payload);const specFile=join(payload,'spec.json');
     if(await stat(specPath))await copyFile(specPath,specFile,constants.COPYFILE_EXCL);else{if(options.offline)fail('离线缺少Pod spec');const md5=createHash('md5').update(name).digest('hex'),url='https://cdn.cocoapods.org/Specs/'+md5[0]+'/'+md5[1]+'/'+md5[2]+'/'+name+'/'+version+'/'+name+'.podspec.json';await writeFile(specFile,await podSpecBytes(url,options),{flag:'wx'});}
     const spec=await readPodSpec(specFile,name,version,checksum,options),coordinate=podSourceCoordinate(spec),source=join(payload,'source');
     if(await stat(release)){await copyPodSource(release,source);}else if(coordinate.ref){const checkout=join(candidate,'checkout');await gitCheckout(coordinate,checkout,options);await copyPodSource(checkout,source);await rm(checkout,{recursive:true});}else{const file=await packageOriginal(coordinate,options);await extractArchive(file,source,{signal:options.signal});}
     if(!await stat(release)&&spec.prepare_command){if(typeof spec.prepare_command!=='string')fail('Pod准备命令不是锁定文本');const foundation=await productFoundation(options.library,async(_,t)=>options.library.installed.get(t.id));await exec(foundation.tools.bash,['-ec',spec.prepare_command],{cwd:source,signal:options.signal,env:{...cleanEnvironment(options.environment),PATH:foundation.path,HOME:options.library.work,COCOAPODS_VERSION:options.library.tools.find(x=>x.id==='cocoapods').version}});}
-    await writeFile(join(candidate,'receipt.json'),JSON.stringify({request:JSON.stringify(coordinate)}),{flag:'wx'});await permissions(candidate,false);await commitCandidate(candidate,original,{signal:options.signal});object=await locatePod(original);
-   }finally{if(await stat(candidate)){await permissions(candidate,true);await rm(candidate,{recursive:true});}}}
-  const spec=await readPodSpec(join(object,'payload/spec.json'),name,version,checksum,options),coordinate=podSourceCoordinate(spec),proof=JSON.parse(await readFile(join(object,'receipt.json'),'utf8'));
-  if(!await stat(specPath)){await directory(dirname(specPath),true);await copyFile(join(object,'payload/spec.json'),specPath,constants.COPYFILE_EXCL);}await readPodSpec(specPath,name,version,checksum,options);
-  if(!await stat(release))await copyPodSource(join(object,'payload/source'),release);
+    if(!await stat(specPath)){await directory(dirname(specPath),true);await copyFile(specFile,specPath,constants.COPYFILE_EXCL);}await readPodSpec(specPath,name,version,checksum,options);
+    if(!await stat(release))await copyPodSource(source,release);
+   }finally{await rm(candidate,{recursive:true,force:true});}}
+  await readPodSpec(specPath,name,version,checksum,options);
  }
  const version=options.library.tools.find(x=>x.id==='cocoapods')?.version,file=join(podHome,'cache/Pods/VERSION');await directory(dirname(file),true);if(await stat(file)){await regular(file);}else await writeFile(file,version,{flag:'wx'});
  checkCocoaPodsResources(lockfile,podHome);return {restored};
@@ -2651,6 +2656,82 @@ test('XZ名称预检与解包失败均清理本轮目标，取消不调用提取
   else{await assert.rejects(action,/提取失败|取消XZ/);assert.equal((await readdir(area)).includes(mode),false);}
   assert.equal(extractions,mode==='cancel'?0:1);assert.deepEqual(await readFile(input),Buffer.from([0xfd,0x37]));
  }
+});
+
+test('锁解析器只在本轮现场解包复用，失败不发布共享解析器目录',async t=>{
+ const work=await sandbox(t),library={root:join(work,'library'),work,installed:new Map()},options={library,offline:true};
+ await mkdir(library.root);
+ const input=join(work,'parser.tgz'),broken=join(work,'broken.tgz');
+ await writeFile(input,tar([
+  {name:'package/package.json',body:'{"main":"index.js"}'},
+  {name:'package/index.js',body:'module.exports={parse(text){return {text}}};'},
+ ]));
+ await writeFile(broken,tar([{name:'../escape',body:'invalid'}]));
+ let acquired=0;
+ const supply={toolRoot:library.root,acquireOriginal:async()=>{acquired++;return input;},publishCandidate:()=>assert.fail('解析器不得提交共享目录')};
+ const first=await resourceSupplies.run(supply,()=>parser('yaml',options));
+ assert.deepEqual(first('locked'),{text:'locked'});
+ const second=await resourceSupplies.run(supply,()=>parser('yaml',options));
+ assert.deepEqual(second('again'),{text:'again'});assert.equal(acquired,1);
+ assert.equal(await stat(join(library.root,'parsers')),null);
+ const local=join(work,'resource-pending','parsers',hash(JSON.stringify(parserDefinitions.yaml)));
+ assert.equal((await lstat(local)).isDirectory(),true);
+ await rm(local,{recursive:true});
+ await assert.rejects(resourceSupplies.run({...supply,acquireOriginal:async()=>broken},()=>parser('yaml',options)),/越界/);
+ assert.equal(await stat(local),null);
+ await assert.rejects(resourceSupplies.run({...supply,acquireOriginal:async()=>{throw Error('离线缺少原件');}},()=>parser('yaml',options)),/离线缺少原件/);
+ assert.equal(await stat(local),null);
+});
+
+test('Pod锁定spec与源码只物化到本轮视图，离线复用不发布共享目录',async t=>{
+ const area=await sandbox(t),work=join(area,'pod-task');await mkdir(work);
+ const library={root:join(work,'library'),work,installed:new Map(),tools:[{id:'cocoapods',version:'1.17.0'}]};
+ await mkdir(library.root);
+ const checksum='a'.repeat(40),sourceBytes=tar([{name:'source.txt',body:'locked-source'}]),sourceUrl='https://example.invalid/Example.tgz';
+ const spec={name:'Example',version:'1.0.0',source:{http:sourceUrl,sha256:hash(sourceBytes)}};
+ const lock={PODS:['Example (1.0.0)'],'SPEC CHECKSUMS':{Example:checksum}};
+ const parserArchive=join(work,'parser.tgz'),sourceArchive=join(work,'source.tgz'),lockfile=join(work,'Podfile.lock');
+ await writeFile(parserArchive,tar([
+  {name:'package/package.json',body:'{"main":"index.js"}'},
+  {name:'package/index.js',body:'module.exports={parse(){return '+JSON.stringify(lock)+';}};'},
+ ]));
+ await writeFile(sourceArchive,sourceBytes);
+ await writeFile(lockfile,'PODS:\n  - Example (1.0.0)\nSPEC CHECKSUMS:\n  Example: '+checksum+'\n');
+ let originals=0,requests=0;
+ const supply={toolRoot:library.root,acquireOriginal:async entry=>{originals++;return entry.url===parserDefinitions.yaml.url?parserArchive:entry.url===sourceUrl?sourceArchive:assert.fail('未知原件');},publishCandidate:()=>assert.fail('Pod不得提交共享目录')};
+ const fetcher=async url=>{requests++;assert.match(url,/^https:\/\/cdn\.cocoapods\.org\/Specs\//u);return Response.json(spec);};
+ const podWork=join(work,'pod');
+ await resourceSupplies.run(supply,()=>preparePods(lockfile,podWork,{library,fetcher}));
+ assert.equal(await readFile(join(podWork,'cocoapods/cache/Pods/Release/Example','1.0.0-'+checksum.slice(0,5),'source.txt'),'utf8'),'locked-source');
+ assert.equal(await stat(join(library.root,'parsers')),null);
+ assert.equal(await stat(join(work,'rely/pods')),null);
+ await resourceSupplies.run(supply,()=>preparePods(lockfile,podWork,{library,offline:true,fetcher:()=>assert.fail('离线复用不得联网')}));
+ assert.equal(originals,2);assert.equal(requests,1);
+ await assert.rejects(resourceSupplies.run(supply,()=>preparePods(lockfile,join(work,'failed'),{library,fetcher:async()=>new Response(null,{status:503})})),/官方来源响应失败/);
+ assert.equal(await stat(join(work,'failed/cocoapods/cache/Pods/Release/Example')),null);
+});
+
+test('锁定Git bundle只在本轮任务检出，离线缺原件失败',async t=>{
+ const {execFileSync}=await import('node:child_process');
+ const work=await sandbox(t),repository=join(work,'repository'),bundle=join(work,'source.bundle'),git='/usr/bin/git';
+ const run=(...args)=>execFileSync(git,args,{encoding:'utf8'}).trim();
+ run('init','--quiet',repository);await writeFile(join(repository,'source.txt'),'locked');
+ run('-C',repository,'add','source.txt');run('-C',repository,'-c','user.name=Fixture','-c','user.email=fixture@example.invalid','commit','--quiet','-m','fixture');
+ const ref=run('-C',repository,'rev-parse','HEAD');run('-C',repository,'bundle','create',bundle,'HEAD');
+ const bytes=await readFile(bundle),digest=hash(bytes),supply=join(work,'supply'),objects=join(supply,'objects');await mkdir(objects,{recursive:true});
+ await writeFile(join(objects,digest+'.blob'),bytes);
+ const source={url:'https://github.com/example/locked.git',ref},coordinate='git+'+source.url+'?rev='+ref+'#'+ref;
+ await writeFile(join(supply,'index.json'),JSON.stringify({schema_version:2,packages:[],git_sources:[{source:coordinate,sha256:digest}],pods:[]}));
+ const library={root:join(work,'library'),work,installed:new Map([['git',{path:git}]]),gateLinuxFoundation:{path:'/usr/bin:/bin',tools:{}}};await mkdir(library.root);
+ const target=join(work,'checkout'),options={library,optionalDependencies:objects,offline:true,environment:{HOME:work}};
+ await gitCheckout(source,target,options);
+ assert.equal(await readFile(join(target,'source.txt'),'utf8'),'locked');
+ assert.equal(run('-C',target,'rev-parse','HEAD'),ref);
+ assert.equal(await stat(join(work,'rely/git')),null);
+ assert.equal((await readdir(join(work,'resource-pending/git-bundles'))).length,1);
+ await rm(target,{recursive:true});await rm(join(work,'resource-pending/git-bundles'),{recursive:true});
+ await assert.rejects(gitCheckout(source,target,{...options,optionalDependencies:undefined}),/离线缺少Git提交/);
+ assert.equal(await stat(target),null);
 });
 
 
