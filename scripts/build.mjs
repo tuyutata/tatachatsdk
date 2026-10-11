@@ -427,6 +427,8 @@ export function resourceEnvironment(platform,work,receipt,base={}) {
   npm_config_offline:'true',npm_config_audit:'false',npm_config_fund:'false'};
  const allowedEnvironment=new Set([prefix+'_RESOURCE_MODE','PRODUCT_WORK_DIR','PRODUCT_BASH_BIN','PRODUCT_RSYNC_BIN','PATH','DEVELOPER_DIR','SDKROOT','DART_EXECUTABLE','XCODEBUILD','CODESIGN','SECURITY','XCRUN','XCODE_SELECT','CC','CXX','SWIFT','OTOOL','INSTALL_NAME_TOOL','LIPO','MAKE','AR','RANLIB','NM','STRIP','LLVM_NM','LD','LDCXX','CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER','ANDROID_HOME','ANDROID_SDK_ROOT','ANDROID_NDK_HOME','ANDROID_USER_HOME','ANDROID_EMULATOR_HOME','GRADLE_INIT_SCRIPT','GRADLE_USER_HOME']);
  if(Object.keys(receipt.environment||{}).some(key=>!allowedEnvironment.has(key)))fail('资源回执包含未声明环境或注入变量');
+ // 原生脚本的源码根由本产品定位；资源回执和宿主环境均不能覆盖。
+ env[prefix+'_SOURCE_ROOT']=sourceRoot();
  for(const tool of declared.tools) {
   const value=receipt.tools[tool.id];
   if(!value||typeof value.path!=='string'||!isAbsolute(value.path)||resolve(value.path)!==value.path)fail('缺少准确版本的工具：'+tool.id);
@@ -2885,10 +2887,12 @@ test('资源回执隔离产品、平台、工作根，直接交付工具路径�
   assert.throws(()=>resourceEnvironment(platform,work,{...receipt,offline:false}),/身份/);
   assert.throws(()=>resourceEnvironment(platform,work,{...receipt,tools:{}}),/工具/);
   assert.throws(()=>resourceEnvironment(platform,work,{...receipt,environment:{NODE_OPTIONS:'--inspect'}}),/注入/);
+  assert.throws(()=>resourceEnvironment(platform,work,{...receipt,environment:{TATACHATSDK_SOURCE_ROOT:'/outside'}}),/注入/);
   const id=Object.keys(receipt.tools)[0];assert.doesNotThrow(()=>resourceEnvironment(platform,work,{...receipt,tools:{...receipt.tools,[id]:{...receipt.tools[id],version:'informational'}}}));
   const env=resourceEnvironment(platform,work,receipt,{HOME:'/home',TOKEN:'private',INJECTED_CONTEXT:'/private'});
   assert.equal(env.TOKEN,undefined);assert.equal(env.INJECTED_CONTEXT,undefined);assert.equal(env.CARGO_NET_OFFLINE,'true');
   assert.equal(env[contract.product_id.toUpperCase()+'_WORK_DIR'],work);
+  assert.equal(env.TATACHATSDK_SOURCE_ROOT,root);
  }finally{removeFixture(work,{recursive:true});}
 });
 test('原生命令优先使用产品Python，已有映射漂移时拒绝',()=>{
