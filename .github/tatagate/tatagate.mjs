@@ -79,7 +79,7 @@ export function gateContract() {
 export function validateRepositoryIdentity(root) {
   if (root !== productRoot || realpathSync(root) !== root) fail('只接受本产品真实根');
   const origin = git(root, ['remote', 'get-url', 'origin']).stdout.trim();
-  if (origin !== 'https://github.com/tuyutata/tatachatsdk.git') fail('所属HTTPS仓库身份无效');
+  if (!['https://github.com/tuyutata/tatachatsdk','https://github.com/tuyutata/tatachatsdk.git'].includes(origin)) fail('所属HTTPS仓库身份无效');
   if (!tataGateBranch(root)) {
     fail('只接受本仓main');
   }
@@ -286,7 +286,7 @@ export function tataGateContext(repositoryRoot, input=process.env, event=JSON.pa
   const git=input.PRODUCT_GIT_BIN || '/usr/bin/git';
   const read=args=>tataGateExec(git,['-c','core.hooksPath=/dev/null','-C',repositoryRoot,...args],{encoding:'utf8'}).trim();
   if (read(['rev-parse','HEAD']) !== event.after || read(['rev-parse','--show-toplevel']) !== repositoryRoot
-    || read(['remote','get-url','--all','origin']) !== 'https://github.com/'+tataGateOwner+'.git') {
+    || !['https://github.com/'+tataGateOwner,'https://github.com/'+tataGateOwner+'.git'].includes(read(['remote','get-url','--all','origin']))) {
     throw Error('本仓塔塔门禁GitHub提交或来源无效');
   }
   if(read(['status','--porcelain=v1','--untracked-files=all']))throw Error('本仓塔塔门禁GitHub检出存在未提交改动');
@@ -452,6 +452,8 @@ if(process.env.NODE_TEST_CONTEXT && process.argv.length===2 && process.argv[1]==
         GITHUB_WORKFLOW_REF:tataGateOwner+'/.github/workflows/tatagate.yml@refs/heads/main',PRODUCT_GIT_BIN:git};
       const event={repository:{full_name:tataGateOwner},ref:'refs/heads/main',before,after};
       assert.equal(tataGateContext(directory,input,event).after,after);
+      invoke(['remote','set-url','origin','https://github.com/'+tataGateOwner]);assert.equal(tataGateContext(directory,input,event).after,after);
+      invoke(['remote','set-url','origin','https://github.com/'+tataGateOwner+'.git']);
       assert.throws(()=>tataGateContext(directory,input,{...event,before:'a'.repeat(40)}),/祖先/u);
       writeFileSync(join(directory,'late'),'new change');assert.throws(()=>tataGateContext(directory,input,event),/未提交改动/u);rmSync(join(directory,'late'));
       for(const changed of [{...input,GITHUB_SHA:before},{...input,GITHUB_REPOSITORY:'example/other'},{...input,GITHUB_WORKFLOW_REF:tataGateOwner+'/.github/workflows/release-sdk.yml@refs/heads/main'}])assert.throws(()=>tataGateContext(directory,changed,event));
