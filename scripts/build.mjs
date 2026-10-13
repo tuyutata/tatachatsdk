@@ -3,10 +3,14 @@
 import {spawn,spawnSync} from 'node:child_process';
 import {AsyncLocalStorage} from 'node:async_hooks';
 import {Socket} from 'node:net';
-import {rmSync,constants as fsConstants,chmodSync,closeSync,openSync,readlinkSync,unlinkSync,copyFileSync,existsSync,lstatSync,mkdirSync,readFileSync,readdirSync,realpathSync,symlinkSync,writeFileSync} from 'node:fs';
-import {dirname,isAbsolute,join,parse,relative,resolve,sep} from 'node:path';
+import {rmSync,rmdirSync,constants as fsConstants,chmodSync,closeSync,openSync,readlinkSync,unlinkSync,copyFileSync,existsSync,lstatSync,mkdirSync,readFileSync,readdirSync,realpathSync,symlinkSync,writeFileSync} from 'node:fs';
+import {basename,dirname,isAbsolute,join,parse,relative,resolve,sep} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {createHash} from 'node:crypto';
+import {randomUUID as testRandomUUID} from 'node:crypto';
+// 本仓测试进程使用独立会话，子进程继承身份；正式Build仍使用固定平台现场。
+if(process.env.NODE_TEST_CONTEXT&&!process.env.PRODUCT_TEST_SESSION)process.env.PRODUCT_TEST_SESSION=testRandomUUID();
+const testSession=process.env.NODE_TEST_CONTEXT&&/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/u.test(process.env.PRODUCT_TEST_SESSION||'')?process.env.PRODUCT_TEST_SESSION:null;
 import * as viewFs from 'node:fs/promises';
 
 
@@ -23,9 +27,11 @@ const sessions=new AsyncLocalStorage();
 const scopes=new Set(['build','test']);
 const fail=message=>{throw Error(product+' target：'+message);};
 function fixedWork(scope){
- if(scope==='build'||scope==='test')return join(root,'target',scope);
+ const testRoot=testSession?join(root,'target/test/sessions',testSession):null;
+ if(scope==='test')return testRoot||join(root,'target/test');
+ if(scope==='build')return join(root,'target/build');
  if(typeof scope==='string'&&scope.startsWith('build/')){
-  const platform=scope.slice(6);if(Object.hasOwn(contract.platforms,platform))return join(root,'target/build',platform);
+  const platform=scope.slice(6);if(Object.hasOwn(contract.platforms,platform))return testRoot?join(testRoot,'build',platform):join(root,'target/build',platform);
  }
  fail('工作根用途无效');
 }
@@ -137,7 +143,7 @@ function empty(work,keep=[],nonce){
  for(const name of fs.readdirSync(work)){if(keep.includes(name))continue;const path=join(work,name);removeTree(path);}
  const after=directory(work);if(before.dev!==after.dev||before.ino!==after.ino||fs.readdirSync(work).some(name=>!keep.includes(name)))fail('固定工作目录未完全清空或被替换');
 }
-function short(work,action){const path=isBuildWork(work)?join(fixedWork('build'),'.claim-'+relative(fixedWork('build'),work)):join(work,'.claim.lock');try{fs.mkdirSync(path,{mode:0o700});}catch(error){if(error.code!=='EEXIST')throw error;
+function short(work,action){const path=isBuildWork(work)?join(dirname(work),'.claim-'+basename(work)):join(work,'.claim.lock');try{fs.mkdirSync(path,{mode:0o700});}catch(error){if(error.code!=='EEXIST')throw error;
  const record=join(path,'owner.json');let holder=null;
  if(fs.existsSync(record)){regular(record);try{holder=JSON.parse(fs.readFileSync(record,'utf8'));}catch{fail('领取锁损坏');}}
  const active=readOwner(work);
@@ -242,7 +248,7 @@ function finishFixedWork(work,{run_id}={}){
   empty(work,['.claim.lock'],owner?.nonce);if(isBuildWork(work))fs.rmdirSync(work);
  });return value;
 }
-function taskScope(work){checkFixedWork(work);return work===fixedWork('test')?'test':'build/'+relative(fixedWork('build'),work);}
+function taskScope(work){checkFixedWork(work);if(work===fixedWork('test'))return 'test';const platform=Object.keys(contract.platforms).find(name=>work===fixedWork('build/'+name));if(!platform)fail('编译平台现场无效');return 'build/'+platform;}
 
 
 return {fixedWork,checkFixedWork,checkScratchPath,fixedScratch,assertTargetTopology,clearFixedWork,claimFixedWork,trackFixedProcess,trackWorkProcess,workEnvironment,prepareSourceView,retainWork,releaseFixedWork,withFixedWorkSync,withFixedWork,finishFixedWork,taskScope,ensureDependencyVolume};
@@ -540,7 +546,8 @@ export async function build(platform,work,receipt,base) {
  if(!shell)fail('缺少显式Shell资源');
   env.TATACHATSDK_WORK_DIR=join(work,'work/native');env.TATACHATSDK_NATIVE_OUTPUT_DIR=join(work,'work/output');
   for(const path of ['work/native','work/output'])mkdirSync(join(work,path),{recursive:true});
-  await run(shell,['--noprofile','--norc','-c',BUILD_SHELL_SOURCES.native,'tatachatsdk-native','host'],env);
+  for(const mode of executions.getStore()?.releaseTarget?[executions.getStore().releaseTarget]:['host'])
+    await run(shell,['--noprofile','--norc','-c',BUILD_SHELL_SOURCES.native,'tatachatsdk-native',mode],env);
 
  return completeBuild(platform,work,receipt,env);
 }
@@ -593,13 +600,66 @@ export function outputDigest(path) {
 }
 
 // 宿主完整Build先由调用方消费回执、安装并收尾；独立执行由本产品清空现场。
-// 编译任务先执行本仓现有回归；测试清单只归所属产品Build接口。
-export function testFiles(){return ['scripts/build.mjs','scripts/publish.mjs','.github/workflows/release-sdk.mjs'];}
-export async function testTools(){return [];}
+// 本仓完整Build在资源回执后运行自己的测试，控制台不选择测试清单。
+function testFiles(){return ['scripts/build.mjs','scripts/publish.mjs'];}
+// 产品在资源回执后运行自身Node回归；控制台只调用完整Build。
+async function runProductTests(platform,work,receipt,base){
+ const env=resourceEnvironment(platform,work,receipt,base),node=receipt.tools.node;
+ if(!node||node.version!==contract.platforms[platform].tools.find(value=>value.id==='node')?.version
+  ||!isAbsolute(node.path)||realpathSync(node.path)!==node.path)throw Error('本仓测试缺少准确Node入口');
+ // Node测试运行器自行设置测试子进程身份；预设NODE_TEST_CONTEXT会让它跳过全部文件。
+ const testEnvironment={HOME:work,USER:base.USER,LOGNAME:base.LOGNAME,LANG:'C',LC_ALL:'C',PATH:env.PATH,
+  PRODUCT_GIT_BIN:env.GIT};
+ const files=testFiles().map(file=>join(root,file));
+ for(const file of files){const info=lstatSync(file);if(!info.isFile()||info.isSymbolicLink()||realpathSync(file)!==file)throw Error('本仓测试文件无效');}
+ const digests=files.map(file=>createHash('sha256').update(readFileSync(file)).digest('hex'));
+ await runBuildProcess(node.path,['--test','--test-concurrency=1',...files],testEnvironment,root);
+ if(files.some((file,index)=>createHash('sha256').update(readFileSync(file)).digest('hex')!==digests[index]))throw Error('本仓测试期间源码改变');
+}
+if(testSession&&process.argv.length===2&&testFiles().some(file=>join(root,file)===resolve(process.argv[1]||'')))process.on('exit',()=>{
+ // 只清当前测试进程随机会话，活跃工具或身份不符就保留现场并失败。
+ try{
+  for(const platform of Object.keys(contract.platforms)){const work=fixedWork('build/'+platform);if(existsSync(work))finishFixedWork(work);}
+  const session=fixedWork('test');if(existsSync(session)){finishFixedWork(session);rmdirSync(session);}
+  const sessions=join(root,'target/test/sessions');if(existsSync(sessions)&&readdirSync(sessions).length===0)rmdirSync(sessions);
+ }catch(error){process.stderr.write('产品测试会话收尾失败：'+error.message+'\n');process.exitCode=1;}
+});
+if(testSession&&process.argv.length===2&&resolve(process.argv[1]||'')===fileURLToPath(import.meta.url)){
+ const {test}=await import('node:test'),{default:assert}=await import('node:assert/strict');
+ test('回归固定根属于本轮会话，正式平台根保持原位',()=>{
+  assert.equal(fixedWork('test'),join(root,'target/test/sessions',testSession));
+  for(const platform of Object.keys(contract.platforms))assert.equal(fixedWork('build/'+platform),join(fixedWork('test'),'build',platform));
+ });
+ test('正式入口在领取工作根前拒绝合成阶段',()=>{
+  const module=JSON.stringify(fileURLToPath(import.meta.url));
+  const child=spawnSync(process.execPath,['--input-type=module','-e','import {execute} from '+module+';await execute("bad","/bad",{}, {stages:{}});'],{env:{PATH:process.env.PATH,HOME:process.env.HOME},encoding:'utf8'});
+  assert.notEqual(child.status,0);assert.match(child.stderr,/合成阶段仅用于本仓测试/);
+ });
+
+}
+
 
 export async function execute(platform,work,request={},options={}) {
+ if(options.stages&&!process.env.NODE_TEST_CONTEXT)fail('合成阶段仅用于本仓测试');
+ const environment=options.environment||process.env;
+ if(options.consume){
+  const workflow={"sdk": "sdk.yml"}[platform];
+  if(typeof options.consume!=='function'||!workflow||environment.GITHUB_ACTIONS!=='true'
+   ||environment.GITHUB_REPOSITORY!=='tuyutata/tatachatsdk'
+   ||environment.GITHUB_EVENT_NAME!=='workflow_dispatch'||environment.GITHUB_REF!=='refs/heads/main'
+   ||environment.GITHUB_WORKFLOW_REF!==environment.GITHUB_REPOSITORY+'/.github/workflows/'+workflow+'@refs/heads/main'
+   ||!/^[a-f0-9]{40}$/u.test(environment.GITHUB_SHA||'')
+   ||spawnSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).stdout?.trim()!==environment.GITHUB_SHA)
+   fail('GitHub正式编译消费身份无效');
+  if(!['android','ios','macos'].includes(environment.TATACHATSDK_RELEASE_TARGET))
+   fail('GitHub正式编译目标无效');
+ }
  checkFixedWork(work,{create:true});
- return withFixedWork(taskScope(work),()=>executeTask(platform,work,request,options),{run_id:request.run_id,environment:options.environment||process.env,retain:(options.environment||process.env).PRODUCT_RESOURCE_FD==='4'||(options.environment||process.env).PRODUCT_HOST_FD==='3'});
+ return withFixedWork(taskScope(work),async()=>{
+  const result=await executeTask(platform,work,request,options);
+  if(options.consume)await options.consume(result);
+  return result;
+ },{run_id:request.run_id,environment,retain:environment.PRODUCT_RESOURCE_FD==='4'||environment.PRODUCT_HOST_FD==='3'});
 }
 async function executeTask(platform,work,request={},options={}) {
  checkWork(work);platformContract(platform);
@@ -613,7 +673,9 @@ async function executeTask(platform,work,request={},options={}) {
  if(existsSync(resultFile))fail('本轮完整Build已有结果，禁止复用旧终态');
  const handle=openSync(lock,'wx',0o600);closeSync(handle);
  const cancellation=new AbortController(),abort=()=>cancellation.abort();options.signal?.addEventListener('abort',abort,{once:true});if(options.signal?.aborted)abort();
- const state={signal:cancellation.signal,cancellation,host:options.host,unconfirmed:false,finished:false};
+ const state={signal:cancellation.signal,cancellation,host:options.host,
+  releaseTarget:options.consume?(options.environment||process.env).TATACHATSDK_RELEASE_TARGET:null,
+  unconfirmed:false,finished:false};
  try{return await executions.run(state,async()=>{
   const stages=options.stages||{requirements,resources:(...args)=>resources(...args),prepare,build};
   const resourcesOptions={signal:state.signal,offline:Boolean(options.offline),environment:options.environment||process.env};
@@ -624,13 +686,15 @@ async function executeTask(platform,work,request={},options={}) {
   }
   await stages.requirements(platform,work);state.signal.throwIfAborted();
   let receipt=await stages.resources(platform,work,request,resourcesOptions);state.signal.throwIfAborted();
+  if(!options.stages)await runProductTests(platform,work,receipt,resourcesOptions.environment);
+  state.signal.throwIfAborted();
   await stages.prepare(platform,work,receipt,resourcesOptions.environment);state.signal.throwIfAborted();
   await stages.requirements(platform,work);
   receipt=await stages.resources(platform,work,receipt,resourcesOptions);state.signal.throwIfAborted();
   const result=await stages.build(platform,work,receipt,resourcesOptions.environment);state.signal.throwIfAborted();
   checkBuildResult(result,platform,work,request.run_id);
   writeFileSync(resultFile,JSON.stringify(result)+'\n',{flag:'wx',mode:0o600});return result;
- });}catch(error){if(String(error?.message).includes('退出未确认'))state.unconfirmed=true;throw error;}finally{state.finished=true;state.socket?.destroy();state.resourceClient?.close?.();options.signal?.removeEventListener('abort',abort);if(!state.unconfirmed){unlinkSync(lock);if((options.environment||process.env).PRODUCT_RESOURCE_FD!=='4'&&(options.environment||process.env).PRODUCT_HOST_FD!=='3')clearWork(work);}}
+ });}catch(error){if(String(error?.message).includes('退出未确认'))state.unconfirmed=true;throw error;}finally{state.finished=true;state.socket?.destroy();state.resourceClient?.close?.();options.signal?.removeEventListener('abort',abort);if(!state.unconfirmed){unlinkSync(lock);if(!options.consume&&(options.environment||process.env).PRODUCT_RESOURCE_FD!=='4'&&(options.environment||process.env).PRODUCT_HOST_FD!=='3')clearWork(work);}}
 }
 export function checkBuildResult(value,platform,work,runId) {
  const sdk=platformContract(platform);
@@ -665,6 +729,824 @@ export function cleanShellPaths(args,environment=process.env){
 }
 
 
+// 单一正式 SDK 包的组装和验真归本产品编译入口；外部分发留在 publish.mjs。
+const releaseAssets=await (async()=>{
+ const {mkdirSync,constants:fsConstants}=await import('node:fs');
+ const {access,chmod,copyFile,lstat,mkdir,mkdtemp,readFile,readdir,realpath,symlink,rm,writeFile}=await import('node:fs/promises');
+ const {gzipSync,gunzipSync}=await import('node:zlib');
+ const {createHash}=await import('node:crypto');
+ const {basename,dirname,isAbsolute,join,posix,resolve,sep}=await import('node:path');
+ const {fileURLToPath}=await import('node:url');
+const PRODUCT_ID = 'tatachatsdk';
+const PACKAGE_NAME = 'tatachat_sdk';
+const ARCHIVE_NAME = 'tatachatsdk.tgz';
+const MANIFEST_NAME = 'release-manifest.json';
+const CHECKSUMS_NAME = 'SHA256SUMS';
+const RELEASE_ASSETS = [ARCHIVE_NAME];
+const SOURCE_ENTRIES = [
+  'LICENSE',
+  'pubspec.yaml',
+  'pubspec.lock',
+  'ios',
+  'lib',
+  'native',
+  'stickers',
+];
+const GENERATED_COMPONENTS = new Set([
+  '.dart_tool',
+  '.git',
+  '.idea',
+  '.DS_Store',
+  'build',
+  'target',
+]);
+const PLATFORM_ARTIFACTS = [
+  {
+    platform: 'android',
+    architecture: 'arm64-v8a',
+    source: 'android/libtatachat_sdk.so',
+    path: 'prebuilt/android-arm64/libtatachat_sdk.so',
+  },
+  {
+    platform: 'ios',
+    architecture: 'arm64',
+    source: 'ios/TataChatSDK.xcframework',
+    path: 'prebuilt/ios-arm64/TataChatSDK.xcframework',
+    requiredFiles: [
+      'Info.plist',
+      'ios-arm64/TataChatSDK.framework/TataChatSDK',
+      'ios-arm64/TataChatSDK.framework/Info.plist',
+      'ios-arm64-simulator/TataChatSDK.framework/TataChatSDK',
+      'ios-arm64-simulator/TataChatSDK.framework/Info.plist',
+    ],
+  },
+  {
+    platform: 'macos',
+    architecture: 'arm64',
+    source: 'macos/libtatachat_sdk.dylib',
+    path: 'prebuilt/macos/libtatachat_sdk.dylib',
+  },
+];
+
+function fail(message) {
+  throw new Error(message);
+}
+
+function sha256(value) {
+  return createHash('sha256').update(value).digest('hex');
+}
+
+function assertExactKeys(value, keys, label) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    fail(`${label} 必须是对象`);
+  }
+  const actual = Object.keys(value).sort();
+  const expected = [...keys].sort();
+  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+    fail(`${label} 字段不符合正式契约`);
+  }
+}
+
+function normalizeRelativePath(value) {
+  const normalized = value.split(sep).join('/');
+  if (
+    normalized.length === 0 ||
+    normalized.startsWith('/') ||
+    normalized.includes('\\') ||
+    normalized.split('/').some((component) => component === '' || component === '.' || component === '..')
+  ) {
+    fail(`非法相对路径：${value}`);
+  }
+  return normalized;
+}
+
+
+async function copySourceTree(source, destination, relativePath) {
+  const sourcePath = join(source, relativePath);
+  const stat = await lstat(sourcePath).catch(() => null);
+  if (!stat) fail(`TataChatSDK 发布源缺少：${relativePath}`);
+  if (stat.isSymbolicLink()) fail(`TataChatSDK 发布源禁止符号链接：${relativePath}`);
+
+  if (stat.isDirectory()) {
+    await mkdir(join(destination, relativePath), { recursive: true });
+    const entries = (await readdir(sourcePath, { withFileTypes: true }))
+      .sort((left, right) => left.name.localeCompare(right.name));
+    for (const entry of entries) {
+      if (GENERATED_COMPONENTS.has(entry.name)) continue;
+      await copySourceTree(source, destination, join(relativePath, entry.name));
+    }
+    return;
+  }
+
+  if (!stat.isFile()) fail(`TataChatSDK 发布源只允许普通文件：${relativePath}`);
+  const target = join(destination, relativePath);
+  await mkdir(dirname(target), { recursive: true });
+  await copyFile(sourcePath, target);
+  await chmod(target, stat.mode & 0o111 ? 0o755 : 0o644);
+}
+
+async function copyNativeArtifact(source, destination, label) {
+  const stat = await lstat(source).catch(() => null);
+  if (!stat || stat.isSymbolicLink()) fail(`${label} 缺失或是符号链接：${source}`);
+  if (stat.isFile()) {
+    if (stat.size === 0) fail(`${label} 为空：${source}`);
+    await mkdir(dirname(destination), { recursive: true });
+    await copyFile(source, destination);
+    await chmod(destination, stat.mode & 0o111 ? 0o755 : 0o644);
+    return 1;
+  }
+  if (!stat.isDirectory()) fail(`${label} 只允许普通文件或目录：${source}`);
+
+  await mkdir(destination, { recursive: true });
+  const entries = (await readdir(source, { withFileTypes: true }))
+    .sort((left, right) => left.name.localeCompare(right.name));
+  let files = 0;
+  for (const entry of entries) {
+    files += await copyNativeArtifact(
+      join(source, entry.name),
+      join(destination, entry.name),
+      label,
+    );
+  }
+  if (files === 0) fail(`${label} 目录为空：${source}`);
+  return files;
+}
+
+async function listTree(root, current = '') {
+  const absolute = current ? join(root, current) : root;
+  const entries = (await readdir(absolute, { withFileTypes: true }))
+    .sort((left, right) => left.name.localeCompare(right.name));
+  const result = [];
+  for (const entry of entries) {
+    const child = current ? join(current, entry.name) : entry.name;
+    const stat = await lstat(join(root, child));
+    if (stat.isSymbolicLink()) fail(`正式包禁止符号链接：${child}`);
+    if (stat.isDirectory()) {
+      result.push({ path: normalizeRelativePath(child), directory: true, mode: 0o755 });
+      result.push(...await listTree(root, child));
+    } else if (stat.isFile()) {
+      result.push({
+        path: normalizeRelativePath(child),
+        directory: false,
+        mode: stat.mode & 0o111 ? 0o755 : 0o644,
+        bytes: await readFile(join(root, child)),
+      });
+    } else {
+      fail(`正式包只允许普通文件和目录：${child}`);
+    }
+  }
+  return result;
+}
+
+function writeString(buffer, offset, length, value) {
+  const encoded = Buffer.from(value, 'utf8');
+  if (encoded.length > length) fail(`tar 字段过长：${value}`);
+  encoded.copy(buffer, offset);
+}
+
+function writeOctal(buffer, offset, length, value) {
+  const encoded = Math.trunc(value).toString(8).padStart(length - 1, '0');
+  if (encoded.length > length - 1) fail('tar 数值字段溢出');
+  writeString(buffer, offset, length, `${encoded}\0`);
+}
+
+function splitTarPath(path) {
+  if (Buffer.byteLength(path) <= 100) return { name: path, prefix: '' };
+  for (let index = path.length - 1; index > 0; index -= 1) {
+    if (path[index] !== '/') continue;
+    const prefix = path.slice(0, index);
+    const name = path.slice(index + 1);
+    if (Buffer.byteLength(name) <= 100 && Buffer.byteLength(prefix) <= 155) {
+      return { name, prefix };
+    }
+  }
+  fail(`tar 路径过长：${path}`);
+}
+
+function tarHeader(path, size, mode, directory) {
+  const header = Buffer.alloc(512, 0);
+  const parts = splitTarPath(path);
+  writeString(header, 0, 100, parts.name);
+  writeOctal(header, 100, 8, mode);
+  writeOctal(header, 108, 8, 0);
+  writeOctal(header, 116, 8, 0);
+  writeOctal(header, 124, 12, size);
+  writeOctal(header, 136, 12, 0);
+  header.fill(0x20, 148, 156);
+  header[156] = directory ? 0x35 : 0x30;
+  writeString(header, 257, 6, 'ustar\0');
+  writeString(header, 263, 2, '00');
+  writeString(header, 345, 155, parts.prefix);
+  const checksum = header.reduce((sum, byte) => sum + byte, 0);
+  const encoded = checksum.toString(8).padStart(6, '0');
+  writeString(header, 148, 8, `${encoded}\0 `);
+  return header;
+}
+
+async function createArchive(packageRoot) {
+  // 中文注释：目录按路径排序、权限归一且时间戳固定为零，确保同一输入只生成同一份正式归档。
+  const tree = await listTree(packageRoot);
+  const chunks = [tarHeader('tatachatsdk/', 0, 0o755, true)];
+  for (const entry of tree) {
+    const archivePath = `tatachatsdk/${entry.path}${entry.directory ? '/' : ''}`;
+    chunks.push(tarHeader(archivePath, entry.directory ? 0 : entry.bytes.length, entry.mode, entry.directory));
+    if (!entry.directory) {
+      chunks.push(entry.bytes);
+      const padding = (512 - (entry.bytes.length % 512)) % 512;
+      if (padding > 0) chunks.push(Buffer.alloc(padding, 0));
+    }
+  }
+  chunks.push(Buffer.alloc(1024, 0));
+  return gzipSync(Buffer.concat(chunks), { level: 9, mtime: 0 });
+}
+
+function parseOctal(buffer, offset, length, label) {
+  const text = buffer.subarray(offset, offset + length).toString('ascii').replace(/\0.*$/s, '').trim();
+  if (!/^[0-7]*$/.test(text)) fail(`tar ${label} 不是八进制数`);
+  return text ? Number.parseInt(text, 8) : 0;
+}
+
+function readTarString(buffer, offset, length) {
+  return buffer.subarray(offset, offset + length).toString('utf8').replace(/\0.*$/s, '');
+}
+
+function validateArchivePath(path, directory) {
+  if (!path.startsWith('tatachatsdk/')) fail(`tar 路径不属于 TataChatSDK：${path}`);
+  const logical = directory && path.endsWith('/') ? path.slice(0, -1) : path;
+  normalizeRelativePath(logical);
+  return logical;
+}
+
+function parseTar(archiveBytes) {
+  const tar = gunzipSync(archiveBytes);
+  const entries = new Map();
+  let offset = 0;
+  while (offset + 512 <= tar.length) {
+    const header = tar.subarray(offset, offset + 512);
+    if (header.every((byte) => byte === 0)) break;
+    const expectedChecksum = parseOctal(header, 148, 8, '校验和');
+    const checksumHeader = Buffer.from(header);
+    checksumHeader.fill(0x20, 148, 156);
+    const actualChecksum = checksumHeader.reduce((sum, byte) => sum + byte, 0);
+    if (expectedChecksum !== actualChecksum) fail('tar 头校验和错误');
+
+    const name = readTarString(header, 0, 100);
+    const prefix = readTarString(header, 345, 155);
+    const path = prefix ? `${prefix}/${name}` : name;
+    const type = String.fromCharCode(header[156] || 0x30);
+    if (type !== '0' && type !== '5') fail(`tar 禁止的条目类型：${type}`);
+    const directory = type === '5';
+    const logicalPath = validateArchivePath(path, directory);
+    const size = parseOctal(header, 124, 12, '文件大小');
+    if (directory && size !== 0) fail(`tar 目录包含数据：${logicalPath}`);
+    const dataStart = offset + 512;
+    const dataEnd = dataStart + size;
+    if (dataEnd > tar.length) fail(`tar 条目被截断：${logicalPath}`);
+    if (entries.has(logicalPath)) fail(`tar 条目重复：${logicalPath}`);
+    entries.set(logicalPath, {
+      directory,
+      bytes: directory ? null : Buffer.from(tar.subarray(dataStart, dataEnd)),
+    });
+    offset = dataStart + Math.ceil(size / 512) * 512;
+  }
+  return entries;
+}
+
+function expectedPlatforms() {
+  return PLATFORM_ARTIFACTS.map(({ platform, architecture, path }) => ({
+    architecture,
+    artifact: path,
+    platform,
+  }));
+}
+
+function validatePlatformArtifacts(archiveEntries) {
+  for (const artifact of PLATFORM_ARTIFACTS) {
+    const root = `tatachatsdk/${artifact.path}`;
+    if (artifact.requiredFiles) {
+      for (const relativePath of artifact.requiredFiles) {
+        const entry = archiveEntries.get(`${root}/${relativePath}`);
+        if (!entry || entry.directory) fail(`TataChatSDK ${artifact.platform} 原生资产结构不完整`);
+      }
+    } else {
+      const entry = archiveEntries.get(root);
+      if (!entry || entry.directory) fail(`TataChatSDK ${artifact.platform} 原生资产缺失`);
+    }
+  }
+}
+
+function validateManifest(manifest, expectedGitSha, expectedSoftwareVersion, archiveEntries) {
+  assertExactKeys(
+    manifest,
+    ['files', 'git_commit_sha', 'package_name', 'platforms', 'product_id', 'software_version'],
+    'TataChatSDK Release manifest',
+  );
+  if (manifest.product_id !== PRODUCT_ID) fail('TataChatSDK Release product_id 错误');
+  if (manifest.package_name !== PACKAGE_NAME) fail('TataChatSDK Release package_name 错误');
+  if (!/^[0-9a-f]{40}$/.test(manifest.git_commit_sha)) fail('TataChatSDK Release git_commit_sha 非法');
+  if (expectedGitSha && manifest.git_commit_sha !== expectedGitSha) fail('TataChatSDK Release 源提交不一致');
+  if (typeof manifest.software_version !== 'string' || manifest.software_version.length === 0) {
+    fail('TataChatSDK Release software_version 非法');
+  }
+  if (expectedSoftwareVersion && manifest.software_version !== expectedSoftwareVersion) {
+    fail('TataChatSDK Release 软件版本不一致');
+  }
+  const publishedPubspec = archiveEntries.get('tatachatsdk/pubspec.yaml');
+  if (!publishedPubspec || publishedPubspec.directory
+      || /^version: ([^\r\n]+)$/mu.exec(publishedPubspec.bytes.toString('utf8'))?.[1] !== manifest.software_version) {
+    fail('TataChatSDK Pub 声明与正式版本不一致');
+  }
+  if (JSON.stringify(manifest.platforms) !== JSON.stringify(expectedPlatforms())) {
+    fail('TataChatSDK Release 平台闭包错误');
+  }
+  validatePlatformArtifacts(archiveEntries);
+  if (!Array.isArray(manifest.files)) fail('TataChatSDK Release files 必须是数组');
+
+  const archiveFiles = [...archiveEntries.entries()]
+    .filter(([path, entry]) => !entry.directory
+      && ![`tatachatsdk/${MANIFEST_NAME}`, `tatachatsdk/${CHECKSUMS_NAME}`].includes(path))
+    .map(([path, entry]) => ({ path: path.slice('tatachatsdk/'.length), bytes: entry.bytes }))
+    .sort((left, right) => left.path.localeCompare(right.path));
+  const expectedFileRecords = archiveFiles.map(({ path, bytes }) => ({
+    path,
+    sha256: sha256(bytes),
+    size: bytes.length,
+  }));
+  for (const record of manifest.files) {
+    assertExactKeys(record, ['path', 'sha256', 'size'], `TataChatSDK Release 文件记录 ${record?.path ?? ''}`);
+  }
+  if (JSON.stringify(manifest.files) !== JSON.stringify(expectedFileRecords)) {
+    fail('TataChatSDK Release 文件清单与归档内容不一致');
+  }
+}
+
+function verifyInternalChecksums(archiveEntries, bytes) {
+  const lines = bytes.toString('utf8').trimEnd().split('\n');
+  const result = new Map();
+  for (const line of lines) {
+    const match = line.match(/^([0-9a-f]{64})  ([A-Za-z0-9._/-]+)$/);
+    if (!match || result.has(match[2])) fail('SHA256SUMS 格式或资产名称错误');
+    result.set(match[2], match[1]);
+  }
+  const expected = [...archiveEntries.entries()]
+    .filter(([path, entry]) => !entry.directory && path !== `tatachatsdk/${CHECKSUMS_NAME}`)
+    .map(([path, entry]) => [path.slice('tatachatsdk/'.length), sha256(entry.bytes)])
+    .sort(([left], [right]) => left.localeCompare(right));
+  if (JSON.stringify([...result.entries()].sort(([left], [right]) => left.localeCompare(right)))
+      !== JSON.stringify(expected)) fail('SHA256SUMS 与单包内部文件闭集不一致');
+}
+
+async function verifyReleaseAssets(directory, options = {}) {
+  const names = (await readdir(directory)).sort();
+  if (JSON.stringify(names) !== JSON.stringify([...RELEASE_ASSETS].sort())) {
+    fail('TataChatSDK 正式 Release 必须且只能包含一个包');
+  }
+  const archiveBytes = await readFile(join(directory, ARCHIVE_NAME));
+  const entries = parseTar(archiveBytes);
+  const internalManifest = entries.get(`tatachatsdk/${MANIFEST_NAME}`);
+  if (!internalManifest || internalManifest.directory) fail('归档缺少 TataChatSDK Release manifest');
+  const internalChecksums = entries.get(`tatachatsdk/${CHECKSUMS_NAME}`);
+  if (!internalChecksums || internalChecksums.directory) fail('归档缺少 TataChatSDK SHA256SUMS');
+  verifyInternalChecksums(entries, internalChecksums.bytes);
+  const manifest = JSON.parse(internalManifest.bytes.toString('utf8'));
+  validateManifest(manifest, options.expectedGitSha, options.softwareVersion, entries);
+  return manifest;
+}
+
+async function buildRelease({ source, native, output, archive, gitSha, softwareVersion }) {
+  if (!/^[0-9a-f]{40}$/.test(gitSha)) fail('构建 TataChatSDK Release 必须提供 40 位小写源提交 SHA');
+  if (!softwareVersion || typeof softwareVersion !== 'string') fail('构建 TataChatSDK Release 必须提供软件版本');
+  if (basename(archive) !== ARCHIVE_NAME) fail(`TataChatSDK Release 归档名必须是 ${ARCHIVE_NAME}`);
+  for (const entry of SOURCE_ENTRIES) await access(join(source, entry), fsConstants.R_OK);
+  const header=await lstat(join(source,'native/tatachat_sdk.h'));
+  if(!header.isFile()||header.isSymbolicLink())fail('C头文件必须是native下唯一普通原件');
+  for(const obsolete of ['scripts/tatachat_sdk.h','stickers/tatachat_sdk.h']){if(await lstat(join(source,obsolete)).then(()=>true,error=>{if(error.code==='ENOENT')return false;throw error;}))fail('C头文件存在旧路径副本：'+obsolete);}
+
+  if (!isAbsolute(output) || resolve(output) !== output || dirname(output) === output) {
+    fail('正式包输出目录必须为规范绝对路径');
+  }
+  const parent = dirname(output);
+  const parentInfo = await lstat(parent);
+  if (!parentInfo.isDirectory() || parentInfo.isSymbolicLink() || await realpath(parent) !== parent) {
+    fail('正式包输出父目录必须为真实普通目录');
+  }
+  const existingOutput = await lstat(output).catch(error => {
+    if (error.code === 'ENOENT') return null;
+    throw error;
+  });
+  if (existingOutput && (!existingOutput.isDirectory() || existingOutput.isSymbolicLink()
+      || await realpath(output) !== output)) fail('正式包输出目录无效');
+  // 发布临时包只属于本次输出目录的相邻现场，完成后按本轮准确路径清理。
+  const temporary = await mkdtemp(join(parent, '.tatachatsdk-release-'));
+  const packageRoot = join(temporary, 'tatachatsdk');
+  try {
+    await mkdir(packageRoot, { recursive: true });
+    for (const entry of SOURCE_ENTRIES) await copySourceTree(source, packageRoot, entry);
+    const pubspecPath = join(packageRoot, 'pubspec.yaml');
+    const pubspec = await readFile(pubspecPath, 'utf8');
+    if (!/^version: [^\r\n]+$/mu.test(pubspec)) fail('SDK Pub 版本声明缺失');
+    await writeFile(pubspecPath, pubspec.replace(/^version: [^\r\n]+$/mu, `version: ${softwareVersion}`));
+    // 包介绍只属于输出载荷；产品技术文档不复制进公开源码仓。
+    await writeFile(join(packageRoot, 'README.md'),
+      `# TataChatSDK\n\nIndependent end-to-end encrypted chat SDK.\n\n`
+      + `Package: ${PACKAGE_NAME}\nVersion: ${softwareVersion}\nSource commit: ${gitSha}\n\n`
+      + 'Source: https://github.com/tuyutata/tatachatsdk\n', 'utf8');
+    for (const artifact of PLATFORM_ARTIFACTS) {
+      const input = join(native, artifact.source);
+      const destination = join(packageRoot, artifact.path);
+      await copyNativeArtifact(input, destination, `TataChatSDK ${artifact.platform} 原生资产`);
+    }
+
+    // 中文注释：manifest 只登记业务载荷；内部校验清单再覆盖载荷和 manifest，避免任何自引用字段。
+    const files = (await listTree(packageRoot))
+      .filter((entry) => !entry.directory)
+      .map((entry) => ({ path: entry.path, sha256: sha256(entry.bytes), size: entry.bytes.length }))
+      .sort((left, right) => left.path.localeCompare(right.path));
+    const manifest = {
+      files,
+      git_commit_sha: gitSha,
+      package_name: PACKAGE_NAME,
+      platforms: expectedPlatforms(),
+      product_id: PRODUCT_ID,
+      software_version: softwareVersion,
+    };
+    const manifestBytes = Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+    await writeFile(join(packageRoot, MANIFEST_NAME), manifestBytes);
+    const checksumRows = [
+      ...files.map(({ path, sha256: digest }) => [path, digest]),
+      [MANIFEST_NAME, sha256(manifestBytes)],
+    ].sort(([left], [right]) => left.localeCompare(right));
+    await writeFile(
+      join(packageRoot, CHECKSUMS_NAME),
+      Buffer.from(`${checksumRows.map(([path, digest]) => `${digest}  ${path}`).join('\n')}\n`, 'utf8'),
+    );
+    const archiveBytes = await createArchive(packageRoot);
+
+    await rm(output, { recursive: true, force: true });
+    await mkdir(output, { recursive: true });
+    const finalArchive = join(output, ARCHIVE_NAME);
+    await writeFile(finalArchive, archiveBytes);
+    if (resolve(archive) !== resolve(finalArchive)) {
+      await mkdir(dirname(archive), { recursive: true });
+      await copyFile(finalArchive, archive);
+    }
+    await verifyReleaseAssets(output, { expectedGitSha: gitSha, softwareVersion });
+    return manifest;
+  } finally {
+    await rm(temporary, { recursive: true, force: true });
+  }
+}
+
+
+// 正式实现结束；以下回归仅在本文件作为测试入口时注册。
+if (process.env.NODE_TEST_CONTEXT && process.argv.length===2 && process.argv[1]===import.meta.filename) {
+const {default: assert}=await import('node:assert/strict');
+const { spawnSync }=await import('node:child_process');
+const { chmod, lstat, mkdtemp, mkdir, readFile, realpath, rm, symlink, writeFile }=await import('node:fs/promises');
+const { join }=await import('node:path');
+const {default: test}=await import('node:test');
+const { fileURLToPath }=await import('node:url');
+const { gzipSync, gunzipSync }=await import('node:zlib');
+
+
+
+const SHA = '0123456789abcdef0123456789abcdef01234567';
+
+const tmpdir=()=>{const path=join(fileURLToPath(new URL('..',import.meta.url)),'target/test');mkdirSync(path,{recursive:true});return path;};
+
+// 每个夹具都使用隔离临时目录，验证完成后必须连同伪造产物一起清理。
+async function fixture() {
+  const root = await mkdtemp(join(tmpdir(), 'tatachatsdk-release-test-'));
+  const source = join(root, 'source');
+  const native = join(root, 'native');
+  const output = join(root, 'output');
+  await mkdir(source, { recursive: true });
+  for (const file of [
+    'LICENSE',
+    'README.md',
+    'pubspec.yaml',
+    'pubspec.lock',
+    'native/tatachat_sdk.h',
+  ]) {
+    await mkdir(join(source, file).replace(/\/[^/]+$/u, ''), {recursive:true});
+    await writeFile(join(source, file), file === 'pubspec.yaml' ? 'name: tatachat_sdk\nversion: 1.0.0\n' : `${file}\n`);
+  }
+  for (const directory of ['ios', 'lib', 'native', 'stickers']) {
+    await mkdir(join(source, directory), { recursive: true });
+    await writeFile(join(source, directory, `${directory}.txt`), `${directory}\n`);
+  }
+  const artifacts = [
+    ['android', 'libtatachat_sdk.so'],
+    ['macos', 'libtatachat_sdk.dylib'],
+  ];
+  for (const [directory, name] of artifacts) {
+    await mkdir(join(native, directory), { recursive: true });
+    await writeFile(join(native, directory, name), `${directory}-binary`);
+  }
+  const iosFramework = join(
+    native,
+    'ios',
+    'TataChatSDK.xcframework',
+    'ios-arm64',
+    'TataChatSDK.framework',
+  );
+  await mkdir(iosFramework, { recursive: true });
+  await writeFile(join(native, 'ios', 'TataChatSDK.xcframework', 'Info.plist'), 'xcframework\n');
+  await writeFile(join(iosFramework, 'Info.plist'), 'framework\n');
+  await writeFile(join(iosFramework, 'TataChatSDK'), 'ios-dynamic-binary');
+  await chmod(join(iosFramework, 'TataChatSDK'), 0o755);
+  // 同一夹具必须包含Simulator切片。
+  const simulator = join(native, 'ios', 'TataChatSDK.xcframework', 'ios-arm64-simulator', 'TataChatSDK.framework');
+  await mkdir(simulator, { recursive: true });
+  await writeFile(join(simulator, 'Info.plist'), 'simulator-framework\n');
+  await writeFile(join(simulator, 'TataChatSDK'), 'simulator-dynamic-binary');
+  await chmod(join(simulator, 'TataChatSDK'), 0o755);
+  const build = () => buildRelease({
+    source,
+    native,
+    output,
+    archive: join(output, 'tatachatsdk.tgz'),
+    gitSha: SHA,
+    softwareVersion: '1.0.0',
+  });
+  return { root, source, native, output, build };
+}
+
+test('builds and verifies one deterministic TataChatSDK package', async () => {
+  const item = await fixture();
+  try {
+    await item.build();
+    const first = await readFile(join(item.output, 'tatachatsdk.tgz'));
+    await item.build();
+    const second = await readFile(join(item.output, 'tatachatsdk.tgz'));
+    assert.deepEqual(first, second);
+    const manifest = await verifyReleaseAssets(item.output, { expectedGitSha: SHA, softwareVersion: '1.0.0' });
+    assert.equal(manifest.package_name, 'tatachat_sdk');
+    assert.equal(manifest.product_id, 'tatachatsdk');
+    assert.equal(manifest.platforms.length, 3);
+    assert.equal(
+      manifest.platforms.find(({ platform }) => platform === 'ios').artifact,
+      'prebuilt/ios-arm64/TataChatSDK.xcframework',
+    );
+  } finally {
+    await rm(item.root, { recursive: true, force: true });
+  }
+});
+
+test('rejects the wrong source SHA', async () => {
+  const item = await fixture();
+  try {
+    await item.build();
+    await assert.rejects(
+      verifyReleaseAssets(item.output, { expectedGitSha: 'f'.repeat(40), softwareVersion: '1.0.0' }),
+      /源提交不一致/,
+    );
+  } finally {
+    await rm(item.root, { recursive: true, force: true });
+  }
+});
+
+test('rejects a missing native artifact', async () => {
+  const item = await fixture();
+  try {
+    await rm(join(item.native, 'ios', 'TataChatSDK.xcframework'), { recursive: true });
+    await assert.rejects(item.build(), /原生资产/);
+  } finally {
+    await rm(item.root, { recursive: true, force: true });
+  }
+});
+
+// 任一切片必需文件缺失都必须拒绝打包。
+for (const variant of ['ios-arm64', 'ios-arm64-simulator']) {
+  for (const file of ['TataChatSDK', 'Info.plist']) {
+    test('rejects missing iOS slice file: ' + variant + '/' + file, async () => {
+      const item = await fixture();
+      try {
+        await rm(join(item.native, 'ios', 'TataChatSDK.xcframework', variant, 'TataChatSDK.framework', file));
+        await assert.rejects(item.build(), /原生资产/);
+      } finally {
+        await rm(item.root, { recursive: true, force: true });
+      }
+    });
+  }
+}
+
+test('rejects source symlinks', async () => {
+  const item = await fixture();
+  try {
+    await symlink(join(item.source, 'README.md'), join(item.source, 'lib', 'linked.md'));
+    await assert.rejects(item.build(), /禁止符号链接/);
+  } finally {
+    await rm(item.root, { recursive: true, force: true });
+  }
+});
+
+test('rejects symlinks inside the iOS XCFramework', async () => {
+  const item = await fixture();
+  try {
+    const binary = join(
+      item.native,
+      'ios',
+      'TataChatSDK.xcframework',
+      'ios-arm64',
+      'TataChatSDK.framework',
+      'TataChatSDK',
+    );
+    await rm(binary);
+    await symlink('/tmp/forbidden-chat-sdk', binary);
+    await assert.rejects(item.build(), /符号链接/);
+  } finally {
+    await rm(item.root, { recursive: true, force: true });
+  }
+});
+
+test('rejects extra release assets and tampered internal checksums', async () => {
+  const item = await fixture();
+  try {
+    await item.build();
+    await writeFile(join(item.output, 'extra.bin'), 'extra');
+    await assert.rejects(verifyReleaseAssets(item.output), /必须且只能包含一个包/);
+    await rm(join(item.output, 'extra.bin'));
+    const archivePath = join(item.output, 'tatachatsdk.tgz');
+    const tar = gunzipSync(await readFile(archivePath));
+    const checksumHeader = tar.indexOf(Buffer.from('tatachatsdk/SHA256SUMS'));
+    assert.notEqual(checksumHeader, -1);
+    const firstHashByte = checksumHeader + 512;
+    tar[firstHashByte] = tar[firstHashByte] === 0x30 ? 0x31 : 0x30;
+    await writeFile(archivePath, gzipSync(tar, { level: 9, mtime: 0 }));
+    await assert.rejects(verifyReleaseAssets(item.output), /单包内部文件闭集不一致/);
+  } finally {
+    await rm(item.root, { recursive: true, force: true });
+  }
+});
+
+test('rejects a path-traversal tar entry', async () => {
+  const item = await fixture();
+  try {
+    await item.build();
+    const archivePath = join(item.output, 'tatachatsdk.tgz');
+    const tar = gunzipSync(await readFile(archivePath));
+    tar.fill(0, 0, 100);
+    Buffer.from('../escape/').copy(tar, 0);
+    tar.fill(0x20, 148, 156);
+    const checksum = tar.subarray(0, 512).reduce((sum, byte) => sum + byte, 0);
+    Buffer.from(`${checksum.toString(8).padStart(6, '0')}\0 `).copy(tar, 148);
+    await writeFile(archivePath, gzipSync(tar, { level: 9, mtime: 0 }));
+    await assert.rejects(verifyReleaseAssets(item.output), /非法相对路径|不属于 TataChatSDK/);
+  } finally {
+    await rm(item.root, { recursive: true, force: true });
+  }
+});
+
+// 跨语言通道与方法从SDK实际调用端提取；测试不保存第二份通道合同。
+test('聊天存储iOS安全通道由SDK自有插件完整接入', async () => {
+  const dart = await readFile(new URL('../lib/storage/system_protected_storage.dart', import.meta.url), 'utf8');
+  const native = await readFile(new URL('../ios/TataChatSdkPlugin.swift', import.meta.url), 'utf8');
+  const channel = dart.match(/_channel = MethodChannel\(\s*'([^']+)'/u)[1];
+  const method = dart.match(/_channel.invokeMethod<String>\('([^']+)'/u)[1];
+  assert.ok(native.includes(`name: "${channel}", binaryMessenger:`));
+  assert.ok(native.includes(`call.method == "${method}"`) || native.includes(`call.method == "${method}" else`));
+  assert.ok(!native.includes('citizenapp/security'));
+});
+
+// 真实源码没有 README 副本；打包只在临时包根生成介绍并把它纳入清单与校验。
+test('正式包从现存源码生成介绍且不回写源码', async () => {
+  const item = await fixture();
+  try {
+    await rm(join(item.source, 'README.md'));
+    const manifest = await item.build();
+    assert.equal(await readFile(join(item.source, 'pubspec.yaml'), 'utf8'), 'name: tatachat_sdk\nversion: 1.0.0\n');
+    await assert.rejects(readFile(join(item.source, 'README.md')), /ENOENT/u);
+    assert.equal(manifest.files.filter(file => file.path === 'README.md').length, 1);
+    const archive = join(item.output, 'tatachatsdk.tgz');
+    const introduction = spawnSync('tar', ['-xOzf', archive, 'tatachatsdk/README.md'], { encoding: 'utf8' });
+    assert.equal(introduction.status, 0, introduction.stderr);
+    assert.match(introduction.stdout, /https:\/\/github[.]com\/tuyutata\/tatachatsdk/u);
+    assert.ok(introduction.stdout.includes(SHA));
+    assert.match(introduction.stdout, /Version: 1[.]0[.]0/u);
+  } finally { await rm(item.root, { recursive: true, force: true }); }
+});
+
+test('Release包含唯一原生头且不携带编译脚本',async()=>{
+ const item=await fixture();try{
+  await item.build();
+  const contents=gunzipSync(await readFile(join(item.output,'tatachatsdk.tgz')));
+  assert.ok(contents.includes(Buffer.from('native/tatachat_sdk.h')));
+  const manifest=await verifyReleaseAssets(item.output,{expectedGitSha:SHA,softwareVersion:'1.0.0'});
+  assert.ok(manifest.files.every(file=>!file.path.startsWith('scripts/')));
+  assert.equal(contents.includes(Buffer.from('CHANGELOG.md')),false);
+ }finally{await rm(item.root,{recursive:true,force:true});}
+});
+
+}
+
+return {buildRelease,verifyReleaseAssets};
+})();
+export const {buildRelease,verifyReleaseAssets}=releaseAssets;
+
+// GitHub 的三个原生目标各自编译并交付当前 Run 资产；正式包只在全部成功后汇总一次。
+export async function ciNative(target,environment=process.env){
+ if(!['android','ios','macos'].includes(target)||environment.GITHUB_ACTIONS!=='true'
+  ||environment.GITHUB_REPOSITORY!=='tuyutata/tatachatsdk'
+  ||environment.GITHUB_WORKFLOW!=='tatachatsdk.sdk'
+  ||environment.GITHUB_REF!=='refs/heads/main'||environment.GITHUB_EVENT_NAME!=='workflow_dispatch'
+  ||!/^[a-f0-9]{40}$/u.test(environment.GITHUB_SHA||'')
+  ||!/^[1-9][0-9]*$/u.test(environment.GITHUB_RUN_ID||'')
+  ||!/^[1-9][0-9]*$/u.test(environment.GITHUB_RUN_ATTEMPT||'')
+  ||!Number.isSafeInteger(Number(environment.GITHUB_RUN_ID))
+  ||!Number.isSafeInteger(Number(environment.GITHUB_RUN_ATTEMPT)))fail('GitHub 原生目标身份无效');
+ const stage=join(environment.RUNNER_TEMP,'tatachatsdk-native-'+target),work=fixedWork('build/sdk');
+ if(existsSync(stage))fail('本轮原生交付现场已存在');
+ return execute('sdk',work,{}, {environment:{...environment,TATACHATSDK_RELEASE_TARGET:target},
+  consume:async result=>{
+   if(result?.completion!=='compile-only'||result.product_id!=='tatachatsdk'||result.platform!=='sdk'
+    ||result.work!==work||result.files?.length!==0)fail('本轮 SDK 编译回执无效');
+   const source=join(work,'work/output',target),output=join(stage,target);
+   if(!existsSync(source)||!lstatSync(source).isDirectory())fail('本平台原生件缺失');
+   await viewFs.cp(source,output,{recursive:true,verbatimSymlinks:true});
+   const digest=outputDigest(output),archive=join(stage,'native.tgz');
+   const packed=spawnSync('tar',['-czf',archive,'-C',stage,target],{encoding:'utf8'});
+   if(packed.status!==0)fail('本平台原生件归档失败');
+   const proof={schema:1,product_id:'tatachatsdk',target,source_sha:environment.GITHUB_SHA,
+    run_id:Number(environment.GITHUB_RUN_ID),run_attempt:Number(environment.GITHUB_RUN_ATTEMPT),
+    digest,archive_sha256:createHash('sha256').update(readFileSync(archive)).digest('hex')};
+   writeFileSync(join(stage,'receipt.json'),JSON.stringify(proof)+'\n',{flag:'wx',mode:0o600});
+   rmSync(output,{recursive:true});
+  }});
+}
+
+export async function ciRelease(environment=process.env,{call=spawnSync}={}){
+ const repo='tuyutata/tatachatsdk',sha=environment.GITHUB_SHA,run=environment.GITHUB_RUN_ID,
+  attempt=environment.GITHUB_RUN_ATTEMPT,number=environment.GITHUB_RUN_NUMBER;
+ if(environment.GITHUB_ACTIONS!=='true'||environment.GITHUB_REPOSITORY!==repo
+  ||environment.GITHUB_WORKFLOW!=='tatachatsdk.sdk'||environment.GITHUB_REF!=='refs/heads/main'
+  ||environment.GITHUB_EVENT_NAME!=='workflow_dispatch'||environment.GITHUB_WORKFLOW_REF!==repo+'/.github/workflows/sdk.yml@refs/heads/main'
+  ||!/^[a-f0-9]{40}$/u.test(sha||'')||[run,attempt,number].some(value=>!/^[1-9][0-9]*$/u.test(value||'')||!Number.isSafeInteger(Number(value)))
+  ||call('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).stdout?.trim()!==sha||!environment.GH_TOKEN)
+  fail('GitHub 单包 Release 身份无效');
+ const gh=args=>{const result=call('gh',args,{cwd:root,env:environment,encoding:'utf8',maxBuffer:8*1024**2});
+  if(result.status!==0)fail('GitHub Release 操作失败：'+(result.stderr||'').slice(0,800));return result.stdout.trim();};
+ const api=path=>JSON.parse(gh(['api','repos/'+repo+'/'+path]));
+ const base=join(environment.RUNNER_TEMP,'tatachatsdk-assemble'),native=join(base,'native'),output=join(base,'release');
+ if(existsSync(base))fail('本轮单包汇总现场已存在');mkdirSync(native,{recursive:true});
+ for(const target of ['android','ios','macos']){
+  const input=join(environment.RUNNER_TEMP,'native-artifacts','native-'+target),receipt=JSON.parse(readFileSync(join(input,'receipt.json'),'utf8'));
+  const archive=join(input,'native.tgz');
+  if(receipt.schema!==1||receipt.product_id!=='tatachatsdk'||receipt.target!==target
+   ||receipt.source_sha!==sha||receipt.run_id!==Number(run)||receipt.run_attempt!==Number(attempt)
+   ||!/^[a-f0-9]{64}$/u.test(receipt.digest||'')
+   ||receipt.archive_sha256!==createHash('sha256').update(readFileSync(archive)).digest('hex'))
+   fail('原生目标不属于本轮完整 SDK：'+target);
+  const listing=call('tar',['-tzf',archive],{encoding:'utf8',maxBuffer:8*1024**2});
+  if(listing.status!==0||listing.stdout.split('\n').filter(Boolean).some(name=>
+   !name.startsWith(target+'/')||name.split('/').some(part=>part==='..'||part==='.')
+  ))fail('原生归档路径不属于本平台：'+target);
+  if(call('tar',['-xzf',archive,'-C',native],{encoding:'utf8'}).status!==0)fail('原生归档展开失败：'+target);
+  if(outputDigest(join(native,target))!==receipt.digest)fail('汇总后原生件漂移：'+target);
+ }
+ const versionMatch=[...readFileSync(join(root,'pubspec.yaml'),'utf8').matchAll(/^version: ([0-9]+)\.([0-9]+)\.([0-9]+)$/gmu)];
+ if(versionMatch.length!==1)fail('SDK 版本声明无效');
+ const ordinal=parts=>{const [major,minor,patch]=parts.map(Number);if(minor>99||patch>99)fail('SDK 版本越界');return major*10000+minor*100+patch;};
+ let next=ordinal(versionMatch[0].slice(1))+Number(number)-1;
+ for(let page=1;page<=10000;page++){
+  const rows=api('releases?per_page=100&page='+page);if(!Array.isArray(rows)||rows.length>100)fail('历史 Release 分页无效');
+  for(const row of rows){const found=/^tatachatsdk-sdk-v([0-9]+)\.([0-9]+)\.([0-9]+)-r[1-9][0-9]*-a[1-9][0-9]*$/u.exec(row?.tag_name||'');
+   if(found)next=Math.max(next,ordinal(found.slice(1))+1);}
+  if(rows.length<100)break;if(page===10000)fail('历史 Release 分页超限');
+ }
+ const version=Math.floor(next/10000)+'.'+Math.floor(next/100)%100+'.'+next%100;
+ mkdirSync(output);const archive=join(output,'tatachatsdk.tgz');
+ await buildRelease({source:root,native,output,archive,gitSha:sha,softwareVersion:version});
+ await verifyReleaseAssets(output,{expectedGitSha:sha,softwareVersion:version});
+ const digest=createHash('sha256').update(readFileSync(archive)).digest('hex');
+ const tag='tatachatsdk-sdk-v'+version+'-r'+run+'-a'+attempt,notes='Source: '+sha+'\nRun: '+run+' / '+attempt;
+ let created=false;
+ try{
+  gh(['release','create',tag,archive,'--repo',repo,'--target',sha,'--title','tatachatsdk · sdk · '+version,'--notes',notes,'--draft','--latest=false']);created=true;
+  const release=api('releases/tags/'+encodeURIComponent(tag)),ref=api('git/ref/tags/'+encodeURIComponent(tag));
+  if(release.tag_name!==tag||!release.draft||release.target_commitish!==sha||release.assets?.length!==1
+   ||release.assets[0].name!=='tatachatsdk.tgz'||release.assets[0].state!=='uploaded'
+   ||release.assets[0].size!==lstatSync(archive).size||release.assets[0].digest!=='sha256:'+digest
+   ||ref.ref!=='refs/tags/'+tag||ref.object?.sha!==sha||ref.object?.type!=='commit')fail('单包草稿回读无效');
+  const download=join(base,'readback');mkdirSync(download);gh(['release','download',tag,'--repo',repo,'--dir',download]);
+  if(createHash('sha256').update(readFileSync(join(download,'tatachatsdk.tgz'))).digest('hex')!==digest)fail('单包回读字节不符');
+  gh(['release','edit',tag,'--repo',repo,'--draft=false']);
+  const final=api('releases/tags/'+encodeURIComponent(tag));
+  if(final.draft||final.prerelease||final.tag_name!==tag||!final.published_at)fail('正式单包 Release 未确认');
+  return {tag,release_id:final.id,asset:'tatachatsdk.tgz'};
+ }catch(error){if(created)try{gh(['release','delete',tag,'--repo',repo,'--yes','--cleanup-tag']);}
+  catch(cleanup){throw Error(error.message+'；本轮 Release 撤销未确认：'+cleanup.message);}throw error;}
+}
+
+if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===import.meta.filename){
+ const {default:test}=await import('node:test'),{default:assert}=await import('node:assert/strict');
+ test('GitHub 三端编译和唯一 Release 拒绝伪造身份',async()=>{
+  await assert.rejects(ciNative('foreign',{}),/身份无效/u);
+  await assert.rejects(ciNative('ios',{}),/身份无效/u);
+  await assert.rejects(ciRelease({}),/身份无效/u);
+ });
+}
+
 async function runCLI(){
  const [operation,platform,flag,work]=process.argv.slice(2);
  if(operation==='execute'&&process.env.PRODUCT_RESOURCE_FD!=='4'){if(flag!=='--work'||work!==fixedWork('build/'+platform))fail('平台编译现场不符');return withFixedWork('build/'+platform,()=>runCommand(),{environment:process.env,retain:process.env.PRODUCT_HOST_FD==='3'});}
@@ -676,6 +1558,14 @@ async function runCLI(){
  return runCommand();
 }
 async function runCommand(){
+ if(process.argv[2]==='ci-native'){
+  if(process.argv.length!==4)fail('GitHub 原生目标参数无效');
+  await ciNative(process.argv[3]);return;
+ }
+ if(process.argv[2]==='ci-release'){
+  if(process.argv.length!==3)fail('GitHub 单包参数无效');
+  process.stdout.write(JSON.stringify(await ciRelease())+'\n');return;
+ }
  if(['flutter-source-view','verify-flutter-source-view'].includes(process.argv[2])){
   if(process.argv.length!==5)fail('Flutter工程视图参数无效');
   const action=process.argv[2]==='flutter-source-view'?createFlutterSourceView:assertFlutterSourceView;
@@ -3130,7 +4020,13 @@ test('宿主完整Build在调用方消费前保留成功或失败现场，独立
 test('自有源码目录满足三级、单词命名和两个直接子项',()=>{
  const visit=(directory='',depth=0)=>{for(const entry of readdirSync(join(root,directory),{withFileTypes:true})){
   if(['.git','target'].includes(entry.name))continue;const path=directory?directory+'/'+entry.name:entry.name;
-  if(entry.isDirectory()){assert.ok(depth+1<=3,path);assert.ok(entry.name==='.github'||/^[a-z]+$/u.test(entry.name),path);assert.ok(readdirSync(join(root,path)).length>=2,path);visit(path,depth+1);}else assert.ok(entry.isFile(),path);
+  if(entry.isDirectory()){
+   assert.ok(depth+1<=3,path);assert.ok(entry.name==='.github'||/^[a-z]+$/u.test(entry.name),path);
+   // SDK 自动化只保留一个既定 sdk.yml；该工具目录不添加占位文件。
+   if(path==='.github/workflows')assert.deepEqual(readdirSync(join(root,path)),['sdk.yml']);
+   else assert.ok(readdirSync(join(root,path)).length>=2,path);
+   visit(path,depth+1);
+  }else assert.ok(entry.isFile(),path);
  }};visit();
 });
 

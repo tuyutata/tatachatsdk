@@ -1,0 +1,81 @@
+name: tatachatsdk.sdk
+'on':
+  workflow_dispatch:
+concurrency:
+  group: "${{ github.repository }}-sdk"
+  cancel-in-progress: false
+permissions:
+  contents: read
+jobs:
+  test:
+    if: github.ref == 'refs/heads/main'
+    runs-on: xcode-27
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: "${{ github.sha }}"
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: 25.2.1
+      - name: 先执行本仓代码回归
+        shell: bash
+        run: node --test scripts/build.mjs scripts/publish.mjs
+  native:
+    needs: test
+    if: github.ref == 'refs/heads/main'
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [android, ios, macos]
+    runs-on: xcode-27
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: "${{ github.sha }}"
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: 25.2.1
+      - uses: dtolnay/rust-toolchain@032958afbdc797a9164d3bc0b56325c1308924a5
+        with:
+          toolchain: 1.97.1
+          targets: aarch64-linux-android,aarch64-apple-ios,aarch64-apple-ios-sim,aarch64-apple-darwin
+          components: rust-src
+      - name: 编译并验收本平台原生件
+        shell: bash
+        run: node scripts/build.mjs ci-native "${{ matrix.target }}"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: "native-${{ matrix.target }}"
+          path: "${{ runner.temp }}/tatachatsdk-native-${{ matrix.target }}"
+          if-no-files-found: error
+          retention-days: 7
+  release:
+    needs: native
+    if: github.ref == 'refs/heads/main'
+    runs-on: xcode-27
+    timeout-minutes: 120
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: "${{ github.sha }}"
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: 25.2.1
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: native-*
+          path: "${{ runner.temp }}/native-artifacts"
+          merge-multiple: false
+      - name: 汇总三平台并创建唯一正式 SDK Release
+        env:
+          GH_TOKEN: "${{ github.token }}"
+        shell: bash
+        run: node scripts/build.mjs ci-release
