@@ -7,20 +7,19 @@
 本产品编译任务使用本仓 `target/build/<平台>` 独立临时目录，平台键为 `sdk`。不同平台同时领取并执行；同平台已有活跃任务时立即拒绝再次领取。资源准备、工程副本、缓存和编译输出只写本平台现场；确认进程及后代退出、结果被调用方消费后，删除整个平台目录。`target/build` 仅是父目录，`target/test` 仍用于独立测试。独立执行和控制台调度调用同一本仓编译入口与清理接口。
 
 
-聊天 SDK 的 `scripts/build.mjs` 拥有本机与 GitHub 自动化共用的编译、唯一正式包组装及验真实现，不提供设备安装。本机 Build 只编译并回执；GitHub 三端完整成功后才构造一个 `tatachatsdk.tgz` 和一个 Tag/Release。`scripts/publish.mjs` 只读取已成功的正式 Release；外部分发目的地尚未确定。
+聊天 SDK 的 `scripts/build.mjs` 拥有本机与 GitHub 自动化共用的编译、唯一正式包组装及验真实现，不提供设备安装。本机 Build 只编译并回执；GitHub 三端完整成功后才构造一个 `tatachatsdk.tgz` 和一个 Tag/Release。本产品没有第二个渠道发布步骤。
 
 ## 现行编译、发布、自动化与门禁目录（2026-10-11）
 
 ```text
 scripts/
 ├── build.mjs
-├── config.mjs
-└── publish.mjs
+└── config.mjs
 .github/workflows/
 └── sdk.yml
 ```
 
-GitHub 的 `sdk.yml` 保持原名，在本仓 `main` 上手动启动。Android、iOS、macOS ARM64 原生 Job 独立运行且 `fail-fast: false`；只有三端全部成功，汇总 Job 才调用本仓 `build.mjs` 构造和验真唯一 `tatachatsdk.tgz`，创建并回读一个 GitHub Tag/Release。控制台登记一个 SDK 编译、一个自动化、一个发布动作；外部分发未接入时发布动作禁用。`tatagate/` 只负责只读门禁。
+GitHub 的 `sdk.yml` 保持原名，在本仓 `main` 上由控制台唯一的塔塔聊天动作启动。Android、iOS、macOS ARM64 原生 Job 独立运行且 `fail-fast: false`；只有三端全部成功，汇总 Job 才调用本仓 `build.mjs` 构造和验真唯一 `tatachatsdk.tgz`，创建并回读一个 GitHub Tag/Release。控制台不再登记本产品的第二个发布动作；`tatagate/` 只负责只读门禁。
 
 ## 工具与依赖的声明和供给职责（2026-10-08）
 
@@ -355,7 +354,7 @@ CocoaPods在三种依赖形态下始终读取同一相对合同。
 
 
 
-本产品只有一个sdk目标：`build.mjs`负责本机编译，`publish.mjs`负责对明确交付的源码与原生资产构造、验真SDK包，`sdk.yml`调用本仓 Build 与 Publish 接口完成GitHub自动化及远端Release；外部分发目的地另行确定。
+本产品只有一个sdk目标：`build.mjs`负责本机编译，并在 `sdk.yml` 的成功三平台原生任务后构造、验真SDK包及创建正式 GitHub Release；控制台只派发这一所属仓工作流。
 
 
 ## 扁平源码与Flutter平台布局
@@ -512,10 +511,10 @@ Host.requestChatAccess 返回 ChatAccess(realtimeUrl, accessToken, expiresAtMill
 
 ## scripts目录与分析/ABI输入
 
-`scripts/` 直属仅 `build.mjs`、`publish.mjs` 两个文件。原生编译、协议工具、资源供给、任务工作根和Isar宿主库定位由 `build.mjs` 实现；单一SDK发布包、来源与资产验真由 `publish.mjs` 实现。自动化及其作业入口保留在 `.github/workflows/`，只读门禁合同和检查位于 `.github/tatagate/`。根CHANGELOG.md维持删除，正式包不要求或打包它。
+`scripts/` 直属为 `build.mjs`、`config.mjs` 两个文件。原生编译、协议工具、资源供给、任务工作根、Isar宿主库定位及单一正式SDK包的组装与验真由 `build.mjs` 实现；`config.mjs` 只登记本产品公开配置需求。自动化及其作业入口保留在 `.github/workflows/`，只读门禁合同和检查位于 `.github/tatagate/`。根CHANGELOG.md维持删除，正式包不要求或打包它。
 
 
-唯一C ABI头为native/tatachat_sdk.h，移动不改变内容或导出符号；Framework仅从此处复制。stickers/只存放48张贴纸，重复C头已删除。编译工程视图与GitHub自动化分别维护所需分析配置；Publish不装配Flutter工程或调用Build。analysis_options.yaml只写入所属临时工程，不回写源码根。
+唯一C ABI头为native/tatachat_sdk.h，移动不改变内容或导出符号；Framework仅从此处复制。stickers/只存放48张贴纸，重复C头已删除。编译工程视图与GitHub自动化分别维护所需分析配置；正式包汇总只消费三平台已验真的原生件。analysis_options.yaml只写入所属临时工程，不回写源码根。
 
 ## 本机固定执行目录
 
@@ -579,7 +578,7 @@ Android资源准备直接复用本产品可选工具供给的payload路径，不
 
 控制台调度模式用本产品入口从`node:net`的`Socket`构造实际FD4双向资源通道；需求与资源准备两轮都通过同一通道请求，回执拒绝或断管立即失败，绝不改走独立获取。同文件Node回归以真实子进程FD4和合成供给方覆盖两轮正常交付、拒绝、断管及按任务编号收尾，避免只注入客户端替身而遗漏通道建立分支。
 
-公开编译组件只有本文件中的正文；本机编译不生成第二份脚本。公开SDK依赖按本仓原锁消费，不读取兄弟仓本机检出或调度兄弟仓任务。GitHub自动化由现有 `sdk.yml` 只调用本仓 `build.mjs` 完成编译、组包和一个 Release；`publish.mjs` 留给成功 Release 后的渠道分发。
+公开编译组件只有本文件中的正文；本机编译不生成第二份脚本。公开SDK依赖按本仓原锁消费，不读取兄弟仓本机检出或调度兄弟仓任务。GitHub自动化由现有 `sdk.yml` 只调用本仓 `build.mjs` 完成编译、组包和一个 Release；没有后续渠道发布脚本。
 
 ## GitHub自动化
 

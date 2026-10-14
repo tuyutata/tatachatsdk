@@ -20,7 +20,7 @@ jobs:
           node-version: 25.2.1
       - name: 先执行本仓代码回归
         shell: bash
-        run: node --test scripts/build.mjs scripts/publish.mjs
+        run: node --test scripts/build.mjs
   native:
     needs: test
     if: github.ref == 'refs/heads/main'

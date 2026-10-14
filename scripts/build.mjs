@@ -601,7 +601,7 @@ export function outputDigest(path) {
 
 // 宿主完整Build先由调用方消费回执、安装并收尾；独立执行由本产品清空现场。
 // 本仓完整Build在资源回执后运行自己的测试，控制台不选择测试清单。
-function testFiles(){return ['scripts/build.mjs','scripts/publish.mjs'];}
+function testFiles(){return ['scripts/build.mjs'];}
 // 产品在资源回执后运行自身Node回归；控制台只调用完整Build。
 async function runProductTests(platform,work,receipt,base){
  const env=resourceEnvironment(platform,work,receipt,base),node=receipt.tools.node;
@@ -729,7 +729,7 @@ export function cleanShellPaths(args,environment=process.env){
 }
 
 
-// 单一正式 SDK 包的组装和验真归本产品编译入口；外部分发留在 publish.mjs。
+// 单一正式 SDK 包的组装、验真与 GitHub 正式版均归本产品编译入口。
 const releaseAssets=await (async()=>{
  const {mkdirSync,constants:fsConstants}=await import('node:fs');
  const {access,chmod,copyFile,lstat,mkdir,mkdtemp,readFile,readdir,realpath,symlink,rm,writeFile}=await import('node:fs/promises');
