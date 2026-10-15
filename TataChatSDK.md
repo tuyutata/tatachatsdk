@@ -608,6 +608,8 @@ Run `38683818987` 的Node测试通过，三端Rust主包与三个跨目标标准
 
 Run `38685937719` 的Node测试通过，Android、macOS和iOS native Job均成功越过官方NDK获取，但各自的正式Build第二轮同文件测试同样失败在“依赖原生入口绑定任务”夹具，三端每端112项通过、1项失败。该夹具使用`os.tmpdir()`，而native Job的`TMPDIR`在本SDK源码下的独占工作根内，触发跨产品依赖目录必须在SDK源码外的既有守卫。测试夹具现使用系统`/tmp`的真实路径建立并在测试结束删除，保持跨产品边界测试的实际断言；产品守卫与正式资源环境不变。三端Cargo、缓存与Release仍待真实Run验收。
 
+Run `38687909851` 的test及Android、iOS、macOS三个native Job全部成功；三端均完成正式原生资产验收、Artifact上传、Cargo缓存保存与旧缓存清理。Android第二轮同文件回归113/113通过，Cargo Release编译40.78秒，缓存快照约285 MB。唯一Release Job已下载并核对三份本轮Artifact，但正式包组装失败：发布映射从`android/libtatachat_sdk.so`取文件，而原生Shell按ABI真实输出`android/arm64-v8a/libtatachat_sdk.so`。发布映射与同文件正向夹具现统一采用后者，并补缺失Android ABI资产的拒绝回归；iOS与macOS映射已对照真实原生Shell输出。该Run未创建Tag/Release，下一次工作流验收仍待执行。
+
 三个native Job各自通过GitHub Actions Cache恢复同平台最近一次Cargo Release目标目录；缓存键绑定macOS ARM64、平台、`native/Cargo.lock`与本仓编译实现，运行身份使成功快照拥有新键。产品在固定工作根领取和清空之后才恢复，验真原生产物后、清场前将本轮Cargo目录复制到Runner临时缓存现场；两次复制优先使用APFS写时复制，不共享可写硬链接。缓存元数据另核对本仓源码路径、工具版本、Runner映像和平台；不兼容或缓存损坏时干净编译。保存新缓存后只按本仓main、本平台缓存ID尽力删除旧版本，目标为三端各保留最新成功快照；缓存服务失败会明确显示，但不阻断已经验真的正式原生产物。缓存不进入源码、资源原件、七天原生交付Artifact或正式Release资产。缓存恢复、保存和原生编译分别记录耗时与字节，真实提速待成功GitHub运行验证。GitHub可能按仓库容量与闲置期限淘汰缓存，因此“保留最新一份”指尚在GitHub缓存服务内的当前快照，不承诺无限期存在。
 
 ## GitHub塔塔门禁与同类记录清理

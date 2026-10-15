@@ -843,7 +843,7 @@ const PLATFORM_ARTIFACTS = [
   {
     platform: 'android',
     architecture: 'arm64-v8a',
-    source: 'android/libtatachat_sdk.so',
+    source: 'android/arm64-v8a/libtatachat_sdk.so',
     path: 'prebuilt/android-arm64/libtatachat_sdk.so',
   },
   {
@@ -1314,7 +1314,7 @@ async function fixture() {
     await writeFile(join(source, directory, `${directory}.txt`), `${directory}\n`);
   }
   const artifacts = [
-    ['android', 'libtatachat_sdk.so'],
+    ['android/arm64-v8a', 'libtatachat_sdk.so'],
     ['macos', 'libtatachat_sdk.dylib'],
   ];
   for (const [directory, name] of artifacts) {
@@ -1389,6 +1389,16 @@ test('rejects a missing native artifact', async () => {
   try {
     await rm(join(item.native, 'ios', 'TataChatSDK.xcframework'), { recursive: true });
     await assert.rejects(item.build(), /原生资产/);
+  } finally {
+    await rm(item.root, { recursive: true, force: true });
+  }
+});
+
+test('rejects a missing Android ABI artifact', async () => {
+  const item = await fixture();
+  try {
+    await rm(join(item.native, 'android', 'arm64-v8a', 'libtatachat_sdk.so'));
+    await assert.rejects(item.build(), /android 原生资产/);
   } finally {
     await rm(item.root, { recursive: true, force: true });
   }
