@@ -305,6 +305,27 @@ function finishFixedWork(work,{run_id}={}){
 }
 function taskScope(work){checkFixedWork(work);if(work===fixedWork('test'))return 'test';const platform=Object.keys(contract.platforms).find(name=>work===fixedWork('build/'+name));if(!platform)fail('编译平台现场无效');return 'build/'+platform;}
 
+// 固定根内部回归留在所属作用域，不把私有诊断函数暴露为产品公开接口。
+if(testSession&&process.argv.length===2&&resolve(process.argv[1]||'')===fileURLToPath(import.meta.url)){
+ const {test}=await import('node:test'),{default:assert}=await import('node:assert/strict');
+ test('映像卸载错误保留安全分类与有界重试条件，不输出系统原文',()=>{
+  const busy=systemFailure('/usr/bin/hdiutil',['detach','/private/secret'],{status:16,stderr:'Resource busy: /private/secret'});
+  assert.equal(busy.toolFailureKind,'busy');assert.equal(busy.toolOperation,'detach');assert.equal(busy.toolStatus,16);
+  assert.doesNotMatch(busy.message,/private\/secret/);
+  assert.equal(retryableDetach(busy,0),true);assert.equal(retryableDetach(busy,1),true);assert.equal(retryableDetach(busy,2),false);
+  const permission=systemFailure('/usr/bin/hdiutil',['detach','/private/secret'],{status:13,stderr:'Permission denied'});
+  assert.equal(permission.toolFailureKind,'permission');assert.equal(retryableDetach(permission,0),false);
+  const temporary=systemFailure('/usr/bin/hdiutil',['detach','/private/secret'],{status:11,stdout:'Resource temporarily unavailable'});
+  assert.equal(temporary.toolFailureKind,'temporary');assert.equal(retryableDetach(temporary,1),true);
+  const unknown=systemFailure('/usr/bin/hdiutil',['detach','/private/secret'],{status:1,stderr:'unrecognized failure'});
+  assert.equal(unknown.toolFailureKind,'unknown');assert.equal(retryableDetach(unknown,0),false);
+  const combined=combinedFixedFailure(Error('private task detail'),busy);
+  assert.match(combined.message,/任务执行与清场均失败/);assert.doesNotMatch(combined.message,/private/);
+  assert.equal(combined.taskFailure.message,'private task detail');assert.equal(combined.cleanupFailure,busy);
+  assert.match(combinedFixedFailure(Error('工具后代退出未确认'),permission).message,/退出未确认/);
+  let caught=false;try{completeFixedWork({nested:true},false,true,null);}catch(error){caught=true;assert.equal(error,null);}assert.equal(caught,true);
+ });
+}
 
 return {fixedWork,checkFixedWork,checkScratchPath,fixedScratch,assertTargetTopology,clearFixedWork,claimFixedWork,trackFixedProcess,trackWorkProcess,workEnvironment,prepareSourceView,retainWork,releaseFixedWork,withFixedWorkSync,withFixedWork,finishFixedWork,taskScope,ensureDependencyVolume};
 })();
@@ -690,24 +711,6 @@ if(testSession&&process.argv.length===2&&resolve(process.argv[1]||'')===fileURLT
   const child=spawnSync(process.execPath,['--input-type=module','-e','import {execute} from '+module+';await execute("bad","/bad",{}, {stages:{}});'],{env:{PATH:process.env.PATH,HOME:process.env.HOME},encoding:'utf8'});
   assert.notEqual(child.status,0);assert.match(child.stderr,/合成阶段仅用于本仓测试/);
  });
- test('映像卸载错误保留安全分类与有界重试条件，不输出系统原文',()=>{
-  const busy=systemFailure('/usr/bin/hdiutil',['detach','/private/secret'],{status:16,stderr:'Resource busy: /private/secret'});
-  assert.equal(busy.toolFailureKind,'busy');assert.equal(busy.toolOperation,'detach');assert.equal(busy.toolStatus,16);
-  assert.doesNotMatch(busy.message,/private\/secret/);
-  assert.equal(retryableDetach(busy,0),true);assert.equal(retryableDetach(busy,1),true);assert.equal(retryableDetach(busy,2),false);
-  const permission=systemFailure('/usr/bin/hdiutil',['detach','/private/secret'],{status:13,stderr:'Permission denied'});
-  assert.equal(permission.toolFailureKind,'permission');assert.equal(retryableDetach(permission,0),false);
-  const temporary=systemFailure('/usr/bin/hdiutil',['detach','/private/secret'],{status:11,stdout:'Resource temporarily unavailable'});
-  assert.equal(temporary.toolFailureKind,'temporary');assert.equal(retryableDetach(temporary,1),true);
-  const unknown=systemFailure('/usr/bin/hdiutil',['detach','/private/secret'],{status:1,stderr:'unrecognized failure'});
-  assert.equal(unknown.toolFailureKind,'unknown');assert.equal(retryableDetach(unknown,0),false);
-  const combined=combinedFixedFailure(Error('private task detail'),busy);
-  assert.match(combined.message,/任务执行与清场均失败/);assert.doesNotMatch(combined.message,/private/);
-  assert.equal(combined.taskFailure.message,'private task detail');assert.equal(combined.cleanupFailure,busy);
-  assert.match(combinedFixedFailure(Error('工具后代退出未确认'),permission).message,/退出未确认/);
-  let caught=false;try{completeFixedWork({nested:true},false,true,null);}catch(error){caught=true;assert.equal(error,null);}assert.equal(caught,true);
- });
-
 }
 
 
