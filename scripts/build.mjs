@@ -75,10 +75,24 @@ function readOwner(work){const path=join(work,'.active.json');if(!fs.existsSync(
  if(value.schema!==1||value.product_id!==product||value.work!==work||!Number.isSafeInteger(value.pid)||value.pid<1||typeof value.nonce!=='string'||!Array.isArray(value.groups)||!value.groups.every(pid=>Number.isSafeInteger(pid)&&pid>1))fail('任务标记身份无效');return value;
 }
 function dependencyVolume(work){return {image:join(work,'filesystem.sparseimage'),mount:join(work,'dependencies')};}
+function systemFailure(command,args,result){
+ const detail=String(result.stderr||'')+'\n'+String(result.stdout||''),code=String(result.error?.code||'');
+ const kind=code==='ETIMEDOUT'?'timeout'
+  :/\b(?:resource|device) busy\b|\bEBUSY\b|\bin use\b/iu.test(detail)?'busy'
+  :/temporarily unavailable|\bEAGAIN\b/iu.test(detail)?'temporary'
+  :/permission denied|operation not permitted|\b(?:EACCES|EPERM)\b/iu.test(detail)?'permission'
+  :result.signal?'signal':'unknown';
+ const operation=['info','create','attach','detach','-convert'].includes(args[0])?args[0]:'other';
+ const status=Number.isInteger(result.status)?result.status:'none';
+ const error=Error(product+' target：系统工具失败：'+command.slice(command.lastIndexOf('/')+1)+' '+operation+'；类型='+kind+'；退出码='+status);
+ Object.defineProperties(error,{toolFailureKind:{value:kind},toolOperation:{value:operation},toolStatus:{value:status}});
+ return error;
+}
+function retryableDetach(error,attempt){return attempt<2&&['busy','temporary'].includes(error?.toolFailureKind);}
 function systemTool(work,command,args,{input,timeout=120000}={}){
  const temporary=join(work,'tmp');directory(temporary,true);
- const result=spawnSync(command,args,{input,encoding:'utf8',timeout,maxBuffer:32*1024**2,env:{PATH:'/usr/bin:/bin:/usr/sbin:/sbin',HOME:process.env.HOME||work,TMPDIR:temporary}});
- if(result.error||result.signal||result.status!==0)fail('区分大小写依赖视图系统工具失败：'+command.slice(command.lastIndexOf('/')+1));return result.stdout;
+ const result=spawnSync(command,args,{input,encoding:'utf8',timeout,maxBuffer:32*1024**2,env:{PATH:'/usr/bin:/bin:/usr/sbin:/sbin',HOME:process.env.HOME||work,TMPDIR:temporary,LANG:'C',LC_ALL:'C'}});
+ if(result.error||result.signal||result.status!==0)throw systemFailure(command,args,result);return result.stdout;
 }
 function mountedDependencyImage(work){
  const {image,mount}=dependencyVolume(work),source=systemTool(work,'/usr/bin/hdiutil',['info','-plist']),json=systemTool(work,'/usr/bin/plutil',['-convert','json','-o','-','-'],{input:source});
@@ -110,7 +124,7 @@ function ensureDependencyVolume(work,{run_id,signal}={}){
  if(fs.existsSync(mount)){directory(mount);if(fs.readdirSync(mount).length||fs.lstatSync(mount).dev!==fs.lstatSync(work).dev)fail('依赖挂载点已被占用');}
  else fs.mkdirSync(mount,{mode:0o700});
  signal?.throwIfAborted();
- systemTool(work,'/usr/bin/hdiutil',['create','-type','SPARSE','-size','64g','-fs','Case-sensitive APFS','-volname','TataChatSDKDependencies','-quiet',image],{timeout:600000});
+ systemTool(work,'/usr/bin/hdiutil',['create','-type','SPARSE','-size','64g','-fs','Case-sensitive APFS','-volname','TataChatSDKDependencies','-nospotlight','-quiet',image],{timeout:600000});
  signal?.throwIfAborted();
  systemTool(work,'/usr/bin/hdiutil',['attach','-nobrowse','-noautoopen','-mountpoint',mount,'-quiet',image],{timeout:600000});
  verifyDependencyVolume(work);signal?.throwIfAborted();return mount;
@@ -121,8 +135,26 @@ function releaseDependencyVolume(work,nonce){
  if(!fs.existsSync(image)&&!mounted)return;
  if(!nonce||readOwner(work)?.nonce!==nonce)fail('依赖映像不属于本轮任务');
  const entry=mountedDependencyImage(work);
- if(mounted){if(!entry)fail('依赖挂载点身份未知，保留任务现场');systemTool(work,'/usr/bin/hdiutil',['detach','-quiet',mount],{timeout:120000});
-  if(mountedDependencyImage(work)||fs.existsSync(mount)&&fs.lstatSync(mount).dev!==fs.lstatSync(work).dev)fail('依赖映像卸载未确认，保留任务现场');}
+ if(mounted){
+  if(!entry)fail('依赖挂载点身份未知，保留任务现场');
+  const stillMounted=()=>{
+   const current=mountedDependencyImage(work),separate=fs.existsSync(mount)&&fs.lstatSync(mount).dev!==fs.lstatSync(work).dev;
+   if(Boolean(current)!==separate)fail('依赖映像卸载状态不一致，保留任务现场');
+   return separate;
+  };
+  for(let attempt=0;attempt<3;attempt++){
+   if(readOwner(work)?.nonce!==nonce)fail('依赖映像任务所有权漂移');
+   if(!stillMounted())return;
+   let failure;
+   try{systemTool(work,'/usr/bin/hdiutil',['detach',mount],{timeout:120000});}
+   catch(error){failure=error;}
+   if(!stillMounted())return;
+   if(!failure)fail('依赖映像卸载返回成功但仍挂载，保留任务现场');
+   if(!retryableDetach(failure,attempt))throw failure;
+   // 仅同一映像、同一任务的暂时性卸载错误允许短暂等待；不强制卸载或切换资源。
+   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,500*(attempt+1));
+  }
+ }
  else if(entry)fail('依赖映像仍挂载在其它位置');
 }
 function alive(pid,group=false){try{process.kill(group&&process.platform!=='win32'?-pid:pid,0);return true;}catch(error){if(error.code==='ESRCH')return false;return true;}}
@@ -229,17 +261,34 @@ function releaseFixedWork(session,{unsafe=false}={}){
   empty(work,['.claim.lock'],session.owner.nonce);if(isBuildWork(work))fs.rmdirSync(work);
  });return value;
 }
+function combinedFixedFailure(taskFailure,cleanupFailure){
+ const kind=cleanupFailure.toolFailureKind||'other',operation=cleanupFailure.toolOperation||'other';
+ const unsafe=[taskFailure,cleanupFailure].some(error=>String(error?.message).includes('退出未确认'));
+ const status=Number.isInteger(cleanupFailure.toolStatus)?cleanupFailure.toolStatus:'none';
+ const combined=Error(product+' target：任务执行与清场均失败；清场='+operation+'/'+kind+'/'+status+(unsafe?'；工具后代退出未确认':''));
+ Object.defineProperties(combined,{taskFailure:{value:taskFailure},cleanupFailure:{value:cleanupFailure}});
+ return combined;
+}
+function completeFixedWork(session,unsafe,taskFailed,taskFailure){
+ let cleanupFailure;
+ try{releaseFixedWork(session,{unsafe});}catch(error){cleanupFailure=error;}
+ if(taskFailed&&cleanupFailure)throw combinedFixedFailure(taskFailure,cleanupFailure);
+ if(cleanupFailure)throw cleanupFailure;
+ if(taskFailed)throw taskFailure;
+}
 function withFixedWorkSync(scope,action,options={}){
- const session=claimFixedWork(scope,options);let unsafe=false;
- try{return sessions.run(session,()=>action(session.owner.work,session));}
- catch(error){unsafe=String(error?.message).includes('退出未确认');throw error;}
- finally{releaseFixedWork(session,{unsafe});}
+ const session=claimFixedWork(scope,options);let value,taskFailure,taskFailed=false;
+ try{value=sessions.run(session,()=>action(session.owner.work,session));}
+ catch(error){taskFailure=error;taskFailed=true;}
+ completeFixedWork(session,String(taskFailure?.message).includes('退出未确认'),taskFailed,taskFailure);
+ return value;
 }
 async function withFixedWork(scope,action,options={}){
- const session=claimFixedWork(scope,options);let unsafe=false;
- try{return await sessions.run(session,()=>action(session.owner.work,session));}
- catch(error){unsafe=String(error?.message).includes('退出未确认');throw error;}
- finally{releaseFixedWork(session,{unsafe});}
+ const session=claimFixedWork(scope,options);let value,taskFailure,taskFailed=false;
+ try{value=await sessions.run(session,()=>action(session.owner.work,session));}
+ catch(error){taskFailure=error;taskFailed=true;}
+ completeFixedWork(session,String(taskFailure?.message).includes('退出未确认'),taskFailed,taskFailure);
+ return value;
 }
 // 调用方在消费结果且产品进程退出后，只能收尾这个产品的准确固定目录。
 function finishFixedWork(work,{run_id}={}){
@@ -640,6 +689,23 @@ if(testSession&&process.argv.length===2&&resolve(process.argv[1]||'')===fileURLT
   const module=JSON.stringify(fileURLToPath(import.meta.url));
   const child=spawnSync(process.execPath,['--input-type=module','-e','import {execute} from '+module+';await execute("bad","/bad",{}, {stages:{}});'],{env:{PATH:process.env.PATH,HOME:process.env.HOME},encoding:'utf8'});
   assert.notEqual(child.status,0);assert.match(child.stderr,/合成阶段仅用于本仓测试/);
+ });
+ test('映像卸载错误保留安全分类与有界重试条件，不输出系统原文',()=>{
+  const busy=systemFailure('/usr/bin/hdiutil',['detach','/private/secret'],{status:16,stderr:'Resource busy: /private/secret'});
+  assert.equal(busy.toolFailureKind,'busy');assert.equal(busy.toolOperation,'detach');assert.equal(busy.toolStatus,16);
+  assert.doesNotMatch(busy.message,/private\/secret/);
+  assert.equal(retryableDetach(busy,0),true);assert.equal(retryableDetach(busy,1),true);assert.equal(retryableDetach(busy,2),false);
+  const permission=systemFailure('/usr/bin/hdiutil',['detach','/private/secret'],{status:13,stderr:'Permission denied'});
+  assert.equal(permission.toolFailureKind,'permission');assert.equal(retryableDetach(permission,0),false);
+  const temporary=systemFailure('/usr/bin/hdiutil',['detach','/private/secret'],{status:11,stdout:'Resource temporarily unavailable'});
+  assert.equal(temporary.toolFailureKind,'temporary');assert.equal(retryableDetach(temporary,1),true);
+  const unknown=systemFailure('/usr/bin/hdiutil',['detach','/private/secret'],{status:1,stderr:'unrecognized failure'});
+  assert.equal(unknown.toolFailureKind,'unknown');assert.equal(retryableDetach(unknown,0),false);
+  const combined=combinedFixedFailure(Error('private task detail'),busy);
+  assert.match(combined.message,/任务执行与清场均失败/);assert.doesNotMatch(combined.message,/private/);
+  assert.equal(combined.taskFailure.message,'private task detail');assert.equal(combined.cleanupFailure,busy);
+  assert.match(combinedFixedFailure(Error('工具后代退出未确认'),permission).message,/退出未确认/);
+  let caught=false;try{completeFixedWork({nested:true},false,true,null);}catch(error){caught=true;assert.equal(error,null);}assert.equal(caught,true);
  });
 
 }
