@@ -2035,8 +2035,9 @@ async function acquireArchive(entry,{store,work,optional,offline=false,fetcher=f
  if(optional&&await stat(optional)){await directory(optional);let digest=entry.sha256;if(!digest&&entry.integrity){const index=join(dirname(optional),'index.json');if(await stat(index)){await regular(index);if((await lstat(index)).size>32*1024**2)fail('可选原件索引超限');const data=await readDependencySupply(optional);digest=data.packages?.flatMap(x=>x.archives||[]).find(x=>x.url===entry.url&&x.integrity===entry.integrity)?.sha256;}}if(digest&&!/^[a-f0-9]{64}$/u.test(digest))fail('可选供给摘要无效');const supplied=digest?join(optional,digest+'.blob'):null;if(supplied&&await stat(supplied))return check(supplied);}
 
  if(offline)fail('离线缺少锁定资源：'+url);signal?.throwIfAborted();let response,current=url;
- for(let i=0;i<=5;i++){response=await fetcher(current,{redirect:'manual',signal});if([301,302,303,307,308].includes(response.status)){await response.body?.cancel();if(i===5)fail('来源重定向超限');current=checkedURL(new URL(response.headers.get('location'),current).href);continue;}break;}
- if(!response?.ok||!response.body)fail('来源获取失败：'+url);const length=Number(response.headers.get('content-length'));if(length>maxBytes)fail('来源声明超限');
+ // 要求传输实体保持原始字节，避免Fetch自动解码gzip后误把压缩长度与ZIP字节比较。
+ for(let i=0;i<=5;i++){response=await fetcher(current,{redirect:'manual',signal,headers:{'Accept-Encoding':'identity'}});if([301,302,303,307,308].includes(response.status)){await response.body?.cancel();if(i===5)fail('来源重定向超限');current=checkedURL(new URL(response.headers.get('location'),current).href);continue;}break;}
+ if(!response?.ok||!response.body)fail('来源获取失败：'+url);if(![null,'identity'].includes(response.headers.get('content-encoding')))fail('来源响应使用了非原始编码');const length=Number(response.headers.get('content-length'));if(length>maxBytes)fail('来源声明超限');
  const temporary=join(await resourceWork(work),'.'+coordinate+'.'+randomUUID()+'.pending'),h=await open(temporary,'wx',0o600);let bytes=0;
  try{for await(const chunk of response.body){signal?.throwIfAborted();bytes+=chunk.length;if(bytes>maxBytes)fail('来源数据超限');let offset=0;while(offset<chunk.length){const n=await h.write(chunk,offset,chunk.length-offset);if(!n.bytesWritten)fail('原件写入中断');offset+=n.bytesWritten;}}if(!bytes)fail('来源数据为空');if(length&&length!==bytes)fail('来源数据不完整');await h.sync();await h.close();signal?.throwIfAborted();await chmod(temporary,0o444);await commitCandidate(temporary,target,{signal,});return await check(target);}finally{await h.close().catch(()=>{});await rm(temporary,{force:true});await response.body?.cancel().catch(()=>{});}
 }
@@ -3654,6 +3655,13 @@ test('取消自建摘要验真，离线缺件、非HTTPS和下载失败仍报错
  await assert.rejects(acquireArchive({...entry,url:url.href},{work:tmpdir(),store:root,fetcher:()=>assert.fail('明文联网')}),/HTTPS/);
  await assert.rejects(acquireArchive(entry,{work:tmpdir(),store:root,fetcher:async()=>new Response('',{status:503})}),/获取失败/);
  const file=await acquireArchive(entry,{work:tmpdir(),store:root,fetcher:async()=>new Response('delivered')});assert.equal(await readFile(file,'utf8'),'delivered');
+});
+test('官方归档请求原始实体并拒绝编码或长度不一致',async t=>{
+ const root=await sandbox(t),entry=archive(Buffer.from('original')),work=tmpdir();let requests=0;
+ const fetcher=async(_,options)=>{requests++;assert.equal(options.headers['Accept-Encoding'],'identity');return new Response('original',{headers:{'content-length':'8'}});};
+ const file=await acquireArchive(entry,{work,store:join(root,'good'),fetcher});assert.equal(await readFile(file,'utf8'),'original');assert.equal(requests,1);
+ await assert.rejects(acquireArchive(entry,{work,store:join(root,'encoded'),fetcher:async()=>new Response('original',{headers:{'content-encoding':'gzip','content-length':'4'}})}),/非原始编码/);
+ await assert.rejects(acquireArchive(entry,{work,store:join(root,'short'),fetcher:async()=>new Response('original',{headers:{'content-length':'9'}})}),/来源数据不完整/);
 });
 test('直接复用供给路径，合法硬链接及不同字节不触发验真',async t=>{
  const root=await sandbox(t),store=join(root,'store'),optional=join(root,'objects'),entry=archive(Buffer.from('declared')),source=join(optional,entry.sha256+'.blob');
