@@ -8,7 +8,7 @@ import {basename,dirname,isAbsolute,join,parse,relative,resolve,sep} from 'node:
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {createHash} from 'node:crypto';
 import {randomUUID as testRandomUUID} from 'node:crypto';
-// 本仓测试进程使用独立会话，子进程继承身份；正式Build仍使用固定平台现场。
+// 本仓测试进程使用独立会话；测试子进程须显式交付身份，正式Build仍使用固定平台现场。
 if(process.env.NODE_TEST_CONTEXT&&!process.env.PRODUCT_TEST_SESSION)process.env.PRODUCT_TEST_SESSION=testRandomUUID();
 const testSession=process.env.NODE_TEST_CONTEXT&&/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/u.test(process.env.PRODUCT_TEST_SESSION||'')?process.env.PRODUCT_TEST_SESSION:null;
 import * as viewFs from 'node:fs/promises';
@@ -50,6 +50,8 @@ function checkFixedWork(work,{create=false}={}){
  if(typeof work!=='string'||!validWork(work))fail('工作根只允许本产品target/build或target/test固定目录');
  directory(work,create);return work;
 }
+// 干净检出没有target；测试注册前由本进程创建准确会话根，退出时只收尾该会话。
+if(testSession&&process.argv.length===2&&resolve(process.argv[1]||'')===fileURLToPath(import.meta.url))checkFixedWork(fixedWork('test'),{create:true});
 function checkScratchPath(path){
  if(typeof path!=='string'||resolve(path)!==path||![fixedWork('test'),...Object.keys(contract.platforms).map(platform=>fixedWork('build/'+platform))].some(work=>path===work||path.startsWith(work+sep)))fail('内部物化目录越出本产品固定工作根');
  directory(path);return path;
@@ -264,7 +266,7 @@ const inside=(base,path)=>{const r=relative(base,path);return r===''||!isAbsolut
 const fail=message=>{throw Error(product+' Build：'+message);};
 export function checkWork(work) { return checkFixedWork(work); }
 
-const ANALYSIS_OPTIONS = Buffer.from("include: package:flutter_lints/flutter.yaml\n\nanalyzer:\n  exclude:\n    # Isar 官方生成器会调用其自身标记为 experimental 的索引扩展；生成文件不手改。\n    - lib/storage/chat_isar.g.dart\n  language:\n    strict-casts: true\n    strict-inference: true\n    strict-raw-types: true\n\nlinter:\n  rules:\n    - avoid_print\n    - directives_ordering\n    - unawaited_futures\n    - use_super_parameters\n");
+const analysisOptions=()=>Buffer.from(BUILD_SHELL_SOURCES.analysis);
 // 仓库仅保存扁平入口；Flutter要求的包路径只在调用方本轮工程中装配。
 const FLUTTER_INPUTS = new Map([
   ['android/TataChatSdkPlugin.java', 'android/src/main/java/chat/tata/sdk/TataChatSdkPlugin.java'],
@@ -349,7 +351,7 @@ export async function createFlutterSourceView(source, output) {
       await viewFs.symlink(join(source, file), destination);
     }
   }
-  await viewFs.writeFile(join(output, 'analysis_options.yaml'), ANALYSIS_OPTIONS,
+  await viewFs.writeFile(join(output, 'analysis_options.yaml'), analysisOptions(),
     { flag: 'wx', mode: 0o600 });
   return output;
 }
@@ -372,7 +374,7 @@ export async function assertFlutterSourceView(source, output) {
     const file = join(output, name);
     const info = await viewFs.lstat(file);
     if (!info.isFile() || info.isSymbolicLink()
-        || !(await viewFs.readFile(file)).equals(name==='analysis_options.yaml'?ANALYSIS_OPTIONS:await viewFs.readFile(join(source,name)))) {
+        || !(await viewFs.readFile(file)).equals(name==='analysis_options.yaml'?analysisOptions():await viewFs.readFile(join(source,name)))) {
       fail('Flutter工程Pub声明或锁文件漂移');
     }
   }
@@ -1198,7 +1200,6 @@ async function buildRelease({ source, native, output, archive, gitSha, softwareV
 }
 
 
-// 正式实现结束；以下回归仅在本文件作为测试入口时注册。
 if (process.env.NODE_TEST_CONTEXT && process.argv.length===2 && process.argv[1]===import.meta.filename) {
 const {default: assert}=await import('node:assert/strict');
 const { spawnSync }=await import('node:child_process');
@@ -3646,7 +3647,7 @@ test('SDK真实区分大小写依赖视图完整解包两份原名原字节',asy
   assert.equal(await readFile(join(output,'Readme.md'),'utf8'),'mixed-original');
   assert.notEqual((await lstat(join(output,'README.md'))).ino,(await lstat(join(output,'Readme.md'))).ino);
  });
- assert.equal((await readdir(fixedWork('build'))).length,0);
+ assert.equal((await readdir(dirname(fixedWork('build/sdk')))).length,0);
 });
 test('名称预检取消只清理本轮探测目录并保护既有成员',async t=>{
  const area=await sandbox(t),sentinel=join(area,'keep');await writeFile(sentinel,'preserve');
@@ -3805,6 +3806,10 @@ function writeFixture(path,data,options){fs.writeFileSync(path,data,options);}
 function copyFixture(source,destination,...options){fs.copyFileSync(source,destination,...options);}
 
 const sandbox=fixtureWork;
+// 子进程只取得用例所需环境；在测试模式显式沿用当前会话，避免落入正式固定根。
+const testChildEnvironment=values=>testSession?{
+ ...values,NODE_TEST_CONTEXT:process.env.NODE_TEST_CONTEXT,PRODUCT_TEST_SESSION:testSession,
+}:values;
 const root=resolve(import.meta.dirname,'..'),base=root;
 const fixture=work=>{
  const platform=Object.keys(contract.platforms).find(value=>value.endsWith('android'))||Object.keys(contract.platforms)[0];
@@ -3903,13 +3908,13 @@ test('工程输出的父链接和输入外部链接均拒绝，不能写入第�
 test('独立命令行从自身声明输出JSON，未知平台失败且不写工作根',async()=>{
  const work=sandbox();try{
   for(const platform of Object.keys(contract.platforms)){
-   const before=readdirSync(work),result=spawnSync(process.execPath,[join(root,'scripts/build.mjs'),'requirements',platform,'--work',work],{env:{HOME:work,LANG:'C',LC_ALL:'C'},encoding:'utf8'});
+   const before=readdirSync(work),result=spawnSync(process.execPath,[join(root,'scripts/build.mjs'),'requirements',platform,'--work',work],{env:testChildEnvironment({HOME:work,LANG:'C',LC_ALL:'C'}),encoding:'utf8'});
    const apple=platform.endsWith('ios')?'ios':platform.endsWith('macos')?'macos':null;
    if(apple&&existsSync(join(base,apple,'Podfile'))&&!existsSync(join(base,apple,'Podfile.lock'))){assert.notEqual(result.status,0);assert.match(result.stderr,/CocoaPods原始锁缺失/);}
    else{assert.equal(result.status,0,result.stderr);const value=JSON.parse(result.stdout);assert.equal(value.product_id,contract.product_id);assert.equal(value.platform,platform);}
    assert.deepEqual(readdirSync(work),before);
   }
-  const invalid=spawnSync(process.execPath,[join(root,'scripts/build.mjs'),'requirements','unknown','--work',work],{env:{HOME:work},encoding:'utf8'});
+  const invalid=spawnSync(process.execPath,[join(root,'scripts/build.mjs'),'requirements','unknown','--work',work],{env:testChildEnvironment({HOME:work}),encoding:'utf8'});
   assert.notEqual(invalid.status,0);assert.match(invalid.stderr,/平台/);
  }finally{removeFixture(work,{recursive:true});}
 });
@@ -4055,7 +4060,6 @@ export function createResourceSupplyClient(stream,signal){
 }
 
 // 固定工作根原有正常、失败、并发与清场回归。
-// 正式实现结束；仅直接使用 node --test 执行本文件时注册以下回归。
 if (testInvocation) {
 // 本产品真实固定目录入口的领取、并发拒绝、失败收尾与恢复验收。
 const {default:test} = await import('node:test');
@@ -4128,7 +4132,7 @@ test('第二个真实进程不能领取活跃固定根或清理前一任务',asy
  await withFixedWork('test',async work=>{
   fs.writeFileSync(join(work,'sentinel'),'owned');
   const module=join(import.meta.dirname,'build.mjs');
-  assert.throws(()=>execFileSync(process.execPath,['--input-type=module','-e','import {withFixedWork} from '+JSON.stringify(module)+'; await withFixedWork("test",()=>{});'],{env:{PATH:process.env.PATH},stdio:['ignore','pipe','pipe']}),/活跃任务/);
+  assert.throws(()=>execFileSync(process.execPath,['--input-type=module','-e','import {withFixedWork} from '+JSON.stringify(module)+'; await withFixedWork("test",()=>{});'],{env:testChildEnvironment({PATH:process.env.PATH}),stdio:['ignore','pipe','pipe']}),/活跃任务/);
   assert.equal(fs.readFileSync(join(work,'sentinel'),'utf8'),'owned');
  });isEmpty();
 });
@@ -4155,7 +4159,7 @@ test('实际任务被强制终止后下一轮在同一固定根恢复并清场',
  const {spawn}=await import('node:child_process');
  const module=join(import.meta.dirname,'build.mjs');
  const code='import {withFixedWork} from '+JSON.stringify(module)+';import fs from "node:fs";await withFixedWork("test",async work=>{fs.writeFileSync(work+"/interrupted","partial");process.stdout.write("ready");await new Promise(()=>{setInterval(()=>{},1000);});});';
- const child=spawn(process.execPath,['--input-type=module','-e',code],{env:{PATH:process.env.PATH},stdio:['ignore','pipe','pipe']});
+ const child=spawn(process.execPath,['--input-type=module','-e',code],{env:testChildEnvironment({PATH:process.env.PATH}),stdio:['ignore','pipe','pipe']});
  const finished=new Promise(resolve=>child.once('close',(code,signal)=>resolve({code,signal})));
  try{await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('任务领取超时')),5000);child.once('error',reject);child.stdout.once('data',()=>{clearTimeout(timer);resolve();});});child.kill('SIGKILL');assert.equal((await finished).signal,'SIGKILL');
   assert.equal(fs.readFileSync(join(fixedWork('test'),'interrupted'),'utf8'),'partial');
@@ -4270,9 +4274,9 @@ test('Flutter视图拒绝入口替换为副本并支持产品独立命令', asyn
 test('Flutter公开视图使用编译独立分析配置并拒绝漂移',async t=>{
  const {source,output}=await flutterViewFixture(t);await createFlutterSourceView(source,output);
  const options=join(output,'analysis_options.yaml');
- assert.equal(await readFile(options,'utf8'),ANALYSIS_OPTIONS.toString());assert.equal((await lstat(options)).isSymbolicLink(),false);
+ assert.equal(await readFile(options,'utf8'),analysisOptions().toString());assert.equal((await lstat(options)).isSymbolicLink(),false);
  await writeFile(options,'changed');await assert.rejects(assertFlutterSourceView(source,output),/漂移/);
- await writeFile(options,ANALYSIS_OPTIONS);await assertFlutterSourceView(source,output);
+ await writeFile(options,analysisOptions());await assertFlutterSourceView(source,output);
  await writeFile(join(source,'analysis_options.yaml'),'duplicate');await assert.rejects(assertFlutterSourceView(source,output),/重复分析配置/);
 });
 
@@ -4288,7 +4292,7 @@ try { const result=await execute('sdk',work,{run_id:runId},{environment:{PRODUCT
 catch(error){process.stdout.write(JSON.stringify({ok:false,built,error:String(error?.message||error)}));process.exitCode=1;}`;
  for(const mode of ['success','rejected','closed']){
   const child=spawn(process.execPath,['--input-type=module','-e',source],{
-   cwd:root,env:{PATH:process.env.PATH||''},stdio:['ignore','pipe','pipe','ignore','pipe'],
+   cwd:root,env:testChildEnvironment({PATH:process.env.PATH||''}),stdio:['ignore','pipe','pipe','ignore','pipe'],
   });
   let stdout='',stderr='',pending='',requests=0,invalidRequest=null;
   child.stdout.on('data',chunk=>{stdout+=chunk;});child.stderr.on('data',chunk=>{stderr+=chunk;});

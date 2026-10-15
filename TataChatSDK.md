@@ -525,7 +525,7 @@ Host.requestChatAccess 返回 ChatAccess(realtimeUrl, accessToken, expiresAtMill
 
 ## 统一联调第4步：资源验真与同文件回归
 
-资源实现与完整回归唯一位于本仓 scripts/build.mjs，测试置于正式代码末尾；不保留独立资源测试文件、转发壳或第二测试入口文件。直接普通导入、资源准备和Build不会加载node:test或注册末尾用例。准确Node测试入口为 node --test scripts/build.mjs；直接执行 node scripts/build.mjs test 也只进入同一末尾用例。门禁只读核对functions与node_tests登记的源码路径，不执行这些测试或推断运行成功。
+资源实现与完整回归唯一位于本仓 scripts/build.mjs，测试按所属实现放在文件内的条件测试块；不保留独立资源测试文件、转发壳或第二测试入口文件。直接普通导入、资源准备和Build不会加载node:test或注册测试用例。准确Node测试入口为 node --test scripts/build.mjs；直接执行 node scripts/build.mjs test 进入本文件的直接测试入口。测试进程先领取自己的随机会话固定根，需启动子进程的用例显式交付该会话身份，结束时只收尾本会话；正式Build仍使用正式平台固定根。门禁只读核对functions与node_tests登记的源码路径，不执行这些测试或推断运行成功。
 
 资源源码仍由独立开发复核检查；只读门禁仅核对本仓现存入口与登记，不抽取测试结果，也不把实现变化冒充测试通过。资源生产部分仅使用Node内置模块；末尾测试由所属编译测试入口执行，不依赖控制台私有源码。
 
@@ -578,7 +578,7 @@ Android资源准备直接复用本产品可选工具供给的payload路径，不
 
 控制台调度模式用本产品入口从`node:net`的`Socket`构造实际FD4双向资源通道；需求与资源准备两轮都通过同一通道请求，回执拒绝或断管立即失败，绝不改走独立获取。同文件Node回归以真实子进程FD4和合成供给方覆盖两轮正常交付、拒绝、断管及按任务编号收尾，避免只注入客户端替身而遗漏通道建立分支。
 
-公开编译组件只有本文件中的正文；本机编译不生成第二份脚本。公开SDK依赖按本仓原锁消费，不读取兄弟仓本机检出或调度兄弟仓任务。GitHub自动化由现有 `sdk.yml` 只调用本仓 `build.mjs` 完成编译、组包和一个 Release；没有后续渠道发布脚本。
+公开编译组件只有本文件中的正文；本机编译不生成第二份脚本。分析配置只在 `BUILD_SHELL_SOURCES.analysis` 中声明一次，Flutter视图和派生工程读取同一字节内容。公开SDK依赖按本仓原锁消费，不读取兄弟仓本机检出或调度兄弟仓任务。GitHub自动化由现有 `sdk.yml` 只调用本仓 `build.mjs` 完成编译、组包和一个 Release；没有后续渠道发布脚本。
 
 ## GitHub自动化
 
