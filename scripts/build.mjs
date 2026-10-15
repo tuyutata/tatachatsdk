@@ -1731,19 +1731,33 @@ export async function ciRelease(environment=process.env,{call=spawnSync}={}){
  let created=false;
  try{
   gh(['release','create',tag,archive,'--repo',repo,'--target',sha,'--title','tatachatsdk · sdk · '+version,'--notes',notes,'--draft','--latest=false']);created=true;
-  const release=api('releases/tags/'+encodeURIComponent(tag)),ref=api('git/ref/tags/'+encodeURIComponent(tag));
-  if(release.tag_name!==tag||!release.draft||release.target_commitish!==sha||release.assets?.length!==1
-   ||release.assets[0].name!=='tatachatsdk.tgz'||release.assets[0].state!=='uploaded'
-   ||release.assets[0].size!==lstatSync(archive).size||release.assets[0].digest!=='sha256:'+digest
-   ||ref.ref!=='refs/tags/'+tag||ref.object?.sha!==sha||ref.object?.type!=='commit')fail('单包草稿回读无效');
+  // GitHub按Tag查询只返回已发布Release；草稿从授权可见的分页列表按本轮Tag核对。
+  let draft;
+  for(let page=1;page<=10000;page++){
+   const rows=api('releases?per_page=100&page='+page);
+   if(!Array.isArray(rows)||rows.length>100)fail('草稿Release分页无效');
+   draft=rows.find(row=>row?.tag_name===tag);
+   if(draft)break;
+   if(rows.length<100)break;
+  }
+  if(!draft||!Number.isSafeInteger(draft.id)||draft.id<1||!draft.draft||draft.target_commitish!==sha||draft.assets?.length!==1
+   ||draft.assets[0].name!=='tatachatsdk.tgz'||draft.assets[0].state!=='uploaded'
+   ||draft.assets[0].size!==lstatSync(archive).size||draft.assets[0].digest!=='sha256:'+digest)fail('单包草稿回读无效');
+  gh(['release','edit',tag,'--repo',repo,'--draft=false']);
+  const final=api('releases/tags/'+encodeURIComponent(tag)),ref=api('git/ref/tags/'+encodeURIComponent(tag));
+  if(final.id!==draft.id||final.draft||final.prerelease||final.tag_name!==tag||!final.published_at
+   ||final.target_commitish!==sha||final.assets?.length!==1||final.assets[0].digest!=='sha256:'+digest
+   ||ref.ref!=='refs/tags/'+tag||ref.object?.sha!==sha||ref.object?.type!=='commit')fail('正式单包 Release 未确认');
   const download=join(base,'readback');mkdirSync(download);gh(['release','download',tag,'--repo',repo,'--dir',download]);
   if(createHash('sha256').update(readFileSync(join(download,'tatachatsdk.tgz'))).digest('hex')!==digest)fail('单包回读字节不符');
-  gh(['release','edit',tag,'--repo',repo,'--draft=false']);
-  const final=api('releases/tags/'+encodeURIComponent(tag));
-  if(final.draft||final.prerelease||final.tag_name!==tag||!final.published_at)fail('正式单包 Release 未确认');
   return {tag,release_id:final.id,asset:'tatachatsdk.tgz'};
- }catch(error){if(created)try{gh(['release','delete',tag,'--repo',repo,'--yes','--cleanup-tag']);}
-  catch(cleanup){throw Error(error.message+'；本轮 Release 撤销未确认：'+cleanup.message);}throw error;}
+ }catch(error){if(created)try{
+   const current=call('gh',['api','repos/'+repo+'/git/ref/tags/'+encodeURIComponent(tag)],{cwd:root,env:environment,encoding:'utf8'});
+   if(current.status!==0&&!/HTTP 404/u.test(current.stderr||''))fail('本轮Tag状态无法确认');
+   const ref=current.status===0?JSON.parse(current.stdout):null;
+   if(ref&&(ref.ref!=='refs/tags/'+tag||ref.object?.sha!==sha||ref.object?.type!=='commit'))fail('本轮Tag身份漂移');
+   gh(['release','delete',tag,'--repo',repo,'--yes',...(ref?['--cleanup-tag']:[])]);
+  }catch(cleanup){throw Error(error.message+'；本轮 Release 撤销未确认：'+cleanup.message);}throw error;}
 }
 
 if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===import.meta.filename){
