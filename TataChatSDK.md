@@ -433,7 +433,7 @@ SDK直接依赖cryptography已删除，锁中该无其他父依赖的包一并�
 
 现存`PRODUCT_TOOL_ROOT`与`PRODUCT_DEPENDENCY_ROOT`是工具和依赖的只读路径输入，本身不能完成控制台缺件准备与交付。当前供给职责按本文“工具与依赖的声明和供给职责”执行：经控制台运行由控制台准备、保存与供给，独立运行由产品自行处理；源码外`~/.local/share/product-resources`仅描述现存独立资源存储，本轮可写状态仅在work。GNU Bash/grep/sed纳入自身需求；发行件旧Shell仅用于声明中的首次GNU构建，不进入正式PATH。下载/源码工具编译不持全局锁，最终不可变对象提交使用短锁，取消传递到工具进程组。错误摘要、损坏、未锁来源、路径越界和显式离线缺失失败并保留可疑原件。
 
-Android固定包与修订归产品；额外平台仅消费官方固定发行来源与发行树摘要，不借宿主历史SDK目录。Maven供给只读验真后复制到独占Gradle缓存，由产品准备现有配置，消费仍离线；全库坐标导入与旧目录清理留到第5步。
+Android固定包与修订归产品；当前SDK原生交付只消费官方固定NDK归档与摘要，不借宿主历史SDK目录。遗留Maven/Gradle配方不进入正式SDK的`sdk`需求闭包。
 
 `PRODUCT_WORK_DIR`、`PRODUCT_BASH_BIN`、`PRODUCT_RSYNC_BIN`及`PRODUCT_SOURCE_DIR`是公开工作/工具/工程入口；Flutter修订不读取调用方私有变量，也不回退系统rsync。旧Flutter补丁对象与当前配方不符时拒绝复用，真实替换须按准确资源操作另行授权。本步不改变编译、签名、安装及回读顺序，不修改产品UI，也未执行真实工具下载/安装。受控资源测试不能代替官方首次取得、正式编译或最终真实运行验收；第4至7步仍待逐步确认实施。
 
@@ -543,11 +543,11 @@ SDK完整Build在本仓固定`target/build/sdk`任务根内创建`filesystem.spa
 
 ## 当前资源供给合同（2026-10-09）
 
-scripts/build.mjs 按本仓声明和上游锁准备、物化并复用工具与依赖；scripts/build.mjs 直接使用回执中的路径。编译流程自身管理当前任务的工具与缓存环境，塔塔门禁不参与资源准备或验真。原件库存坐标、版本声明和上游锁保留；CocoaPods与Cargo等上游包管理器仍执行自身原生流程。
+scripts/build.mjs 按本仓声明和上游锁准备、物化并复用工具与依赖；scripts/build.mjs 直接使用回执中的路径。编译流程自身管理当前任务的工具与缓存环境，塔塔门禁不参与资源准备或验真。原件库存坐标、版本声明和上游锁保留；正式SDK原生编译仅消费Cargo锁与固定NDK，不准备CocoaPods或Gradle。
 
 供给缺件、离线缺件、工具非零退出、取消或后代未退出按实际结果失败。固定工作根、任务身份、隔离、互斥与清场合同继续适用。业务授权、钱包及链签名、TLS和正式应用产物的签名安装合同保持各自职责。
 
-Android资源准备直接复用本产品可选工具供给的payload路径，不依赖来源证明或全树回执。Gradle与SDK可写视图只在当前已领取的target/build或target/test中的dependencies/android-sdk-view物化；工具原件只读保留。缺件、复制/执行失败及取消由入口等待工具退出后清空固定根。固定根回归scripts/build.mjs同时登记于node_tests和functions。
+Android资源准备从已锁定的官方NDK原件在本任务独占候选中物化，原生Cargo只读取最终NDK对象，输出写入本轮CARGO_TARGET_DIR；不复制完整NDK到另一可写视图，也不展开完整Android SDK或Gradle视图。缺件、执行失败及取消由入口等待工具退出后清空固定根。固定根回归scripts/build.mjs同时登记于node_tests和functions。
 
 固定根中的工程视图按产品根的直接子项复制，排除target与既有生成目录，避免Node把整个源码根复制进自身子目录时拒绝操作。视图根仍为当前已领取工作根中的source，不成为另一个任务工作根；成功、失败和中断恢复均由本仓target入口完成清场。
 
@@ -588,9 +588,15 @@ Apple工具由当前Xcode的`xcode-select`和`xcrun --find`定位。Xcode包内�
 
 源码工具以最终对象为Configure前缀并经DESTDIR安装到候选后，逐个读取候选Mach-O的实际动态库引用。仅将指向同一最终对象、且在候选内存在的绝对库路径改为相对当前加载器的路径，再签名和运行模块探测；缺库、越界、链接目标失效直接失败。Perl、Tcl和后续同配方源码工具均经过这一步，不用已发布本机工具掩盖Runner首次构建问题。
 
+TAR成员物化后按上游头或PAX准确mtime回写普通文件、硬链接副本和目录，目录在子项之后回写；不改变成员名称、字节、原锁、来源或越界规则。GNU gettext 1.0官方归档中`gettext-tools/examples/aclocal.m4`原mtime晚于其`configure.ac`依赖，且归档成员顺序相反；若逐件写入而不恢复时间，Make会误运行缺失的`aclocal-1.18`。本仓同文件回归固定这一真实先后关系及PAX、小数时间、非法时间与目录收尾边界。
+
+ZIP先读取并验证中央目录、总解压尺寸、路径及链接关系，再于本轮独占候选中逐成员解压写盘；失败删除本轮目标。不同时保留所有解压成员。官方NDK r28c Darwin归档压缩体积952495160字节、成员8897件、声明解压总量2962168617字节，无Zip64，23个符号链接的相对目标均存在于同一归档且未越界；这些值用于资源容量分析，不另存为第二份上游摘要或放宽原锁校验。
+
 ## GitHub自动化
 
-`.github/workflows/sdk.yml` 在三个独立 Xcode 27 ARM64 Runner Job 中调用本仓 `scripts/build.mjs`，分别编译 Android ARM64、iOS 真机与模拟器、macOS ARM64 原生资产；`fail-fast: false` 使某端失败不取消另外两端。三端全部成功后，同一 Workflow 的汇总 Job 使用 `build.mjs` 组装并验真唯一 `tatachatsdk.tgz`，创建草稿、逐件回读后公开一个 GitHub Tag/Release。失败只撤销本轮已确认创建的 Release/Tag。外部分发目的地仍未确定，本次尚未执行真实 GitHub 构建。
+`.github/workflows/sdk.yml` 在三个独立 Xcode 27 ARM64 Runner Job 中调用本仓 `scripts/build.mjs`，分别编译 Android ARM64、iOS 真机与模拟器、macOS ARM64 原生资产；`fail-fast: false` 使某端失败不取消另外两端。三端全部成功后，同一 Workflow 的汇总 Job 使用 `build.mjs` 组装并验真唯一 `tatachatsdk.tgz`，创建草稿、逐件回读后公开一个 GitHub Tag/Release。失败只撤销本轮已确认创建的 Release/Tag。外部分发目的地仍未确定，真实成功以GitHub当前运行回执为准。
+
+正式`sdk`资源合同仅交付Node25.2.1、Rust1.97.1、Android NDK28.2.13676358、Xcode27、受控POSIX及GNU Bash/grep/sed，并只物化`native/Cargo.lock`的registry闭包；新增Cargo Git来源在资源准备前失败。`pubspec.lock`仍随正式包保留，但本仓原生编译不运行Flutter、Gradle、Java、CocoaPods或Pub获取，也不再因无关Git工具构建gettext。SDK单一平台合同在三个原生Job中都交付同一固定NDK，只有Android Job执行其中的交叉编译工具；均直接读取只读NDK对象，不再复制完整Android SDK或NDK视图。原生Shell的路径校验使用已交付Node，iOS切片元数据用受控`plutil`转JSON并由Node核对；Android编译与包验真均必须由资源回执明确交付`ANDROID_NDK_HOME`，在Cargo前执行固定NDK的Clang、ar和nm，禁止扫描系统NDK。GitHub test Job先预检Runner的Node、Apple定位工具、plutil、tar及gh，再运行本仓回归；实测三端、缓存和Release仍以新的工作流结果验收。
 
 三个native Job各自通过GitHub Actions Cache恢复同平台最近一次Cargo Release目标目录；缓存键绑定macOS ARM64、平台、`native/Cargo.lock`与本仓编译实现，运行身份使成功快照拥有新键。产品在固定工作根领取和清空之后才恢复，验真原生产物后、清场前将本轮Cargo目录复制到Runner临时缓存现场；两次复制优先使用APFS写时复制，不共享可写硬链接。缓存元数据另核对本仓源码路径、工具版本、Runner映像和平台；不兼容或缓存损坏时干净编译。保存新缓存后只按本仓main、本平台缓存ID尽力删除旧版本，目标为三端各保留最新成功快照；缓存服务失败会明确显示，但不阻断已经验真的正式原生产物。缓存不进入源码、资源原件、七天原生交付Artifact或正式Release资产。缓存恢复、保存和原生编译分别记录耗时与字节，真实提速待成功GitHub运行验证。GitHub可能按仓库容量与闲置期限淘汰缓存，因此“保留最新一份”指尚在GitHub缓存服务内的当前快照，不承诺无限期存在。
 

@@ -18,6 +18,16 @@ jobs:
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with:
           node-version: 25.2.1
+      - name: 提前核对GitHub Runner正式工具
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(node --version)" = "v25.2.1"
+          command -v gh
+          command -v tar
+          /usr/bin/xcrun --find llvm-nm >/dev/null
+          /usr/bin/xcodebuild -version >/dev/null
+          test -x /usr/bin/plutil
       - name: 先执行本仓代码回归
         shell: bash
         run: node --test scripts/build.mjs
