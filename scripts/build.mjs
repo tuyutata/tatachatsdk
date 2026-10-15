@@ -94,7 +94,7 @@ function systemTool(work,command,args,{input,timeout=120000}={}){
  const result=spawnSync(command,args,{input,encoding:'utf8',timeout,maxBuffer:32*1024**2,env:{PATH:'/usr/bin:/bin:/usr/sbin:/sbin',HOME:process.env.HOME||work,TMPDIR:temporary,LANG:'C',LC_ALL:'C'}});
  if(result.error||result.signal||result.status!==0)throw systemFailure(command,args,result);return result.stdout;
 }
-function mountedDependencyImage(work){
+function mountedDependencyImage(work,{includeUnmounted=false}={}){
  const {image,mount}=dependencyVolume(work),source=systemTool(work,'/usr/bin/hdiutil',['info','-plist']),json=systemTool(work,'/usr/bin/plutil',['-convert','json','-o','-','-'],{input:source});
  let images;try{images=JSON.parse(json).images;}catch{fail('磁盘映像挂载清单无效');}
  if(!Array.isArray(images))fail('磁盘映像挂载清单无效');
@@ -102,6 +102,13 @@ function mountedDependencyImage(work){
  if(matching.length>1||occupants.some(item=>item?.['image-path']!==image))fail('依赖挂载点被其它映像占用');
  if(!matching.length)return null;
  const mounted=(matching[0]['system-entities']||[]).filter(entity=>entity?.['mount-point']);
+ // 清场可识别已卸载卷但仍附着的磁盘设备，必须继续detach而不能删除映像。
+ if(!mounted.length){
+  if(!includeUnmounted)fail('依赖映像挂载身份漂移');
+  const device=(matching[0]['system-entities']||[]).map(entity=>entity?.['dev-entry']).find(value=>typeof value==='string'&&/^\/dev\/disk[0-9]+$/u.test(value));
+  if(!device)fail('依赖映像设备身份缺失');
+  return {unmounted:true,device};
+ }
  if(mounted.length!==1||mounted[0]['mount-point']!==mount)fail('依赖映像挂载身份漂移');
  return mounted[0];
 }
@@ -134,28 +141,24 @@ function releaseDependencyVolume(work,nonce){
  const {image,mount}=dependencyVolume(work),mounted=fs.existsSync(mount)&&fs.lstatSync(mount).dev!==fs.lstatSync(work).dev;
  if(!fs.existsSync(image)&&!mounted)return;
  if(!nonce||readOwner(work)?.nonce!==nonce)fail('依赖映像不属于本轮任务');
- const entry=mountedDependencyImage(work);
- if(mounted){
-  if(!entry)fail('依赖挂载点身份未知，保留任务现场');
-  const stillMounted=()=>{
-   const current=mountedDependencyImage(work),separate=fs.existsSync(mount)&&fs.lstatSync(mount).dev!==fs.lstatSync(work).dev;
-   if(Boolean(current)!==separate)fail('依赖映像卸载状态不一致，保留任务现场');
-   return separate;
-  };
-  for(let attempt=0;attempt<3;attempt++){
-   if(readOwner(work)?.nonce!==nonce)fail('依赖映像任务所有权漂移');
-   if(!stillMounted())return;
-   let failure;
-   try{systemTool(work,'/usr/bin/hdiutil',['detach',mount],{timeout:120000});}
-   catch(error){failure=error;}
-   if(!stillMounted())return;
-   if(!failure)fail('依赖映像卸载返回成功但仍挂载，保留任务现场');
-   if(!retryableDetach(failure,attempt))throw failure;
-   // 仅同一映像、同一任务的暂时性卸载错误允许短暂等待；不强制卸载或切换资源。
-   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,500*(attempt+1));
-  }
+ const state=()=>{
+  const current=mountedDependencyImage(work,{includeUnmounted:true}),separate=fs.existsSync(mount)&&fs.lstatSync(mount).dev!==fs.lstatSync(work).dev;
+  if(Boolean(current&&!current.unmounted)!==separate)fail('依赖映像卸载状态不一致，保留任务现场');
+  return current;
+ };
+ if(!mounted&&!state())return;
+ for(let attempt=0;attempt<3;attempt++){
+  if(readOwner(work)?.nonce!==nonce)fail('依赖映像任务所有权漂移');
+  const current=state();if(!current)return;
+  let failure;
+  try{systemTool(work,'/usr/bin/hdiutil',['detach',current.unmounted?current.device:mount],{timeout:120000});}
+  catch(error){failure=error;}
+  if(!state())return;
+  if(failure&&!retryableDetach(failure,attempt))throw failure;
+  // 同一映像设备可在卷卸载后短暂继续附着；仅按本轮准确设备重试。
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,500*(attempt+1));
  }
- else if(entry)fail('依赖映像仍挂载在其它位置');
+ fail('依赖映像卸载后仍附着，保留任务现场');
 }
 function alive(pid,group=false){try{process.kill(group&&process.platform!=='win32'?-pid:pid,0);return true;}catch(error){if(error.code==='ESRCH')return false;return true;}}
 function writeOwner(owner){regular(join(owner.work,'.active.json'));fs.writeFileSync(join(owner.work,'.active.json'),JSON.stringify(owner)+'\n',{mode:0o600});}
