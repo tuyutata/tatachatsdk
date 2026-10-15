@@ -4713,7 +4713,8 @@ catch(error){process.stdout.write(JSON.stringify({ok:false,built,error:String(er
 if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===import.meta.filename){
  const {test}=await import('node:test'),{default:assert}=await import('node:assert/strict'),fs=await import('node:fs'),{tmpdir}=await import('node:os'),{randomUUID}=await import('node:crypto');
  test('依赖原生入口绑定任务并拒绝错平台、令牌和目录',()=>{
-  const area=fs.realpathSync(fs.mkdtempSync(join(tmpdir(),'chat-native-scope-')));
+  // 依赖调用方夹具必须在SDK源码外；正式native Job的TMPDIR属于SDK本轮工作根。
+  const area=fs.realpathSync(fs.mkdtempSync(join(fs.realpathSync('/tmp'),'chat-native-scope-')));
   try{const work=join(area,'target/build/ios'),cargo=join(work,'cargo-home'),output=join(work,'native-ios');fs.mkdirSync(cargo,{recursive:true});fs.mkdirSync(output);
    const nonce=randomUUID(),owner={schema:1,work,product_id:'fixture',state:'running',pid:process.pid,nonce,groups:[process.pid],run_id:'123456789'};
    fs.writeFileSync(join(work,'.active.json'),JSON.stringify(owner));
