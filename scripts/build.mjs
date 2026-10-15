@@ -11,6 +11,10 @@ import {randomUUID as testRandomUUID} from 'node:crypto';
 // 本仓测试进程使用独立会话；测试子进程须显式交付身份，正式Build仍使用固定平台现场。
 if(process.env.NODE_TEST_CONTEXT&&!process.env.PRODUCT_TEST_SESSION)process.env.PRODUCT_TEST_SESSION=testRandomUUID();
 const testSession=process.env.NODE_TEST_CONTEXT&&/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/u.test(process.env.PRODUCT_TEST_SESSION||'')?process.env.PRODUCT_TEST_SESSION:null;
+// 同文件各测试块共用最小子进程环境；正式执行没有测试会话注入。
+const testChildEnvironment=values=>testSession?{
+ ...values,NODE_TEST_CONTEXT:process.env.NODE_TEST_CONTEXT,PRODUCT_TEST_SESSION:testSession,
+}:values;
 import * as viewFs from 'node:fs/promises';
 
 
@@ -3100,7 +3104,7 @@ const protocArchives = Object.freeze({
 
 function fail(message) { throw new Error(message); }
 
-function safeWork(value){if(!isAbsolute(value)||![join(product,'target/build/sdk'),join(product,'target/test')].includes(resolve(value)))fail('TataChatSDK工具工作根只允许本产品target/build或target/test固定目录');const actual=realpathSync(value);if(actual!==value)fail('TataChatSDK工具工作目录禁止符号链接');return actual;}
+function safeWork(value){if(!isAbsolute(value)||![targetInternals.fixedWork('build/sdk'),targetInternals.fixedWork('test')].includes(resolve(value)))fail('TataChatSDK工具工作根只允许本产品target/build或target/test固定目录');const actual=realpathSync(value);if(actual!==value)fail('TataChatSDK工具工作目录禁止符号链接');return actual;}
 
 async function download(url, output, hosts, signal) {
   const parsed = new URL(url);
@@ -3806,10 +3810,6 @@ function writeFixture(path,data,options){fs.writeFileSync(path,data,options);}
 function copyFixture(source,destination,...options){fs.copyFileSync(source,destination,...options);}
 
 const sandbox=fixtureWork;
-// 子进程只取得用例所需环境；在测试模式显式沿用当前会话，避免落入正式固定根。
-const testChildEnvironment=values=>testSession?{
- ...values,NODE_TEST_CONTEXT:process.env.NODE_TEST_CONTEXT,PRODUCT_TEST_SESSION:testSession,
-}:values;
 const root=resolve(import.meta.dirname,'..'),base=root;
 const fixture=work=>{
  const platform=Object.keys(contract.platforms).find(value=>value.endsWith('android'))||Object.keys(contract.platforms)[0];

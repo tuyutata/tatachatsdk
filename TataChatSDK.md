@@ -553,11 +553,11 @@ Android资源准备直接复用本产品可选工具供给的payload路径，不
 
 ### scripts 同文件回归
 
-正式脚本与对应测试维护在同一文件，测试位于实现末尾；普通导入不注册测试。Node 回归直接使用 `node --test` 执行实现文件，本仓门禁清单按合并后的入口登记。测试工作现场仍由本产品 `scripts/build.mjs` 管理，结束后清空固定目录。
+正式脚本与对应测试维护在同一文件，测试在所属实现的条件测试块注册；普通导入不注册测试。Node 回归直接使用 `node --test` 执行实现文件，本仓门禁清单按合并后的入口登记。测试工作现场仍由本产品 `scripts/build.mjs` 管理，结束后清空准确会话目录。
 
 资源复用直接消费已提供路径；POSIX配方只定位实际命令，不读取系统发行身份、采集输入摘要或复验Apple资源签名。源码工具候选不再保存配方摘要与POSIX摘要证明。Maven任务视图不再扫描完整树；Pub/Cargo仍由原生命令消费原锁与校验元数据，准备器不重复比较目录摘要。
 
-协议工具公开入口scripts/build.mjs统一由本仓资源实现准备：只接受target/build或target/test，protoc直接解包、Dart插件通过明确的DART_EXECUTABLE调用Pub和编译；不探测protoc版本或比较插件全树。单独准备成功后按本产品结果保留/finish协议交接，失败与取消清场。协议生成输出只在同轮protocol目录，不写入作为输入的lib/protocol。
+协议工具公开入口scripts/build.mjs统一由本仓资源实现准备：工作根直接使用本产品固定目录合同，正式模式只接受target/build/sdk或target/test，测试进程只接受自身随机会话的对应根；protoc直接解包、Dart插件通过明确的DART_EXECUTABLE调用Pub和编译，不探测protoc版本或比较插件全树。单独准备成功后按本产品结果保留/finish协议交接，失败与取消清场。协议生成输出只在同轮protocol目录，不写入作为输入的lib/protocol。
 
 资源回归的下载候选显式传入本轮test固定根，和镜像内夹具保持同卷，不借用build默认临时根。大小写名称用例在真实文件系统决定能否完整表示；已交付的libcrux-intrinsics0.0.6官方原件可经extractArchive完整展开，README.md与Readme.md必须同时保留各自原字节，不改声明、锁、上游名称或原件。此文件系统准备是临时开发现场，不修改宿主Data卷，也不表示SDK业务或正式Build已完成。
 
