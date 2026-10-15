@@ -582,11 +582,17 @@ Android资源准备直接复用本产品可选工具供给的payload路径，不
 
 公开编译组件只有本文件中的正文；本机编译不生成第二份脚本。分析配置只在 `BUILD_SHELL_SOURCES.analysis` 中声明一次，Flutter视图和派生工程读取同一字节内容。公开SDK依赖按本仓原锁消费，不读取兄弟仓本机检出或调度兄弟仓任务。GitHub自动化由现有 `sdk.yml` 只调用本仓 `build.mjs` 完成编译、组包和一个 Release；没有后续渠道发布脚本。
 
+当前控制台的塔塔聊天交付只有“自动化 · SDK”按钮；本节的独立编译入口是产品实现接口，不代表控制台另有本机编译按钮。正式三端编译和增量缓存均只在该按钮派发的 GitHub `sdk.yml` 中执行。
+
 Apple工具由当前Xcode的`xcode-select`和`xcrun --find`定位。Xcode包内允许同一`usr/bin`目录中单跳指向可执行普通文件的官方工具别名，交付时保留`clang++`等准确调用路径；越出当前Developer、断链、链式链接、不可执行目标和非规范路径均拒绝。系统`/usr/bin`工具仍按准确普通文件入口校验，通用资源`regular`规则不放宽。同文件回归用合成Xcode目录核对上述正常与失败边界；真实三平台原生编译仍须以控制台工作流结果验收。
+
+源码工具以最终对象为Configure前缀并经DESTDIR安装到候选后，逐个读取候选Mach-O的实际动态库引用。仅将指向同一最终对象、且在候选内存在的绝对库路径改为相对当前加载器的路径，再签名和运行模块探测；缺库、越界、链接目标失效直接失败。Perl、Tcl和后续同配方源码工具均经过这一步，不用已发布本机工具掩盖Runner首次构建问题。
 
 ## GitHub自动化
 
 `.github/workflows/sdk.yml` 在三个独立 Xcode 27 ARM64 Runner Job 中调用本仓 `scripts/build.mjs`，分别编译 Android ARM64、iOS 真机与模拟器、macOS ARM64 原生资产；`fail-fast: false` 使某端失败不取消另外两端。三端全部成功后，同一 Workflow 的汇总 Job 使用 `build.mjs` 组装并验真唯一 `tatachatsdk.tgz`，创建草稿、逐件回读后公开一个 GitHub Tag/Release。失败只撤销本轮已确认创建的 Release/Tag。外部分发目的地仍未确定，本次尚未执行真实 GitHub 构建。
+
+三个native Job各自通过GitHub Actions Cache恢复同平台最近一次Cargo Release目标目录；缓存键绑定macOS ARM64、平台、`native/Cargo.lock`与本仓编译实现，运行身份使成功快照拥有新键。产品在固定工作根领取和清空之后才恢复，验真原生产物后、清场前将本轮Cargo目录复制到Runner临时缓存现场；两次复制优先使用APFS写时复制，不共享可写硬链接。缓存元数据另核对本仓源码路径、工具版本、Runner映像和平台；不兼容或缓存损坏时干净编译。保存新缓存后只按本仓main、本平台缓存ID尽力删除旧版本，目标为三端各保留最新成功快照；缓存服务失败会明确显示，但不阻断已经验真的正式原生产物。缓存不进入源码、资源原件、七天原生交付Artifact或正式Release资产。缓存恢复、保存和原生编译分别记录耗时与字节，真实提速待成功GitHub运行验证。GitHub可能按仓库容量与闲置期限淘汰缓存，因此“保留最新一份”指尚在GitHub缓存服务内的当前快照，不承诺无限期存在。
 
 ## GitHub塔塔门禁与同类记录清理
 

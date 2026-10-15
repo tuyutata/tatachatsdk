@@ -760,13 +760,16 @@ async function executeTask(platform,work,request={},options={}) {
    resourcesOptions.supply=previous=>state.resourceClient({previous});
   }
   await stages.requirements(platform,work);state.signal.throwIfAborted();
+  if(options.restoreCargoCache)await options.restoreCargoCache(work);
   let receipt=await stages.resources(platform,work,request,resourcesOptions);state.signal.throwIfAborted();
   if(!options.stages)await runProductTests(platform,work,receipt,resourcesOptions.environment);
   state.signal.throwIfAborted();
   await stages.prepare(platform,work,receipt,resourcesOptions.environment);state.signal.throwIfAborted();
   await stages.requirements(platform,work);
   receipt=await stages.resources(platform,work,receipt,resourcesOptions);state.signal.throwIfAborted();
+  const buildStarted=Date.now();
   const result=await stages.build(platform,work,receipt,resourcesOptions.environment);state.signal.throwIfAborted();
+  if(options.consume)process.stdout.write('GitHub原生编译耗时毫秒='+(Date.now()-buildStarted)+'\n');
   checkBuildResult(result,platform,work,request.run_id);
   writeFileSync(resultFile,JSON.stringify(result)+'\n',{flag:'wx',mode:0o600});return result;
  });}catch(error){if(String(error?.message).includes('退出未确认'))state.unconfirmed=true;throw error;}finally{state.finished=true;state.socket?.destroy();state.resourceClient?.close?.();options.signal?.removeEventListener('abort',abort);if(!state.unconfirmed){unlinkSync(lock);if(!options.consume&&(options.environment||process.env).PRODUCT_RESOURCE_FD!=='4'&&(options.environment||process.env).PRODUCT_HOST_FD!=='3')clearWork(work);}}
@@ -1518,6 +1521,55 @@ return {buildRelease,verifyReleaseAssets};
 })();
 export const {buildRelease,verifyReleaseAssets}=releaseAssets;
 
+// GitHub缓存只在已领取的任务现场恢复；完整产物验真后另存快照供下次Run使用。
+function ciCargoCacheIdentity(target,work,environment){
+ const digest=file=>createHash('sha256').update(readFileSync(join(root,file))).digest('hex');
+ return createHash('sha256').update(JSON.stringify({schema:1,target,work,source:root,
+  platform:process.platform,arch:process.arch,image:environment.ImageVersion||'',
+  cargoLock:digest('native/Cargo.lock'),compiler:digest('scripts/build.mjs'),
+  rust:contract.platforms.sdk.tools.find(tool=>tool.id==='rust')?.version})).digest('hex');
+}
+function ciCargoCacheTree(path){
+ const info=lstatSync(path);if(info.isSymbolicLink())fail('GitHub编译缓存包含链接');
+ if(info.isFile())return info.size;
+ if(!info.isDirectory())fail('GitHub编译缓存包含特殊文件');
+ return readdirSync(path).reduce((bytes,name)=>bytes+ciCargoCacheTree(join(path,name)),0);
+}
+async function restoreCiCargoCache(target,work,stage,environment){
+ if(!existsSync(stage))return;
+ const destination=join(work,'work/cargo-target');
+ try{
+ const started=Date.now();
+ const manifest=join(stage,'manifest.json'),source=join(stage,'cargo-target');
+ if(!existsSync(manifest)||!existsSync(source))fail('GitHub编译缓存不完整');
+ if(!lstatSync(stage).isDirectory()||lstatSync(stage).isSymbolicLink()
+  ||!lstatSync(manifest).isFile()||lstatSync(manifest).isSymbolicLink())fail('GitHub编译缓存元数据无效');
+ const meta=JSON.parse(readFileSync(manifest,'utf8'));
+ if(meta.schema!==1||meta.product_id!=='tatachatsdk'||meta.target!==target
+  ||meta.identity!==ciCargoCacheIdentity(target,work,environment))return;
+ const bytes=ciCargoCacheTree(source);
+ if(!bytes||bytes!==meta.bytes||!/^[a-f0-9]{40}$/u.test(meta.source_sha||'')||existsSync(destination))fail('GitHub编译缓存现场无效');
+ mkdirSync(dirname(destination),{recursive:true,mode:0o700});
+ await viewFs.cp(source,destination,{recursive:true,verbatimSymlinks:true,errorOnExist:true,force:false,mode:fsConstants.COPYFILE_FICLONE});
+ process.stdout.write('GitHub Cargo缓存命中；恢复字节='+bytes+'；耗时毫秒='+(Date.now()-started)+'\n');
+ }catch{
+  if(existsSync(destination))rmSync(destination,{recursive:true});
+  rmSync(stage,{recursive:true});
+  process.stdout.write('GitHub Cargo缓存不可用；本轮干净编译\n');
+ }
+}
+async function snapshotCiCargoCache(target,work,stage,environment){
+ const started=Date.now();
+ const source=join(work,'work/cargo-target');
+ if(!existsSync(source))fail('成功编译缺少Cargo目标目录');
+ const bytes=ciCargoCacheTree(source);if(!bytes)fail('成功编译Cargo目标目录为空');
+ if(existsSync(stage))rmSync(stage,{recursive:true});
+ mkdirSync(stage,{mode:0o700});
+ await viewFs.cp(source,join(stage,'cargo-target'),{recursive:true,verbatimSymlinks:true,mode:fsConstants.COPYFILE_FICLONE});
+ writeFileSync(join(stage,'manifest.json'),JSON.stringify({schema:1,product_id:'tatachatsdk',target,
+  identity:ciCargoCacheIdentity(target,work,environment),source_sha:environment.GITHUB_SHA,bytes})+'\n',{flag:'wx',mode:0o600});
+ process.stdout.write('GitHub Cargo缓存待保存；字节='+bytes+'；耗时毫秒='+(Date.now()-started)+'\n');
+}
 // GitHub 的三个原生目标各自编译并交付当前 Run 资产；正式包只在全部成功后汇总一次。
 export async function ciNative(target,environment=process.env){
  if(!['android','ios','macos'].includes(target)||environment.GITHUB_ACTIONS!=='true'
@@ -1529,9 +1581,12 @@ export async function ciNative(target,environment=process.env){
   ||!/^[1-9][0-9]*$/u.test(environment.GITHUB_RUN_ATTEMPT||'')
   ||!Number.isSafeInteger(Number(environment.GITHUB_RUN_ID))
   ||!Number.isSafeInteger(Number(environment.GITHUB_RUN_ATTEMPT)))fail('GitHub 原生目标身份无效');
- const stage=join(environment.RUNNER_TEMP,'tatachatsdk-native-'+target),work=fixedWork('build/sdk');
+ const stage=join(environment.RUNNER_TEMP,'tatachatsdk-native-'+target),work=fixedWork('build/sdk'),
+  cache=join(environment.RUNNER_TEMP,'tatachatsdk-cargo-'+target);
  if(existsSync(stage))fail('本轮原生交付现场已存在');
- return execute('sdk',work,{}, {environment:{...environment,TATACHATSDK_RELEASE_TARGET:target},
+ let cacheReady=false;
+ const result=await execute('sdk',work,{}, {environment:{...environment,TATACHATSDK_RELEASE_TARGET:target},
+  restoreCargoCache:owned=>restoreCiCargoCache(target,owned,cache,environment),
   consume:async result=>{
    if(result?.completion!=='compile-only'||result.product_id!=='tatachatsdk'||result.platform!=='sdk'
     ||result.work!==work||result.files?.length!==0)fail('本轮 SDK 编译回执无效');
@@ -1546,7 +1601,75 @@ export async function ciNative(target,environment=process.env){
     digest,archive_sha256:createHash('sha256').update(readFileSync(archive)).digest('hex')};
    writeFileSync(join(stage,'receipt.json'),JSON.stringify(proof)+'\n',{flag:'wx',mode:0o600});
    rmSync(output,{recursive:true});
+   try{await snapshotCiCargoCache(target,work,cache,environment);cacheReady=true;}
+   catch{process.stdout.write('GitHub Cargo缓存快照失败；正式编译产物仍按原回执交付\n');}
   }});
+ if(environment.GITHUB_OUTPUT)writeFileSync(environment.GITHUB_OUTPUT,'cargo_cache_ready='+(cacheReady?'true':'false')+'\n',{flag:'a'});
+ return result;
+}
+
+export function ciCachePrune(target,key,environment=process.env,{call=spawnSync}={}){
+ const suffix='-'+environment.GITHUB_RUN_ID+'-'+environment.GITHUB_RUN_ATTEMPT;
+ const prefix='tatachatsdk-cargo-v1-macOS-ARM64-'+target+'-';
+ if(!['android','ios','macos'].includes(target)||environment.GITHUB_ACTIONS!=='true'
+  ||environment.GITHUB_REPOSITORY!=='tuyutata/tatachatsdk'||environment.GITHUB_WORKFLOW!=='tatachatsdk.sdk'
+  ||environment.GITHUB_REF!=='refs/heads/main'||environment.GITHUB_EVENT_NAME!=='workflow_dispatch'
+  ||environment.GITHUB_WORKFLOW_REF!=='tuyutata/tatachatsdk/.github/workflows/sdk.yml@refs/heads/main'
+  ||!/^[a-f0-9]{40}$/u.test(environment.GITHUB_SHA||'')
+  ||!/^[1-9][0-9]*$/u.test(environment.GITHUB_RUN_ID||'')
+  ||!/^[1-9][0-9]*$/u.test(environment.GITHUB_RUN_ATTEMPT||'')
+  ||!environment.GH_TOKEN||!new RegExp('^'+prefix+'[a-f0-9]{64}'+suffix+'$','u').test(key))
+  fail('GitHub缓存清理身份无效');
+ const api=args=>{
+  const result=call('gh',['api',...args],{env:environment,cwd:root,encoding:'utf8',maxBuffer:8*1024**2});
+  if(result.status!==0||result.error)fail('GitHub编译缓存清理接口失败');
+  return result.stdout.trim();
+ };
+ const route='repos/tuyutata/tatachatsdk/actions/caches';
+ const query=route+'?ref=refs%2Fheads%2Fmain&key='+encodeURIComponent(prefix)+'&per_page=100';
+ const list=()=>api(['--paginate','--jq','.actions_caches[] | @json',query]).split('\n').filter(Boolean).map(line=>JSON.parse(line));
+ const caches=list();
+ if(!caches.some(item=>item.key===key&&item.ref==='refs/heads/main'))fail('本轮GitHub编译缓存尚未保存');
+ for(const item of caches){
+  if(item.key===key)continue;
+  if(item.ref!=='refs/heads/main'||typeof item.key!=='string'
+    ||!new RegExp('^'+prefix+'[a-f0-9]{64}-[1-9][0-9]*-[1-9][0-9]*$','u').test(item.key)
+    ||!Number.isSafeInteger(item.id)||item.id<1)fail('GitHub编译缓存清理候选无效');
+  api(['-X','DELETE',route+'/'+item.id]);
+ }
+ const remaining=list();
+ if(remaining.length!==1||remaining[0].key!==key)fail('GitHub编译缓存没有收敛到本平台最新一份');
+ return {target,key,retained:1,deleted:caches.length-1};
+}
+if(testSession&&process.argv.length===2&&resolve(process.argv[1]||'')===fileURLToPath(import.meta.url)){
+ const {test}=await import('node:test'),{default:assert}=await import('node:assert/strict');
+ test('GitHub Cargo缓存只在同身份任务内恢复成功编译快照',async()=>{
+  await withFixedWork('build/sdk',async work=>{
+   const stage=join(work,'cache-stage'),cargo=join(work,'work/cargo-target'),env={ImageVersion:'fixture',GITHUB_SHA:'a'.repeat(40)};
+   mkdirSync(cargo,{recursive:true});writeFileSync(join(cargo,'fixture'),'compiled');
+   await snapshotCiCargoCache('android',work,stage,env);
+   rmSync(join(work,'work'),{recursive:true});await restoreCiCargoCache('android',work,stage,env);
+   assert.equal(readFileSync(join(cargo,'fixture'),'utf8'),'compiled');
+   rmSync(cargo,{recursive:true});await restoreCiCargoCache('android',work,stage,{...env,ImageVersion:'other'});
+   assert.equal(existsSync(cargo),false);
+   writeFileSync(join(stage,'cargo-target/link-target'),'fixture');
+   symlinkSync(join(stage,'cargo-target/link-target'),join(stage,'cargo-target/link'));
+   assert.throws(()=>ciCargoCacheTree(join(stage,'cargo-target')),/包含链接/);
+  });
+ });
+ test('GitHub Cargo缓存清理仅删除本平台旧ID并保留当前快照',()=>{
+  const env={GITHUB_ACTIONS:'true',GITHUB_REPOSITORY:'tuyutata/tatachatsdk',GITHUB_WORKFLOW:'tatachatsdk.sdk',
+   GITHUB_REF:'refs/heads/main',GITHUB_EVENT_NAME:'workflow_dispatch',GITHUB_WORKFLOW_REF:'tuyutata/tatachatsdk/.github/workflows/sdk.yml@refs/heads/main',
+   GITHUB_SHA:'a'.repeat(40),GITHUB_RUN_ID:'123',GITHUB_RUN_ATTEMPT:'1',GH_TOKEN:'fixture'};
+  const prefix='tatachatsdk-cargo-v1-macOS-ARM64-ios-',key=prefix+'a'.repeat(64)+'-123-1',old=prefix+'a'.repeat(64)+'-122-1';
+  let deleted=false;const call=(command,args)=>{
+   assert.equal(command,'gh');
+   if(args.includes('-X')){assert.equal(args.at(-1),'repos/tuyutata/tatachatsdk/actions/caches/1');deleted=true;return {status:0,stdout:''};}
+   return {status:0,stdout:(deleted?[{id:2,key,ref:'refs/heads/main'}]:[{id:1,key:old,ref:'refs/heads/main'},{id:2,key,ref:'refs/heads/main'}]).map(JSON.stringify).join('\n')};
+  };
+  assert.deepEqual(ciCachePrune('ios',key,env,{call}),{target:'ios',key,retained:1,deleted:1});
+  assert.throws(()=>ciCachePrune('android',key,env,{call}),/身份无效/);
+ });
 }
 
 export async function ciRelease(environment=process.env,{call=spawnSync}={}){
@@ -1660,6 +1783,10 @@ async function runCommand(){
   const cancellation=new AbortController(),abort=()=>cancellation.abort();for(const event of ['SIGTERM','SIGINT'])process.once(event,abort);
   try{process.exitCode=await runNativeDependency(process.argv.slice(3),process.env,{signal:cancellation.signal});}
   finally{for(const event of ['SIGTERM','SIGINT'])process.removeListener(event,abort);}return;
+ }
+ if(process.argv[2]==='ci-cache-prune'){
+  if(process.argv.length!==5)fail('GitHub缓存清理入口参数无效');
+  process.stdout.write(JSON.stringify(ciCachePrune(process.argv[3],process.argv[4]))+'\n');return;
  }
  if(["native","protocol"].includes(process.argv[2])){process.exitCode=await runOwnedShell(process.argv[2],process.argv.slice(3));return;}
  if(process.argv[2]==='prepare'&&['protoc','protoc_plugin'].includes(process.argv[3])){await runDependencyCLI(process.argv.slice(2));return;}
@@ -2346,12 +2473,21 @@ async function buildSourceTool({ library, tool, source, archive, pending, payloa
       if (relocated.has(key)) continue;
       relocated.add(key);
       const listing = await run(selected.tools.otool, ['-L', file], work);
-      let ownRuntime = false;
-
-      // 相对工具对象根定位同一候选与最终对象，避免Perl共享库在原子发布前指向不存在的前缀。
-      const loader = '@loader_path' + (relative(dirname(file), payload) ? '/' + relative(dirname(file), payload) : '');
-      // 仅链接同对象运行库的入口需要新rpath；系统库模块不能平白扩大Mach-O加载命令。
-      if (ownRuntime) await run(selected.tools.install_name_tool, ['-add_rpath', loader, file], work);
+      // DESTDIR安装后的绝对引用仍指向未发布的最终对象；只改写同一对象内真实存在的库。
+      for (const line of listing.stdout.split('\n').slice(1)) {
+        const marker = line.indexOf(' (compatibility version ');
+        if (marker < 0) continue;
+        const dependency = line.slice(0, marker).trim();
+        if (!dependency.startsWith(finalPayload + '/')) continue;
+        const candidate = join(payload, relative(finalPayload, dependency));
+        if (resolve(candidate) !== candidate || !candidate.startsWith(payload + '/')
+          || !await realpath(candidate).then(path => path.startsWith(payload + '/')).catch(() => false))
+          fail('源码工具运行库越出当前候选对象');
+        await regular(await realpath(candidate));
+        if (candidate === file) continue; // dylib自身ID由下方-id改写。
+        const loader = '@loader_path/' + relative(dirname(file), candidate);
+        await run(selected.tools.install_name_tool, ['-change', dependency, loader, file], work);
+      }
       if (file.endsWith('.dylib')) await run(selected.tools.install_name_tool, ['-id',
         '@rpath/' + relative(payload, file), file], work);
       await run(selected.tools.codesign, ['--force', '--sign', '-', '--timestamp=none', file], work);
@@ -3568,6 +3704,12 @@ async function sourceFixture(t, behavior = {}) {
   const exec = async (command, args, options) => {
     calls.push({ command, args, options });
     if (command.endsWith('/xcrun')) return { stdout: sdk + '\n' };
+    if (command.endsWith('/otool') && args[0] === '-L' && args[1].endsWith('/bin/perl') && behavior.absoluteRuntime) {
+      const dependency = finalPayload + '/lib/5.42.3/aarch64-darwin/CORE/libperl.dylib';
+      return { stdout: args[1] + ':\n\t' + dependency + ' (compatibility version 1.0.0, current version 1.0.0)\n' };
+    }
+    if (command.endsWith('/otool') && args[0] === '-L' && args[1].endsWith('/CORE/libperl.dylib') && behavior.absoluteRuntime)
+      return {stdout:args[1]+':\n\t'+finalPayload+'/lib/5.42.3/aarch64-darwin/CORE/libperl.dylib (compatibility version 1.0.0, current version 1.0.0)\n'};
     if (args.includes('-MJSON::PP')) return { stdout: behavior.coreFails ? '' : 'controlled-perl-ok\n' };
     if (behavior.compilerFails && args.includes('-j8')) throw new Error('compiler failed');
     if (args.includes('install')) {
@@ -3580,6 +3722,10 @@ async function sourceFixture(t, behavior = {}) {
         await writeFile(join(staged, 'bin/perl'), macho, { mode: 0o755 });
         await mkdir(join(staged, 'lib/5.42.3/aarch64-darwin'), { recursive: true });
         await writeFile(join(staged, 'lib/5.42.3/aarch64-darwin/Config.pm'), 'fixture core module');
+        if (behavior.absoluteRuntime && !behavior.missingRuntime) {
+          await mkdir(join(staged, 'lib/5.42.3/aarch64-darwin/CORE'), { recursive: true });
+          await writeFile(join(staged, 'lib/5.42.3/aarch64-darwin/CORE/libperl.dylib'), macho);
+        }
       }
     }
     return { stdout: '' };
@@ -3612,7 +3758,16 @@ test('源码工具使用准确Apple编译入口并只在候选中收集输出、
   assert.ok(calls.some(call => call.args.includes('-MJSON::PP') && call.options.env.PERL5LIB.startsWith(input.payload + '/lib/')));
   assert.equal(await readFile(join(input.payload, 'licenses/Artistic'), 'utf8'), 'fixture upstream legal text');
 });
-for (const behavior of [{ compilerFails: true }, { missingOutput: true }, { linkOutput: true }, { missingTool: 'node' }, { coreFails: true }]) {
+test('源码工具在候选探测前将同对象运行库绝对引用改为加载器相对路径', async t => {
+  const {input,calls}=await sourceFixture(t,{absoluteRuntime:true});
+  await buildSourceTool(input);
+  const change=calls.find(call=>call.args[0]==='-change');
+  assert.equal(change.args[1],input.finalPayload+'/lib/5.42.3/aarch64-darwin/CORE/libperl.dylib');
+  assert.equal(change.args[2],'@loader_path/../lib/5.42.3/aarch64-darwin/CORE/libperl.dylib');
+  assert.ok(calls.some(call=>call.args[0]==='-id'&&call.args[1]==='@rpath/lib/5.42.3/aarch64-darwin/CORE/libperl.dylib'));
+  assert.ok(calls.findIndex(call=>call===change)<calls.findIndex(call=>call.args.includes('-MJSON::PP')));
+});
+for (const behavior of [{ compilerFails: true }, { missingOutput: true }, { linkOutput: true }, { missingTool: 'node' }, { coreFails: true }, {absoluteRuntime:true,missingRuntime:true}]) {
   test('源码工具失败边界保留失败且不写入最终工具对象：' + JSON.stringify(behavior), async t => {
     const { input } = await sourceFixture(t, behavior);
     await assert.rejects(buildSourceTool(input));
