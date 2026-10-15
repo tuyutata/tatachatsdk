@@ -2793,12 +2793,30 @@ const appleBundleTools = new Set([
   'xcodebuild', 'make', 'clang', 'clang++', 'swift', 'swiftc', 'ar', 'ld', 'as', 'nm', 'ranlib', 'strip', 'lipo', 'libtool',
   'otool', 'install_name_tool', 'codesign_allocate', 'devicectl', 'xctrace', 'actool', 'ibtool', 'notarytool', 'llvm-nm',
 ]);
+// Xcode自带的同目录单跳工具别名保留原调用名；只信任同一Developer内的可执行普通目标。
+async function appleToolEntry(path,name,developerDirectory){
+ if(!isAbsolute(path)||resolve(path)!==path||basename(path)!==name)fail('Apple工具路径无效');
+ if(Object.hasOwn(appleSystemTools,name)){
+  if(path!==appleSystemTools[name]||!((await regular(path)).mode&0o111))fail('Apple系统工具入口无效');
+  return path;
+ }
+ if(!appleBundleTools.has(name)||!inside(developerDirectory,path))fail('Apple工具越出当前Xcode');
+ await directory(dirname(path));
+ const entry=await lstat(path);
+ if(entry.isSymbolicLink()){
+  const link=await readlink(path);
+  if(!/^[A-Za-z0-9_.+-]+$/u.test(link)||link==='.'||link==='..')fail('Apple工具链接目标无效');
+  const target=join(dirname(path),link),item=await lstat(target);
+  if(!item.isFile()||item.isSymbolicLink()||!(item.mode&0o111)||await realpath(path)!==target)fail('Apple工具链接目标无效');
+ }else if(!entry.isFile()||!(entry.mode&0o111)||await realpath(path)!==path)fail('Apple工具入口不是普通执行器');
+ return path;
+}
 // Apple工具由本机选择入口直接交付，不执行资源签名或版本复验。
 async function appleTools(library,{names=['xcodebuild'],signal,run=exec,environment=process.env}={}){
   const wanted=library.tools.find(tool=>tool.id==='xcode');if(!wanted||!Array.isArray(names)||names.some(name=>!appleBundleTools.has(name)&&!Object.hasOwn(appleSystemTools,name)))fail('Apple工具需求无效');
   const supplied=resourceSupplies.getStore();if(supplied)return supplied.acquireApple({...supplyRequirements().apple,names});
   const env=cleanEnvironment(environment),developerDirectory=(await run('/usr/bin/xcode-select',['-p'],{env,signal})).stdout.trim();await directory(developerDirectory);
-  const tools={};for(const name of names){const path=appleSystemTools[name]||(name==='xcodebuild'?join(developerDirectory,'usr/bin/xcodebuild'):(await run('/usr/bin/xcrun',['--find',name],{env:{...env,DEVELOPER_DIR:developerDirectory},signal})).stdout.trim());await regular(path);tools[name]=await realpath(path);}
+  const tools={};for(const name of names){const path=appleSystemTools[name]||(name==='xcodebuild'?join(developerDirectory,'usr/bin/xcodebuild'):(await run('/usr/bin/xcrun',['--find',name],{env:{...env,DEVELOPER_DIR:developerDirectory},signal})).stdout.trim());tools[name]=await appleToolEntry(path,name,developerDirectory);}
   return {developerDirectory,version:wanted.version,tools};
  }
 
@@ -3413,6 +3431,30 @@ async function sandbox(t){const root=await realpath(await fixedScratch(join(tmpd
 // 下载候选与夹具明确归本轮test固定根，挂载卷也不借用build，保持同卷提交。
 const archive=(body,url='https://example.invalid/locked.tgz')=>({url,sha256:hash(body)});
 function tar(entries){const records=[];for(const {name,body='',type='0',target=''}of entries){const b=Buffer.from(body),h=Buffer.alloc(512);h.write(name,0,100);h.write('0000644\0',100);h.write('0000000\0',108);h.write('0000000\0',116);h.write(b.length.toString(8).padStart(11,'0')+'\0',124);h.write('00000000000\0',136);h.fill(32,148,156);h.write(type,156);h.write(target,157,100);h.write('ustar\0',257);h.write('00',263);h.write([...h].reduce((a,b)=>a+b,0).toString(8).padStart(6,'0')+'\0 ',148);records.push(h,b,Buffer.alloc((512-b.length%512)%512));}return gzipSync(Buffer.concat([...records,Buffer.alloc(1024)]));}
+test('Xcode同包单跳工具别名保留原调用名，越界、断链和非执行目标拒绝',async t=>{
+ const area=await sandbox(t),developerDirectory=join(area,'Xcode.app/Contents/Developer'),bin=join(developerDirectory,'usr/bin');
+ await mkdir(bin,{recursive:true});
+ for(const name of ['clang','swift-frontend','llvm-nm','libtool','llvm-otool'])await writeFile(join(bin,name),'fixture',{mode:0o755});
+ const aliases={'clang++':'clang',swift:'swift-frontend',swiftc:'swift-frontend',nm:'llvm-nm',ranlib:'libtool',otool:'llvm-otool'};
+ for(const [name,target]of Object.entries(aliases))await symlink(target,join(bin,name));
+ const names=['clang',...Object.keys(aliases)],run=async(command,args)=>{
+  if(command==='/usr/bin/xcode-select')return {stdout:developerDirectory+'\n'};
+  if(command==='/usr/bin/xcrun'&&args[0]==='--find')return {stdout:join(bin,args[1])+'\n'};
+  assert.fail('Apple工具测试调用了未声明入口');
+ };
+ const delivered=await appleTools({tools:[{id:'xcode',version:'27.0'}]},{names,run,environment:{HOME:area}});
+ for(const name of names)assert.equal(delivered.tools[name],join(bin,name));
+ const alias=join(bin,'clang++');await rm(alias);await symlink('../outside',alias);
+ await assert.rejects(appleToolEntry(alias,'clang++',developerDirectory),/Apple工具链接目标无效/);
+ await rm(alias);await symlink('missing',alias);
+ await assert.rejects(appleToolEntry(alias,'clang++',developerDirectory),/ENOENT|Apple工具/);
+ await rm(alias);await symlink('clang',join(bin,'middle'));await symlink('middle',alias);
+ await assert.rejects(appleToolEntry(alias,'clang++',developerDirectory),/Apple工具链接目标无效/);
+ await rm(alias);await symlink('clang',alias);await chmod(join(bin,'clang'),0o600);
+ await assert.rejects(appleToolEntry(alias,'clang++',developerDirectory),/Apple工具链接目标无效/);
+ const outside=join(area,'clang++');await writeFile(outside,'fixture',{mode:0o755});
+ await assert.rejects(appleToolEntry(outside,'clang++',developerDirectory),/Apple工具越出当前Xcode/);
+});
 test('协议工具公开入口拒绝外部工作根和非法离线值',()=>{
  const entry=fileURLToPath(import.meta.url),work=targetInternals.fixedWork('test');
  for(const [value,environment,pattern]of [[root,{TATACHATSDK_PROTOCOL_OFFLINE:'1'},/固定目录/],[work,{TATACHATSDK_PROTOCOL_OFFLINE:'0'},/离线参数仅接受1/]]){

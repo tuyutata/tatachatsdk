@@ -582,6 +582,8 @@ Android资源准备直接复用本产品可选工具供给的payload路径，不
 
 公开编译组件只有本文件中的正文；本机编译不生成第二份脚本。分析配置只在 `BUILD_SHELL_SOURCES.analysis` 中声明一次，Flutter视图和派生工程读取同一字节内容。公开SDK依赖按本仓原锁消费，不读取兄弟仓本机检出或调度兄弟仓任务。GitHub自动化由现有 `sdk.yml` 只调用本仓 `build.mjs` 完成编译、组包和一个 Release；没有后续渠道发布脚本。
 
+Apple工具由当前Xcode的`xcode-select`和`xcrun --find`定位。Xcode包内允许同一`usr/bin`目录中单跳指向可执行普通文件的官方工具别名，交付时保留`clang++`等准确调用路径；越出当前Developer、断链、链式链接、不可执行目标和非规范路径均拒绝。系统`/usr/bin`工具仍按准确普通文件入口校验，通用资源`regular`规则不放宽。同文件回归用合成Xcode目录核对上述正常与失败边界；真实三平台原生编译仍须以控制台工作流结果验收。
+
 ## GitHub自动化
 
 `.github/workflows/sdk.yml` 在三个独立 Xcode 27 ARM64 Runner Job 中调用本仓 `scripts/build.mjs`，分别编译 Android ARM64、iOS 真机与模拟器、macOS ARM64 原生资产；`fail-fast: false` 使某端失败不取消另外两端。三端全部成功后，同一 Workflow 的汇总 Job 使用 `build.mjs` 组装并验真唯一 `tatachatsdk.tgz`，创建草稿、逐件回读后公开一个 GitHub Tag/Release。失败只撤销本轮已确认创建的 Release/Tag。外部分发目的地仍未确定，本次尚未执行真实 GitHub 构建。
