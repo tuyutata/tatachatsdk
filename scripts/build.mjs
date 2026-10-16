@@ -1680,7 +1680,7 @@ export function ciRunPrune(outcome,environment=process.env,{call=spawnSync}={}){
  };
  const list=()=>api(['--paginate','--jq','.workflow_runs[] | @json',route+'?branch=main&status=completed&per_page=100'])
   .split('\n').filter(Boolean).map(line=>validate(JSON.parse(line)));
- const current=validate(JSON.parse(api([route+'/'+environment.GITHUB_RUN_ID])),true),runs=list();
+ const current=validate(JSON.parse(api(['repos/'+repository+'/actions/runs/'+environment.GITHUB_RUN_ID])),true),runs=list();
  if(runs.some(run=>run.id===current.id)||runs.some(run=>run.run_number>=current.run_number))fail('GitHub Run顺序或活动身份不一致');
  // 当前Run仍处于in_progress，按前置Job结论作为最新候选；只删已完成的旧Run。
  const bucket=run=>run.conclusion==='success'?'success':'failure';
@@ -1737,7 +1737,7 @@ if(testSession&&process.argv.length===2&&resolve(process.argv[1]||'')===fileURLT
   const call=(_command,args)=>{
    const endpoint=args.filter(value=>value.startsWith('repos/')).at(-1);
    if(args.includes('-X')){assert.match(endpoint,/\/actions\/runs\/(?:198|197|196)$/u);removed.push(Number(endpoint.split('/').at(-1)));return {status:0,stdout:''};}
-   if(endpoint.endsWith('/runs/200'))return {status:0,stdout:JSON.stringify(current)};
+   if(endpoint==='repos/tuyutata/tatachatsdk/actions/runs/200')return {status:0,stdout:JSON.stringify(current)};
    if(endpoint.includes('/workflows/sdk.yml/runs?'))return {status:0,stdout:(removed.length?[run(199,19,'failure')]:before).map(JSON.stringify).join('\n')};
    assert.fail('不允许访问本仓以外的接口');
   };
@@ -1756,7 +1756,7 @@ if(testSession&&process.argv.length===2&&resolve(process.argv[1]||'')===fileURLT
   const call=(_command,args)=>{
    const endpoint=args.filter(value=>value.startsWith('repos/')).at(-1);
    if(args.includes('-X')){assert.match(endpoint,/\/actions\/runs\/(?:298|297|296)$/u);removed.push(Number(endpoint.split('/').at(-1)));return {status:0,stdout:''};}
-   if(endpoint.endsWith('/runs/300'))return {status:0,stdout:JSON.stringify(current)};
+   if(endpoint==='repos/tuyutata/tatachatsdk/actions/runs/300')return {status:0,stdout:JSON.stringify(current)};
    if(endpoint.includes('/workflows/sdk.yml/runs?'))return {status:0,stdout:(removed.length?[make(299,29,'success')]:before).map(JSON.stringify).join('\n')};
    assert.fail('不允许访问本仓以外的接口');
   };
