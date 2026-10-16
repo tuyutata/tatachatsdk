@@ -356,6 +356,8 @@ CocoaPods在三种依赖形态下始终读取同一相对合同。
 
 本产品只有一个sdk目标：`build.mjs`负责本机编译，并在 `sdk.yml` 的成功三平台原生任务后构造、验真SDK包及创建正式 GitHub Release；控制台只派发这一所属仓工作流。
 
+`sdk.yml` 的唯一自动化按钮同时承载测试、三平台原生构建、正式包验真和Release。Cargo target缓存按 Android、iOS、macOS 独立命名并只保留每个平台最新一份；缓存清理使用Actions缓存API，与Run记录清理分离。最终Run清理Job位于Release之后，只处理本仓main上准确 `sdk.yml` 的已完成Run，允许清理旧push Run，保留最新成功、最新失败和当前活动Run。清理错误必须明确失败且不撤销已完成的构建或Release；Run清理Job本身失败时，最终Workflow Run失败，不报告清理成功。
+
 
 ## 扁平源码与Flutter平台布局
 
@@ -596,7 +598,7 @@ ZIP先读取并验证中央目录、总解压尺寸、路径及链接关系，�
 
 `.github/workflows/sdk.yml` 在三个独立 Xcode 27 ARM64 Runner Job 中调用本仓 `scripts/build.mjs`，分别编译 Android ARM64、iOS 真机与模拟器、macOS ARM64 原生资产；`fail-fast: false` 使某端失败不取消另外两端。三端全部成功后，同一 Workflow 的汇总 Job 使用 `build.mjs` 组装并验真唯一 `tatachatsdk.tgz`，创建草稿、逐件回读后公开一个 GitHub Tag/Release。失败只撤销本轮已确认创建的 Release/Tag。外部分发目的地仍未确定，真实成功以GitHub当前运行回执为准。
 
-同一Workflow末尾的`run-retention` Job仅清理该仓库、`main`和本SDK Workflow的已完成旧Run；根据测试、原生矩阵和Release Job的终态把当前Run作为待完成的最新成功或失败候选，并保留另一类最新记录。当前Run身份通过GitHub `actions/runs/{run_id}`接口读取，历史候选通过工作流Run列表读取。任何活动Run、其它工作流与其它分支均不删除。清理权限仅授予此Job；清理接口失败不改变原生编译或Release结果，并在本轮日志中报出。旧Run的Actions日志与Artifact随Run删除；每平台Cargo缓存使用独立清理逻辑，不受影响。控制台任务栏快照按产品、动作、平台与结果保留最新项，产品页GitHub镜像也只保存本SDK最新成功和失败各一条。
+`cargo-retention` 与末尾 `run-retention` 分别管理 Actions Cargo缓存和Workflow Run，不互相删除对方资源。末尾Run清理Job只清理该仓库、`main`和本SDK Workflow的已完成旧Run；根据测试、原生矩阵、Release与Cargo缓存清理Job的终态把当前Run作为待完成的最新成功或失败候选，并保留另一类最新记录。当前Run身份通过GitHub `actions/runs/{run_id}`接口读取，历史候选通过工作流Run列表读取；旧push Run可清理。任何活动Run、其它工作流与其它分支均不删除。两类清理分别校验保留结果；接口或收敛检查失败时明确报错，不输出成功回执。清理Job失败不改变已完成的原生编译或Release Job结论，但会使最终GitHub Run失败；Tag/Release资产不由Run清理删除。控制台任务栏仍单独展示本机活动任务，GitHub镜像只保存本SDK `main` 手动派发已完成Run的最新成功和失败记录。
 
 正式`sdk`资源合同仅交付Node25.2.1、Rust1.97.1、Android NDK28.2.13676358、Xcode27、受控POSIX及GNU Bash/grep/sed，并只物化`native/Cargo.lock`的registry闭包；新增Cargo Git来源在资源准备前失败。`pubspec.lock`仍随正式包保留，但本仓原生编译不运行Flutter、Gradle、Java、CocoaPods或Pub获取，也不再因无关Git工具构建gettext。SDK单一平台合同在三个原生Job中都交付同一固定NDK，只有Android Job执行其中的交叉编译工具；均直接读取只读NDK对象，不再复制完整Android SDK或NDK视图。原生Shell的路径校验使用已交付Node，iOS切片元数据用受控`plutil`转JSON并由Node核对；Android编译与包验真均必须由资源回执明确交付`ANDROID_NDK_HOME`，在Cargo前执行固定NDK的Clang、ar和nm，禁止扫描系统NDK。GitHub test Job先预检Runner的Node、Apple定位工具、plutil、tar及gh，再运行本仓回归；实测三端、缓存和Release仍以新的工作流结果验收。
 

@@ -1640,17 +1640,20 @@ export function ciCachePrune(target,key,environment=process.env,{call=spawnSync}
  const query=route+'?ref=refs%2Fheads%2Fmain&key='+encodeURIComponent(prefix)+'&per_page=100';
  const list=()=>api(['--paginate','--jq','.actions_caches[] | @json',query]).split('\n').filter(Boolean).map(line=>JSON.parse(line));
  const caches=list();
- if(!caches.some(item=>item.key===key&&item.ref==='refs/heads/main'))fail('本轮GitHub编译缓存尚未保存');
+ const keyPattern=new RegExp('^'+prefix+'[a-f0-9]{64}'+suffix+'$','u');
+ for(const item of caches)if(item.ref!=='refs/heads/main'||typeof item.key!=='string'||!keyPattern.test(item.key)
+  ||!Number.isSafeInteger(item.id)||item.id<1||typeof item.created_at!=='string'||Number.isNaN(Date.parse(item.created_at)))
+  fail('GitHub编译缓存清理候选无效');
+ // 构建失败时本轮可能没有新缓存；此时仍保留最近成功的平台缓存，并清掉更旧项。
+ const selected=caches.find(item=>item.key===key)
+  ??[...caches].sort((a,b)=>Date.parse(b.created_at)-Date.parse(a.created_at)||b.id-a.id)[0]??null;
  for(const item of caches){
-  if(item.key===key)continue;
-  if(item.ref!=='refs/heads/main'||typeof item.key!=='string'
-    ||!new RegExp('^'+prefix+'[a-f0-9]{64}-[1-9][0-9]*-[1-9][0-9]*$','u').test(item.key)
-    ||!Number.isSafeInteger(item.id)||item.id<1)fail('GitHub编译缓存清理候选无效');
+  if(item.id===selected?.id)continue;
   api(['-X','DELETE',route+'/'+item.id]);
  }
  const remaining=list();
- if(remaining.length!==1||remaining[0].key!==key)fail('GitHub编译缓存没有收敛到本平台最新一份');
- return {target,key,retained:1,deleted:caches.length-1};
+ if(remaining.length!==(selected?1:0)||selected&&remaining[0].id!==selected.id)fail('GitHub编译缓存没有收敛到本平台最新一份');
+ return {target,key:selected?.key??null,retained:remaining.length,deleted:caches.length-remaining.length};
 }
 export function ciRunPrune(outcome,environment=process.env,{call=spawnSync}={}){
  const repository='tuyutata/tatachatsdk',workflow='.github/workflows/sdk.yml';
@@ -1691,8 +1694,9 @@ export function ciRunPrune(outcome,environment=process.env,{call=spawnSync}={}){
   api(['-X','DELETE','repos/'+repository+'/actions/runs/'+run.id]);deleted.push(run.id);
  }
  const remaining=list(),successes=remaining.filter(run=>bucket(run)==='success').sort(newest),failures=remaining.filter(run=>bucket(run)==='failure').sort(newest);
- if(outcome==='success'&&successes.length!==0||outcome==='failure'&&failures.length!==0
-  ||successes.length>1||failures.length>1||other&&!(outcome==='success'?failures:successes).some(run=>run.id===other.id))
+ const keptOther=outcome==='success'?failures:successes;
+ if((outcome==='success'?successes:failures).length!==0||keptOther.length!==(other?1:0)
+  ||other&&keptOther[0].id!==other.id)
   fail('GitHub Run保留清理未收敛');
  process.stdout.write('GitHub Run保留清理完成；本轮='+outcome+'；删除旧Run='+deleted.length+'；保留既有另一结果='+(other?1:0)+'\n');
  return {outcome,deleted:deleted.length,retainedSuccess:Number(outcome==='success')+successes.length,retainedFailure:Number(outcome==='failure')+failures.length};
@@ -1721,10 +1725,39 @@ if(testSession&&process.argv.length===2&&resolve(process.argv[1]||'')===fileURLT
   let deleted=false;const call=(command,args)=>{
    assert.equal(command,'gh');
    if(args.includes('-X')){assert.equal(args.at(-1),'repos/tuyutata/tatachatsdk/actions/caches/1');deleted=true;return {status:0,stdout:''};}
-   return {status:0,stdout:(deleted?[{id:2,key,ref:'refs/heads/main'}]:[{id:1,key:old,ref:'refs/heads/main'},{id:2,key,ref:'refs/heads/main'}]).map(JSON.stringify).join('\n')};
+   return {status:0,stdout:(deleted?[{id:2,key,ref:'refs/heads/main',created_at:'2026-10-16T00:00:00Z'}]:[
+    {id:1,key:old,ref:'refs/heads/main',created_at:'2026-10-15T00:00:00Z'},
+    {id:2,key,ref:'refs/heads/main',created_at:'2026-10-16T00:00:00Z'}]).map(JSON.stringify).join('\n')};
   };
   assert.deepEqual(ciCachePrune('ios',key,env,{call}),{target:'ios',key,retained:1,deleted:1});
   assert.throws(()=>ciCachePrune('android',key,env,{call}),/身份无效/);
+ });
+ test('SDK workflow把Run清理作为失败关闭的最终Job',()=>{
+  const workflow=readFileSync(join(root,'.github/workflows/sdk.yml'),'utf8');
+  const cache=workflow.slice(workflow.indexOf('\n  cargo-retention:'),workflow.indexOf('\n  run-retention:'));
+  const runs=workflow.slice(workflow.indexOf('\n  run-retention:'));
+  assert.ok(workflow.indexOf('\n  run-retention:')>workflow.indexOf('\n  release:'),'Run清理必须位于Release后');
+  assert.match(cache,/actions: write/u);assert.match(cache,/ci-cache-prune/u);
+  assert.match(runs,/needs: \[test, native, release, cargo-retention\]/u);
+  assert.match(runs,/ci-run-prune/u);assert.doesNotMatch(runs,/continue-on-error/u);
+ });
+ test('Cargo缓存未保存时仍只保留本平台最新一份既有缓存',()=>{
+  const env={GITHUB_ACTIONS:'true',GITHUB_REPOSITORY:'tuyutata/tatachatsdk',GITHUB_WORKFLOW:'tatachatsdk.sdk',
+   GITHUB_REF:'refs/heads/main',GITHUB_EVENT_NAME:'workflow_dispatch',
+   GITHUB_WORKFLOW_REF:'tuyutata/tatachatsdk/.github/workflows/sdk.yml@refs/heads/main',
+   GITHUB_SHA:'a'.repeat(40),GITHUB_RUN_ID:'124',GITHUB_RUN_ATTEMPT:'1',GH_TOKEN:'fixture'};
+  const prefix='tatachatsdk-cargo-v1-macOS-ARM64-android-',old=prefix+'a'.repeat(64)+'-122-1',latest=prefix+'b'.repeat(64)+'-123-1';
+  let deleted=[];const call=(command,args)=>{
+   const endpoint=args.at(-1);assert.equal(command,'gh');
+   if(args.includes('-X')){const id=Number(endpoint.split('/').at(-1));deleted.push(id);return {status:0,stdout:''};}
+   const values=deleted.length?[{id:2,key:latest,ref:'refs/heads/main',created_at:'2026-10-15T00:00:00Z'}]:[
+    {id:1,key:old,ref:'refs/heads/main',created_at:'2026-10-14T00:00:00Z'},
+    {id:2,key:latest,ref:'refs/heads/main',created_at:'2026-10-15T00:00:00Z'}];
+   return {status:0,stdout:values.map(JSON.stringify).join('\n')};
+  };
+  assert.deepEqual(ciCachePrune('android',prefix+'c'.repeat(64)+'-124-1',env,{call}),
+   {target:'android',key:latest,retained:1,deleted:1});
+  assert.deepEqual(deleted,[1]);
  });
  test('GitHub Run留存只删除本工作流main旧记录并预留本轮结果',()=>{
   const env={GITHUB_ACTIONS:'true',GITHUB_REPOSITORY:'tuyutata/tatachatsdk',GITHUB_WORKFLOW:'tatachatsdk.sdk',

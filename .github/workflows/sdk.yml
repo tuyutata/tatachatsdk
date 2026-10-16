@@ -34,9 +34,6 @@ jobs:
   native:
     needs: test
     if: github.ref == 'refs/heads/main'
-    permissions:
-      contents: read
-      actions: write
     strategy:
       fail-fast: false
       matrix:
@@ -84,14 +81,6 @@ jobs:
         with:
           path: "${{ runner.temp }}/tatachatsdk-cargo-${{ matrix.target }}"
           key: "tatachatsdk-cargo-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.target }}-${{ hashFiles('native/Cargo.lock', 'scripts/build.mjs') }}-${{ github.run_id }}-${{ github.run_attempt }}"
-      - name: 只保留本平台最新一份Cargo增量数据
-        if: steps.cargo_cache_save.outcome == 'success'
-        continue-on-error: true
-        env:
-          GH_TOKEN: "${{ github.token }}"
-          CARGO_CACHE_KEY: "tatachatsdk-cargo-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.target }}-${{ hashFiles('native/Cargo.lock', 'scripts/build.mjs') }}-${{ github.run_id }}-${{ github.run_attempt }}"
-        shell: bash
-        run: node scripts/build.mjs ci-cache-prune "${{ matrix.target }}" "$CARGO_CACHE_KEY"
   release:
     needs: native
     if: github.ref == 'refs/heads/main'
@@ -118,10 +107,34 @@ jobs:
           GH_TOKEN: "${{ github.token }}"
         shell: bash
         run: node scripts/build.mjs ci-release
-  run-retention:
-    needs: [test, native, release]
+  cargo-retention:
+    needs: [native, release]
     if: always() && github.ref == 'refs/heads/main'
-    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [android, ios, macos]
+    runs-on: xcode-27
+    permissions:
+      contents: read
+      actions: write
+    env:
+      GH_TOKEN: "${{ github.token }}"
+      CARGO_CACHE_KEY: "tatachatsdk-cargo-v1-macOS-ARM64-${{ matrix.target }}-${{ hashFiles('native/Cargo.lock', 'scripts/build.mjs') }}-${{ github.run_id }}-${{ github.run_attempt }}"
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: "${{ github.sha }}"
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: 25.2.1
+      - name: 只保留本平台最新一份Cargo增量数据
+        shell: bash
+        run: node scripts/build.mjs ci-cache-prune "${{ matrix.target }}" "$CARGO_CACHE_KEY"
+  run-retention:
+    needs: [test, native, release, cargo-retention]
+    if: always() && github.ref == 'refs/heads/main'
     runs-on: xcode-27
     permissions:
       contents: read
@@ -137,6 +150,6 @@ jobs:
       - name: 仅保留本工作流最新成功与失败记录
         env:
           GH_TOKEN: "${{ github.token }}"
-          SDK_FINAL_OUTCOME: "${{ needs.test.result == 'success' && needs.native.result == 'success' && needs.release.result == 'success' && 'success' || 'failure' }}"
+          SDK_FINAL_OUTCOME: "${{ needs.test.result == 'success' && needs.native.result == 'success' && needs.release.result == 'success' && needs.cargo-retention.result == 'success' && 'success' || 'failure' }}"
         shell: bash
         run: node scripts/build.mjs ci-run-prune "$SDK_FINAL_OUTCOME"
