@@ -1652,6 +1652,51 @@ export function ciCachePrune(target,key,environment=process.env,{call=spawnSync}
  if(remaining.length!==1||remaining[0].key!==key)fail('GitHub编译缓存没有收敛到本平台最新一份');
  return {target,key,retained:1,deleted:caches.length-1};
 }
+export function ciRunPrune(outcome,environment=process.env,{call=spawnSync}={}){
+ const repository='tuyutata/tatachatsdk',workflow='.github/workflows/sdk.yml';
+ if(!['success','failure'].includes(outcome)||environment.GITHUB_ACTIONS!=='true'
+  ||environment.GITHUB_REPOSITORY!==repository||environment.GITHUB_WORKFLOW!=='tatachatsdk.sdk'
+  ||environment.GITHUB_WORKFLOW_REF!==repository+'/'+workflow+'@refs/heads/main'
+  ||environment.GITHUB_REF!=='refs/heads/main'||environment.GITHUB_EVENT_NAME!=='workflow_dispatch'
+  ||!/^[a-f0-9]{40}$/u.test(environment.GITHUB_SHA||'')
+  ||!['GITHUB_RUN_ID','GITHUB_RUN_NUMBER','GITHUB_RUN_ATTEMPT'].every(key=>/^[1-9][0-9]*$/u.test(environment[key]||'')&&Number.isSafeInteger(Number(environment[key])))
+  ||!environment.GH_TOKEN)fail('GitHub Run保留清理身份无效');
+ const api=args=>{
+  const result=call('gh',['api',...args],{env:environment,cwd:root,encoding:'utf8',maxBuffer:8*1024**2});
+  if(result.status!==0||result.error)fail('GitHub Run保留清理接口失败');
+  return result.stdout.trim();
+ };
+ const route='repos/'+repository+'/actions/workflows/sdk.yml/runs';
+ const validate=(run,current=false)=>{
+  if(!Number.isSafeInteger(run?.id)||run.id<1||run.path!==workflow||run.repository?.full_name!==repository
+    ||run.head_branch!=='main'||!/^[a-f0-9]{40}$/u.test(run.head_sha||'')
+    ||!Number.isSafeInteger(run.run_number)||run.run_number<1
+    ||!Number.isSafeInteger(run.run_attempt)||run.run_attempt<1
+    ||current&&(run.id!==Number(environment.GITHUB_RUN_ID)||run.run_number!==Number(environment.GITHUB_RUN_NUMBER)
+      ||run.run_attempt!==Number(environment.GITHUB_RUN_ATTEMPT)||run.head_sha!==environment.GITHUB_SHA||run.status!=='in_progress')
+    ||!current&&(run.status!=='completed'||typeof run.conclusion!=='string'||!run.conclusion))
+   fail('GitHub Run保留候选身份无效');
+  return run;
+ };
+ const list=()=>api(['--paginate','--jq','.workflow_runs[] | @json',route+'?branch=main&status=completed&per_page=100'])
+  .split('\n').filter(Boolean).map(line=>validate(JSON.parse(line)));
+ const current=validate(JSON.parse(api([route+'/'+environment.GITHUB_RUN_ID])),true),runs=list();
+ if(runs.some(run=>run.id===current.id)||runs.some(run=>run.run_number>=current.run_number))fail('GitHub Run顺序或活动身份不一致');
+ // 当前Run仍处于in_progress，按前置Job结论作为最新候选；只删已完成的旧Run。
+ const bucket=run=>run.conclusion==='success'?'success':'failure';
+ const newest=(a,b)=>b.run_number-a.run_number||b.run_attempt-a.run_attempt||b.id-a.id;
+ const other=runs.filter(run=>bucket(run)!==outcome).sort(newest)[0],keep=new Set([current.id,...(other?[other.id]:[])]),deleted=[];
+ for(const run of runs){
+  if(keep.has(run.id))continue;
+  api(['-X','DELETE','repos/'+repository+'/actions/runs/'+run.id]);deleted.push(run.id);
+ }
+ const remaining=list(),successes=remaining.filter(run=>bucket(run)==='success').sort(newest),failures=remaining.filter(run=>bucket(run)==='failure').sort(newest);
+ if(outcome==='success'&&successes.length!==0||outcome==='failure'&&failures.length!==0
+  ||successes.length>1||failures.length>1||other&&!(outcome==='success'?failures:successes).some(run=>run.id===other.id))
+  fail('GitHub Run保留清理未收敛');
+ process.stdout.write('GitHub Run保留清理完成；本轮='+outcome+'；删除旧Run='+deleted.length+'；保留既有另一结果='+(other?1:0)+'\n');
+ return {outcome,deleted:deleted.length,retainedSuccess:Number(outcome==='success')+successes.length,retainedFailure:Number(outcome==='failure')+failures.length};
+}
 if(testSession&&process.argv.length===2&&resolve(process.argv[1]||'')===fileURLToPath(import.meta.url)){
  const {test}=await import('node:test'),{default:assert}=await import('node:assert/strict');
  test('GitHub Cargo缓存只在同身份任务内恢复成功编译快照',async()=>{
@@ -1680,6 +1725,43 @@ if(testSession&&process.argv.length===2&&resolve(process.argv[1]||'')===fileURLT
   };
   assert.deepEqual(ciCachePrune('ios',key,env,{call}),{target:'ios',key,retained:1,deleted:1});
   assert.throws(()=>ciCachePrune('android',key,env,{call}),/身份无效/);
+ });
+ test('GitHub Run留存只删除本工作流main旧记录并预留本轮结果',()=>{
+  const env={GITHUB_ACTIONS:'true',GITHUB_REPOSITORY:'tuyutata/tatachatsdk',GITHUB_WORKFLOW:'tatachatsdk.sdk',
+   GITHUB_WORKFLOW_REF:'tuyutata/tatachatsdk/.github/workflows/sdk.yml@refs/heads/main',GITHUB_REF:'refs/heads/main',
+   GITHUB_EVENT_NAME:'workflow_dispatch',GITHUB_SHA:'a'.repeat(40),GITHUB_RUN_ID:'200',GITHUB_RUN_NUMBER:'20',GITHUB_RUN_ATTEMPT:'1',GH_TOKEN:'fixture'};
+  const run=(id,number,conclusion,event='workflow_dispatch')=>({id,run_number:number,run_attempt:1,path:'.github/workflows/sdk.yml',
+   repository:{full_name:'tuyutata/tatachatsdk'},head_branch:'main',head_sha:'a'.repeat(40),status:'completed',conclusion,event});
+  const current={...run(200,20,null),'status':'in_progress',conclusion:null};
+  const before=[run(199,19,'failure'),run(198,18,'success'),run(197,17,'failure','push'),run(196,16,'success')],removed=[];
+  const call=(_command,args)=>{
+   const endpoint=args.filter(value=>value.startsWith('repos/')).at(-1);
+   if(args.includes('-X')){assert.match(endpoint,/\/actions\/runs\/(?:198|197|196)$/u);removed.push(Number(endpoint.split('/').at(-1)));return {status:0,stdout:''};}
+   if(endpoint.endsWith('/runs/200'))return {status:0,stdout:JSON.stringify(current)};
+   if(endpoint.includes('/workflows/sdk.yml/runs?'))return {status:0,stdout:(removed.length?[run(199,19,'failure')]:before).map(JSON.stringify).join('\n')};
+   assert.fail('不允许访问本仓以外的接口');
+  };
+  assert.deepEqual(ciRunPrune('success',env,{call}),{outcome:'success',deleted:3,retainedSuccess:1,retainedFailure:1});
+  assert.deepEqual(removed.sort((a,b)=>a-b),[196,197,198]);
+  assert.throws(()=>ciRunPrune('success',{...env,GITHUB_REPOSITORY:'another/repo'},{call}),/身份无效/);
+ });
+ test('GitHub Run失败时保留最新成功并删除较旧失败与成功',()=>{
+  const env={GITHUB_ACTIONS:'true',GITHUB_REPOSITORY:'tuyutata/tatachatsdk',GITHUB_WORKFLOW:'tatachatsdk.sdk',
+   GITHUB_WORKFLOW_REF:'tuyutata/tatachatsdk/.github/workflows/sdk.yml@refs/heads/main',GITHUB_REF:'refs/heads/main',
+   GITHUB_EVENT_NAME:'workflow_dispatch',GITHUB_SHA:'b'.repeat(40),GITHUB_RUN_ID:'300',GITHUB_RUN_NUMBER:'30',GITHUB_RUN_ATTEMPT:'1',GH_TOKEN:'fixture'};
+  const make=(id,number,conclusion)=>({id,run_number:number,run_attempt:1,path:'.github/workflows/sdk.yml',
+   repository:{full_name:'tuyutata/tatachatsdk'},head_branch:'main',head_sha:'a'.repeat(40),status:'completed',conclusion});
+  const current={...make(300,30,null),head_sha:env.GITHUB_SHA,status:'in_progress',conclusion:null};
+  const before=[make(299,29,'success'),make(298,28,'failure'),make(297,27,'success'),make(296,26,'failure')],removed=[];
+  const call=(_command,args)=>{
+   const endpoint=args.filter(value=>value.startsWith('repos/')).at(-1);
+   if(args.includes('-X')){assert.match(endpoint,/\/actions\/runs\/(?:298|297|296)$/u);removed.push(Number(endpoint.split('/').at(-1)));return {status:0,stdout:''};}
+   if(endpoint.endsWith('/runs/300'))return {status:0,stdout:JSON.stringify(current)};
+   if(endpoint.includes('/workflows/sdk.yml/runs?'))return {status:0,stdout:(removed.length?[make(299,29,'success')]:before).map(JSON.stringify).join('\n')};
+   assert.fail('不允许访问本仓以外的接口');
+  };
+  assert.deepEqual(ciRunPrune('failure',env,{call}),{outcome:'failure',deleted:3,retainedSuccess:1,retainedFailure:1});
+  assert.deepEqual(removed.sort((a,b)=>a-b),[296,297,298]);
  });
 }
 
@@ -1812,6 +1894,10 @@ async function runCommand(){
  if(process.argv[2]==='ci-cache-prune'){
   if(process.argv.length!==5)fail('GitHub缓存清理入口参数无效');
   process.stdout.write(JSON.stringify(ciCachePrune(process.argv[3],process.argv[4]))+'\n');return;
+ }
+ if(process.argv[2]==='ci-run-prune'){
+  if(process.argv.length!==4)fail('GitHub Run清理入口参数无效');
+  process.exitCode=0;ciRunPrune(process.argv[3]);return;
  }
  if(["native","protocol"].includes(process.argv[2])){process.exitCode=await runOwnedShell(process.argv[2],process.argv.slice(3));return;}
  if(process.argv[2]==='prepare'&&['protoc','protoc_plugin'].includes(process.argv[3])){await runDependencyCLI(process.argv.slice(2));return;}

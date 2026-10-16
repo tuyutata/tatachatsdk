@@ -596,6 +596,8 @@ ZIP先读取并验证中央目录、总解压尺寸、路径及链接关系，�
 
 `.github/workflows/sdk.yml` 在三个独立 Xcode 27 ARM64 Runner Job 中调用本仓 `scripts/build.mjs`，分别编译 Android ARM64、iOS 真机与模拟器、macOS ARM64 原生资产；`fail-fast: false` 使某端失败不取消另外两端。三端全部成功后，同一 Workflow 的汇总 Job 使用 `build.mjs` 组装并验真唯一 `tatachatsdk.tgz`，创建草稿、逐件回读后公开一个 GitHub Tag/Release。失败只撤销本轮已确认创建的 Release/Tag。外部分发目的地仍未确定，真实成功以GitHub当前运行回执为准。
 
+同一Workflow末尾的`run-retention` Job仅清理该仓库、`main`和本SDK Workflow的已完成旧Run；根据测试、原生矩阵和Release Job的终态把当前Run作为待完成的最新成功或失败候选，并保留另一类最新记录。任何活动Run、其它工作流与其它分支均不删除。清理权限仅授予此Job；清理接口失败不改变原生编译或Release结果，并在本轮日志中报出。旧Run的Actions日志与Artifact随Run删除；每平台Cargo缓存使用独立清理逻辑，不受影响。控制台任务栏快照按产品、动作、平台与结果保留最新项，产品页GitHub镜像也只保存本SDK最新成功和失败各一条。
+
 正式`sdk`资源合同仅交付Node25.2.1、Rust1.97.1、Android NDK28.2.13676358、Xcode27、受控POSIX及GNU Bash/grep/sed，并只物化`native/Cargo.lock`的registry闭包；新增Cargo Git来源在资源准备前失败。`pubspec.lock`仍随正式包保留，但本仓原生编译不运行Flutter、Gradle、Java、CocoaPods或Pub获取，也不再因无关Git工具构建gettext。SDK单一平台合同在三个原生Job中都交付同一固定NDK，只有Android Job执行其中的交叉编译工具；均直接读取只读NDK对象，不再复制完整Android SDK或NDK视图。原生Shell的路径校验使用已交付Node，iOS切片元数据用受控`plutil`转JSON并由Node核对；Android编译与包验真均必须由资源回执明确交付`ANDROID_NDK_HOME`，在Cargo前执行固定NDK的Clang、ar和nm，禁止扫描系统NDK。GitHub test Job先预检Runner的Node、Apple定位工具、plutil、tar及gh，再运行本仓回归；实测三端、缓存和Release仍以新的工作流结果验收。
 
 回执消费拒绝合同之外的工具；原生Shell的NDK选择函数只读取调用方显式传入的`ANDROID_NDK_HOME`，空路径失败。同文件合成测试把测试NDK路径作为函数参数传入，隔离Runner预装NDK环境。前一自动化Run `38680762761` 的预检通过，Node回归111项通过、1项在合成NDK路径断言失败，三个native Job因此未执行；修复后的真实结果仍须由后续Run验收。
