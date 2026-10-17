@@ -137,7 +137,6 @@ jobs:
       actions: write
     env:
       GH_TOKEN: "${{ github.token }}"
-      CARGO_CACHE_KEY: "tatachatsdk-cargo-v1-macOS-ARM64-${{ matrix.target }}-${{ hashFiles('native/Cargo.lock', 'scripts/build.mjs') }}-${{ github.run_id }}-${{ github.run_attempt }}"
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
@@ -147,6 +146,8 @@ jobs:
         with:
           node-version: 25.2.1
       - name: 只保留本平台最新一份Cargo增量数据
+        env:
+          CARGO_CACHE_KEY: "tatachatsdk-cargo-v1-macOS-ARM64-${{ matrix.target }}-${{ hashFiles('native/Cargo.lock', 'scripts/build.mjs') }}-${{ github.run_id }}-${{ github.run_attempt }}"
         shell: bash
         run: node scripts/build.mjs ci-cache-prune "${{ matrix.target }}" "$CARGO_CACHE_KEY"
   run-retention:

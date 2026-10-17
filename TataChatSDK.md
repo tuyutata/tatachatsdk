@@ -596,6 +596,8 @@ ZIP先读取并验证中央目录、总解压尺寸、路径及链接关系，�
 
 ## GitHub自动化
 
+Cargo缓存清理的键在完成源码检出后的步骤级`env`内调用`hashFiles`计算；Job级环境不执行该函数，避免GitHub在任何测试开始前拒绝整个Workflow。
+
 版本按完整塔塔自动化的真实成功结果推进；失败、取消和草稿不消耗版本。三个十进制段按1.0.9→1.1.0、1.9.9→2.0.0进位，后两段各为0到9，首段以BigInt处理而不受JavaScript Number上限限制。产品派发前从已成功Run关联的正式Release求下一候选，通过Workflow输入冻结；Runner再次核对候选，Run、Tag、Release统一采用`TataChatSDK-版本号`，不带平台、Run ID或Attempt。Run ID、Attempt及源码SHA保存在Release元数据中。删除已完成旧Run前保存其已核验成功/失败结论，避免Run保留清理丢失版本依据；旧Tag仅用于读取既有成功版本，并按十进制进位规范化后推进。已有版本而无可验证成功依据时失败，不重置计数。产品派发拒绝同一SDK的活动Run；并发竞争或手动填写的旧候选仍会被Runner重新核对并拒绝，避免成功版本重用。失败或取消后留下的同名候选只在Run结论、Release元数据与Tag提交均匹配时清理，先删除并回查Tag，再删除Release；随后使用相同候选版本重试。成功版本和活动候选不覆盖。
 
 `.github/workflows/sdk.yml` 在三个独立 Xcode 27 ARM64 Runner Job 中调用本仓 `scripts/build.mjs`，分别编译 Android ARM64、iOS 真机与模拟器、macOS ARM64 原生资产；`fail-fast: false` 使某端失败不取消另外两端。三端全部成功后，同一 Workflow 的汇总 Job 使用 `build.mjs` 组装并验真唯一 `tatachatsdk.tgz`，创建草稿、逐件回读后公开一个 GitHub Tag/Release。失败只撤销本轮已确认创建的 Release/Tag。外部分发目的地仍未确定，真实成功以GitHub当前运行回执为准。

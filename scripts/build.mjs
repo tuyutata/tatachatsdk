@@ -1915,6 +1915,8 @@ if(testSession&&process.argv.length===2&&resolve(process.argv[1]||'')===fileURLT
   const runs=workflow.slice(workflow.indexOf('\n  run-retention:'));
   assert.ok(workflow.indexOf('\n  run-retention:')>workflow.indexOf('\n  release:'),'Run清理必须位于Release后');
   assert.match(cache,/actions: write/u);assert.match(cache,/ci-cache-prune/u);
+  assert.doesNotMatch(cache,/\n      CARGO_CACHE_KEY:/u);
+  assert.match(cache,/\n        env:\n          CARGO_CACHE_KEY:/u);
   assert.match(runs,/needs: \[test, native, release, cargo-retention\]/u);
   assert.match(runs,/ci-run-prune/u);assert.doesNotMatch(runs,/continue-on-error/u);
   assert.match(workflow,/run-name: "TataChatSDK-\$\{\{ inputs.version \}\}"/u);
