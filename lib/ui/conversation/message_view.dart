@@ -6,7 +6,7 @@ import 'package:flutter_blurhash/flutter_blurhash.dart';
 import 'package:flutter_chat_core/flutter_chat_core.dart';
 import 'package:flutter_chat_ui/flutter_chat_ui.dart';
 
-import '../../chat_client.dart';
+import '../../runtime/chat_runtime.dart';
 import '../../core/chat_content.dart';
 import '../../core/chat_message.dart';
 import '../../runtime/direct_flow.dart';

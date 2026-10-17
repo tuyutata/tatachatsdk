@@ -1,6 +1,6 @@
 import 'package:fixnum/fixnum.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:tatachat_sdk/protocol.dart';
+import 'package:tatachat_sdk/protocol/message.dart';
 
 void main() {
   test('EncryptedMessage 只往返端到端密文瞬时投递字段', () {

@@ -3,10 +3,13 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
-import '../../attachment.dart';
 import '../../attachment/attachment_platform.dart';
-import '../../chat_client.dart';
+import '../../attachment/compressor.dart';
+import '../../attachment/mime.dart';
+import '../../attachment/probe.dart';
+import '../../attachment/voice_recorder.dart';
 import '../../core/chat_message.dart';
+import '../../runtime/chat_runtime.dart';
 import '../../runtime/direct_flow.dart';
 import '../attachment/media_picker.dart';
 import '../compose/camera_capture_page.dart';

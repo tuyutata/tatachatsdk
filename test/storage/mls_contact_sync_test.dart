@@ -131,7 +131,7 @@ class _ContactHost implements ChatRuntimeHost {
 
 void main() {
   useIsolatedChatIsar();
-  final skip = chatSdkNativeSkipReason();
+  requireChatSdkNative();
   // 公共运行时真实调用与应用集成共享入口，避免只验证内部引擎而漏接能力。
   for (final change in [false, true]) {
     test('公开通讯录入口复用已有MLS身份，账户${change ? '变化拒绝晚回' : '不变完成同步'}', () async {
@@ -190,7 +190,7 @@ void main() {
       final before = requests;
       await expectLater(synchronize(), throwsStateError);
       expect(requests, before);
-    }, skip: skip);
+    });
   }
   test('公开通讯录入口拒绝错误所有者，不联网且不补建身份', () async {
     final temp = await Directory.systemTemp.createTemp('contact_wrong_owner_');
@@ -212,7 +212,7 @@ void main() {
     );
     expect(File('${root.path}/state.bin').existsSync(), false);
     await runtime.close();
-  }, skip: skip);
+  });
 
   test('同CID真实MLS Welcome、快照、丢回执重启和精确叶子移除', () async {
     final temporary = await Directory.systemTemp.createTemp('contact_mls_');
@@ -297,5 +297,5 @@ void main() {
     final calls = relay.receipts.length;
     await expectLater(sync(0, current: false), throwsStateError);
     expect(relay.receipts.length, calls);
-  }, skip: skip);
+  });
 }

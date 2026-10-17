@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:isar_community/isar.dart';
-import 'package:tatachat_sdk/protocol.dart' as pb;
+import 'package:tatachat_sdk/protocol/message.dart' as pb;
 import 'package:tatachat_sdk/tatachat_sdk.dart' hide ChatRoute;
 
 import '../support/isar_test_env.dart';

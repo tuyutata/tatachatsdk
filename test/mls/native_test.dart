@@ -15,7 +15,7 @@ MlsAuthenticationRequest _authenticationRequest() => MlsAuthenticationRequest(
 );
 
 void main() {
-  final skip = chatSdkNativeSkipReason();
+  requireChatSdkNative();
   test('KeyPackage只在已持久化的同一MLS身份上生成', () async {
     final root = await Directory.systemTemp.createTemp(
       'tatachat_native_identity_',
@@ -49,7 +49,7 @@ void main() {
       wrongOwner.readIdentity(),
       throwsA(isA<MlsNativeException>()),
     );
-  }, skip: skip);
+  });
 
   test('真实FFI认证复用MLS身份，重建后签名一致且不改快照', () async {
     final root = await Directory.systemTemp.createTemp('tatachat_native_auth_');
@@ -105,7 +105,7 @@ void main() {
       ),
       throwsA(isA<MlsNativeException>()),
     );
-  }, skip: skip);
+  });
 
   test('认证缺状态或损坏时失败，禁止补身份或清空恢复', () async {
     final root = await Directory.systemTemp.createTemp(
@@ -128,7 +128,7 @@ void main() {
     await snapshot.delete();
     await expectLater(sign(), throwsA(isA<MlsNativeException>()));
     expect(await snapshot.exists(), isFalse);
-  }, skip: skip);
+  });
   test('同CID三设备移除只影响指定叶子，伪造KeyPackage登记身份拒绝', () async {
     final temporary = await Directory.systemTemp.createTemp('mls_leaf_');
     final root = Directory(await temporary.resolveSymbolicLinks());
@@ -214,5 +214,5 @@ void main() {
         ].map((identity) => 'CID-A:${identity.deviceId}'),
       ),
     );
-  }, skip: skip);
+  });
 }

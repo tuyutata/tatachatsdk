@@ -42,6 +42,22 @@ void main() {
     cipherSha256: cipherHash ?? List<int>.filled(32, 9),
   );
 
+  test('唯一公开入口保留媒体入站类型和原内容合同', () {
+    final incoming = DirectAttachmentInbound(
+      conversationId: 'conversation-a',
+      content: content(),
+    );
+    final decoded = MediaContentCodec.decode(
+      MediaContentCodec.encode(incoming.content),
+    );
+    expect(incoming.conversationId, 'conversation-a');
+    expect(decoded.attachmentId, incoming.content.attachmentId);
+    expect(
+      decoded.attachmentMemberIdentities,
+      incoming.content.attachmentMemberIdentities,
+    );
+  });
+
   test('媒体合同保留超过四GiB的准确大小及MLS公开描述', () {
     const clearSize = 5 * 1024 * 1024 * 1024;
     final decoded = MediaContentCodec.decode(

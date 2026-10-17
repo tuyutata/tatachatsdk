@@ -7,7 +7,7 @@
 本产品编译任务使用本仓 `target/build/<平台>` 独立临时目录，平台键为 `sdk`。不同平台同时领取并执行；同平台已有活跃任务时立即拒绝再次领取。资源准备、工程副本、缓存和编译输出只写本平台现场；确认进程及后代退出、结果被调用方消费后，删除整个平台目录。`target/build` 仅是父目录，`target/test` 仍用于独立测试。独立执行和控制台调度调用同一本仓编译入口与清理接口。
 
 
-聊天 SDK 的 `scripts/build.mjs` 拥有本机与 GitHub 自动化共用的编译、唯一正式包组装及验真实现，不提供设备安装。本机 Build 只编译并回执；GitHub 三端完整成功后才构造一个 `tatachatsdk.tgz` 和一个 Tag/Release。本产品没有第二个渠道发布步骤。
+聊天SDK自身的测试、Dart分析和编译只在GitHub执行；本机用于开发和最终差异审查，不运行SDK测试或编译。`scripts/build.mjs`拥有本仓验证、原生编译、唯一正式包组装及验真实现；控制台只派发所属工作流，不提供SDK设备安装或第二个渠道发布步骤。完整验证与三端编译成功后才构造一个`tatachatsdk.tgz`和一个Tag/Release。
 
 ## 现行编译、发布、自动化与门禁目录（2026-10-11）
 
@@ -20,6 +20,22 @@ scripts/
 ```
 
 GitHub 的 `sdk.yml` 保持原名，在本仓 `main` 上由控制台唯一的塔塔聊天动作启动。Android、iOS、macOS ARM64 原生 Job 独立运行且 `fail-fast: false`；只有三端全部成功，汇总 Job 才调用本仓 `build.mjs` 构造和验真唯一 `tatachatsdk.tgz`，创建并回读一个 GitHub Tag/Release。控制台不再登记本产品的第二个发布动作；`tatagate/` 只负责只读门禁。
+
+## 现行GitHub完整验证
+
+现有test Job先核对候选版本并执行build.mjs同文件Node回归，再调用`node scripts/build.mjs ci-test`；只有两步均成功，native矩阵才开始三端正式编译。ci-test先验证GitHub仓库、main、sdk.yml、test Job、Run/Attempt、源码SHA和macOS ARM64宿主，本机及错身份调用在领取现场前失败。test、native、release与两类清理共同决定最终Run；失败和取消不消耗正式成功版本。
+
+验证资源使用`purpose: verification`且只允许当前领取的target/test；工具版本直接来自本仓唯一配方，包含原有Node/Rust/Xcode/GNU基础工具、Git及其闭包、Flutter3.47.2和其自带Dart；依赖按native/Cargo.lock与pubspec.lock准备。正式原生构建仍使用原最小合同，不获取Flutter或Pub。测试资源不请求NDK，GitHub中重复的Rust安装Action已删除；本仓自己交付锁定Rust与目标标准库。
+
+完整测试工程复制到当前任务，包含lib、test、scripts、native头、iOS静态合同输入和贴纸；按既有Android输入映射装配平台布局，从BUILD_SHELL_SOURCES.analysis生成唯一分析配置。普通消费者的链接视图仍保持自身合同，不用作完整测试工程。已安装Flutter工具只读原件保持不变，当前任务持有独立可写副本，先准备universal宿主测试引擎；HOME、Pub/Cargo缓存、数据库、工具写入和编译输出均在当前test现场。Pub正式包按原锁物化后执行`flutter pub get --offline --enforce-lockfile`，前后锁文件必须一致，禁止升级或改锁。
+
+验证顺序为严格Dart分析、Rust宿主回归、独立MLS宿主库生成及符号验收、Flutter全量回归。分析执行`flutter analyze --no-pub --fatal-infos --fatal-warnings`，沿用现有Isar官方生成文件排除，不增加手写代码豁免。Rust执行原native/Cargo.toml的`cargo test --locked --offline --all-targets`，实际通过数必须大于零、失败与忽略均为零；宿主库复用同一Cargo target和既有host正文，不进入正式Release资产。
+
+Flutter测试显式接收本轮MLS库、测试工作根及从本轮package_config/Pub原锁定位的ISAR_CORE_LIB_PATH。MLS测试加载核对普通文件、规范路径、工作根和活动守卫；缺件、越界、错身份或加载失败直接失败，不扫描旧编译目录或邻仓，不跳过原生用例。Isar共享夹具要求同轮输入，每个测试文件独占数据库并在收尾关闭清理，不借用户HOME中的其它版本。
+
+全量测试执行`flutter test --no-pub --concurrency=1 --reporter=expanded --file-reporter=json:<本轮报告> test`。人读日志与官方JSON文件同时产生，避免Flutter启动信息混入结果解析。测试文件清单从当前test目录动态枚举（本轮47个），禁止按旧成功数量或固定子集代替全量；报告须有开始及完整成功结束、所有文件、每个已启动用例的完成事件、实际业务用例数大于零，并且失败、错误和跳过为零。加载与setUpAll/tearDownAll虚拟用例不计业务通过数，其错误及迟到错误仍使验证失败。退出码非零、报告损坏/超限/重复身份/漏文件/中断均失败。
+
+成功仅在正式源码与锁未改变且工具后代退出、映像卸载和当前任务清场完成后报告。GitHub步骤摘要记录阶段、SHA、Rust和Dart结果；未完成报告不写零失败冒充完成。本次不新增Flutter/Pub/宿主Cargo持久缓存，原有三平台最新一份Cargo增量缓存及最新成功/失败Run保留规则继续执行。此门禁覆盖Dart/Widget、真实宿主FFI和三端原生产物；设备摄像头、麦克风及真实服务端联调仍属于设备验收。
 
 ## 工具与依赖的声明和供给职责（2026-10-08）
 
@@ -90,12 +106,11 @@ TataChatSDK 负责：
 
 ## 3. 当前源码结构
 
-- tatachatsdk/lib/tatachat_sdk.dart：公开入口。
+- tatachatsdk/lib/tatachat_sdk.dart：lib根层唯一文件与SDK公开聚合入口。
 - tatachatsdk/lib/attachment：附件密文、分块和文件库。
-- tatachatsdk/lib/call：私聊通话状态和客户端边界。
-- tatachatsdk/lib/direct：私聊消息、附件和通话功能。
+- tatachatsdk/lib/call：私聊通话状态机、会话、协调器、信令与客户端边界；状态和会话类型统一定义在coordinator.dart。
 - tatachatsdk/lib/transport：WSS 控制面与同源 HTTPS 附件数据面。
-- tatachatsdk/lib/core：通用消息、内容、会话与范围模型。
+- tatachatsdk/lib/core：通用消息、内容、会话与范围模型；basic_content.dart与media_content.dart分别拥有对应私聊入站消息类型。
 - tatachatsdk/lib/group：群聊模型与 OpenMLS 群流程。
 - tatachatsdk/lib/mls：OpenMLS 会话、状态库和原生边界。
 - tatachatsdk/lib/protocol：Protobuf 生成代码与严格编解码。
@@ -104,6 +119,8 @@ TataChatSDK 负责：
 - tatachatsdk/lib/ui：通用聊天界面。
 - tatachatsdk/android、ios：SDK自己的Flutter平台插件与iOS集成资源；宿主不实现通用聊天媒体能力。
 - tatachatsdk/native、native/tatachat_sdk.h、lib/protocol、scripts、test：独立原生、协议、构建与测试。
+
+lib根层只保留tatachat_sdk.dart一个公开聚合入口，直接导出各所属模块，不设置分散聚合文件或旧路径转发。私聊收发编排与ChatSdk生命周期归runtime/chat_runtime.dart及既有收发模块，内容模型与入站消息归core，语音/视频会话和状态归call/coordinator.dart。保留原公开类型名称、构造函数及行为；内部源码直接导入所属模块，消费者继续从唯一总入口取得SDK公开能力。
 
 ## 4. 运行时合同
 
@@ -354,7 +371,7 @@ CocoaPods在三种依赖形态下始终读取同一相对合同。
 
 
 
-本产品只有一个sdk目标：`build.mjs`负责本机编译，并在 `sdk.yml` 的成功三平台原生任务后构造、验真SDK包及创建正式 GitHub Release；控制台只派发这一所属仓工作流。
+本产品只有一个sdk目标；测试与编译只在GitHub执行。`build.mjs`在所属`sdk.yml`完整验证与成功三平台原生任务后构造、验真SDK包及创建正式GitHub Release；控制台只派发这一所属仓工作流。
 
 `sdk.yml` 的唯一自动化按钮同时承载测试、三平台原生构建、正式包验真和Release。Cargo target缓存按 Android、iOS、macOS 独立命名并只保留每个平台最新一份；缓存清理使用Actions缓存API，与Run记录清理分离。最终Run清理Job位于Release之后，只处理本仓main上准确 `sdk.yml` 的已完成Run，允许清理旧push Run，保留最新成功、最新失败和当前活动Run。清理错误必须明确失败且不撤销已完成的构建或Release；Run清理Job本身失败时，最终Workflow Run失败，不报告清理成功。
 
@@ -498,7 +515,7 @@ Pod由pods中的name、version、checksum匹配当前Podfile.lock；spec保存�
 
 ## 2026-10-08 服务模块接线与 lib 目录收口
 
-lib 下直接按 attachment、call、core、direct、group、mls、protocol、runtime、storage、transport、ui 分工，公开入口保留 lib/tatachat_sdk.dart。原 src 层已删除，没有旧路径别名；五份 proto 及生成代码仅移动，不改变协议字节或存储 schema。
+lib 下直接按 attachment、call、core、group、mls、protocol、runtime、storage、transport、ui 分工，公开入口保留 lib/tatachat_sdk.dart。原 src 层已删除，没有旧路径别名；五份 proto 及生成代码仅移动，不改变协议字节或存储 schema。
 
 Host.requestChatAccess 返回 ChatAccess(realtimeUrl, accessToken, expiresAtMillis)。地址必须是完整 wss://<origin>/api/tatachat/realtime，无用户信息、查询或片段；SDK 不解析不透明 accessToken，不落盘或输出它。每次物理连接取得新许可，账户、绑定范围和修订在请求前后固定复核。附件地址由同主机/端口派生 https://<origin>/api/tatachat/attachments/{id}/chunks/{index}，TLS 和禁止重定向在实际请求上执行。
 
@@ -643,3 +660,6 @@ Run `38690355897` 的test及三端native Job再次全部成功，Release Job已�
 ## 塔塔自动化任务归属
 
 本产品现有 `scripts/build.mjs` 公开 `dispatchProductAutomation`、`startAutomation`、`recoverAutomation`，独立负责本仓 `main` 的 GitHub Workflow 派发、Run/Job/日志观察、原 Run 取消及任务恢复。`tata/tatachatsdk.mjs` 只把控制台动作交给产品入口；控制台只提供任务宿主和带仓库、动作、平台、原任务身份的短期授权。产品入口逐项核对动作 ID、归属产品、平台、流程、二级授权及非生产声明。派发无准确 Run 回执时不得重试；已接收 Run 的后续读回失败只恢复原 Run，不能再次派发。取消必须确认 GitHub 终态，恢复必须核对仓库、workflow、平台和原 Run ID。若派发回执已持久化但首次读回中断、尚无SHA，只允许凭准确所属文件、动作和原Run URL重新读取同一Run，身份核对成功后冻结其SHA；已冻结的SHA不允许漂移，无效SHA不能按缺失处理。控制台任务的定时重连通过宿主恢复回调重新建立原任务授权上下文；独立调用仍使用本产品恢复入口，失败保持原 Run 并安排再次重连。独立调用可向 `dispatchProductAutomation` 显式交付仓库令牌；令牌不写入源码、日志或任务回执。记录镜像、资产和发布入口不属于本次迁移。同文件模拟回归覆盖准确派发、已接收 Run 的读回中断、伪造身份、Job 终态、过期授权后的原 Run 取消与恢复；这些夹具不调用真实 GitHub。
+
+
+本产品公开供给请求同时声明准备产物缓存身份；独立准备与调度领取后的工具入口、组件及源码原锁均由本产品同一验收实现检查。工具安装步骤、SDK选择和平台使用目录归本产品；供应端只交付准确资源与受控执行，不选择组件布局、不补依赖或切换版本。相关合成回归位于既有scripts/build.mjs，不执行真实SDK工作区、节点或交易。当前为统一收口候选，实际验证结果归原任务卡。

@@ -104,7 +104,9 @@ void main() {
       expect(chatSdkPodspec, contains("spec.dependency 'Flutter'"));
       expect(
         chatSdkPodspec,
-        contains("spec.frameworks = 'AVFoundation', 'UIKit'"),
+        contains(
+          "spec.frameworks = 'AVFoundation', 'UIKit', 'UniformTypeIdentifiers'",
+        ),
       );
       expect(chatSdkPodspec, isNot(contains('framework_pattern')));
       expect(chatSdkPodspec, contains("'tatachat_sdk_privacy'"));
@@ -131,6 +133,10 @@ void main() {
       expect(privacyManifest, isNot(contains('<string>')));
       expect(package, contains('ffiPlugin: true'));
       expect(loader, contains('TataChatSDK 自己的 CocoaPods 目标'));
+      expect(loader, contains('TATACHATSDK_TEST_NATIVE_LIBRARY'));
+      expect(loader, contains('TATACHATSDK_TEST_WORK_ROOT'));
+      expect(loader, isNot(contains("'native', 'target'")));
+      expect(loader, isNot(contains("'..',")));
       expect(File('ios/tatachat_sdk_ffi.podspec').existsSync(), isFalse);
       expect(File('ios/placeholder.m').existsSync(), isFalse);
     },

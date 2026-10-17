@@ -1,6 +1,6 @@
 import 'package:flutter_chat_core/flutter_chat_core.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:tatachat_sdk/protocol.dart' as pb;
+import 'package:tatachat_sdk/protocol/message.dart' as pb;
 import 'package:tatachat_sdk/tatachat_sdk.dart';
 
 const _aliceUserId = 'CN220-CTZN2-100000001-2026';

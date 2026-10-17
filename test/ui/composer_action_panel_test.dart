@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:tatachat_sdk/ui.dart';
+import 'package:tatachat_sdk/ui/compose/composer_action_panel.dart';
 
 void main() {
   testWidgets('direct chat exposes seven actions', (tester) async {

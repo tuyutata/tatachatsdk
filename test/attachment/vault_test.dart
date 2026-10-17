@@ -1,7 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:tatachat_sdk/attachment.dart';
+import 'package:tatachat_sdk/attachment/vault.dart';
 
 void main() {
   late Directory root;

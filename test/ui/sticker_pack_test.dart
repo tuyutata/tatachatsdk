@@ -1,7 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:tatachat_sdk/ui.dart';
+import 'package:tatachat_sdk/ui/sticker_pack.dart';
 
 void main() {
   test('清单 ⇔ 磁盘 png 一一对应,零死引用零孤儿', () {

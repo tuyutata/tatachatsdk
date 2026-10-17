@@ -7,7 +7,7 @@ import 'package:tatachat_sdk/tatachat_sdk.dart';
 import '../support/native_probe.dart';
 
 void main() {
-  final skip = chatSdkNativeSkipReason();
+  requireChatSdkNative();
   test('MLS发送和接收在宿主落库前中断，重建后仍恢复相同结果', () async {
     final root = await Directory.systemTemp.createTemp(
       'tatachat_native_session_',
@@ -96,5 +96,5 @@ void main() {
       ),
       throwsA(isA<MlsNativeException>()),
     );
-  }, skip: skip);
+  });
 }

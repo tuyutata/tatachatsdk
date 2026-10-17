@@ -84,7 +84,7 @@ ChatContent _copy(
 
 void main() {
   useIsolatedChatIsar();
-  final skip = chatSdkNativeSkipReason();
+  requireChatSdkNative();
   Future<Directory> root() async {
     final temp = await Directory.systemTemp.createTemp('mls_attachment_');
     final dir = Directory(await temp.resolveSymbolicLinks());
@@ -209,7 +209,7 @@ void main() {
       (await a.crypto.groupState(conversation)).memberIdentities.toSet(),
       roster.toSet(),
     );
-  }, skip: skip);
+  });
 
   test('真实MLS三设备附件组，分块精确复原且不推进普通聊天链', () async {
     final dir = await root();
@@ -304,7 +304,7 @@ void main() {
       received.senderMemberIdentity,
       '${a.identity.userId}:${a.identity.deviceId}',
     );
-  }, skip: skip);
+  });
 
   for (final committed in [false, true]) {
     test('真实块flush后确认${committed ? '已提交' : '未提交'}中断，恢复原帧与紧凑游标', () async {
@@ -380,7 +380,7 @@ void main() {
       );
       expect(await MlsAttachment.digest(output), control.plainSha256);
       await b.attachment().finish(control.attachmentGroupId!);
-    }, skip: skip);
+    });
   }
 
   for (final committed in [false, true]) {
@@ -452,7 +452,7 @@ void main() {
       );
       expect(pending, isEmpty);
       await b.attachment().finish(control.attachmentGroupId!);
-    }, skip: skip);
+    });
   }
 
   test('真实未确认结果不能改变输入，已消费前缀丢失或损坏均失败', () async {
@@ -503,7 +503,7 @@ void main() {
     await expectLater(seal(a.attachment()), throwsStateError);
     await source.writeAsBytes(List.filled(size, 8), flush: true);
     await expectLater(seal(a.attachment()), throwsA(isA<MlsNativeException>()));
-  }, skip: skip);
+  });
 
   test('身份变化、跨CID存储与未知设备包不能生成附件帧', () async {
     final dir = await root(),
@@ -556,7 +556,7 @@ void main() {
       throwsStateError,
     );
     expect(await target.exists(), false);
-  }, skip: skip);
+  });
 
   test('真实MLS拒绝篡改、帧错序、截断、伪造Welcome名册，拒绝附件Commit', () async {
     final dir = await root(), a = await _device(dir, 'a');
@@ -656,7 +656,7 @@ void main() {
       ),
       throwsA(isA<MlsNativeException>()),
     );
-  }, skip: skip);
+  });
 
   test(
     '真实72MiB附件按块流式处理，归档状态不随文件正文增长',
@@ -734,7 +734,6 @@ void main() {
       await b.attachment().finish(control.attachmentGroupId!);
       // 72MiB真实FFI包含144次块验密和磁盘提交，给予有限独立预算，断言不变。
     },
-    skip: skip,
     timeout: const Timeout(Duration(minutes: 3)),
   );
 }

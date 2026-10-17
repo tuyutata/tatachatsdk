@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:tatachat_sdk/ui.dart';
+import 'package:tatachat_sdk/ui/compose/camera_capture_page.dart';
 
 void main() {
   test('应用内录像唯一上限为三分钟', () {

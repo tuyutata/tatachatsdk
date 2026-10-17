@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../chat_client.dart';
+import '../../runtime/chat_runtime.dart';
 import '../host.dart';
 import 'conversation_page.dart';
 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:tatachat_sdk/ui.dart';
+import 'package:tatachat_sdk/ui/sticker_pack.dart';
+import 'package:tatachat_sdk/ui/sticker_panel.dart';
 
 void main() {
   testWidgets('点选贴纸回调 (packId, stickerId)', (tester) async {

@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:tatachat_sdk/call.dart';
+import 'package:tatachat_sdk/call/signal.dart';
 
 void main() {
   test('信令只接受既有 connection_id 和精确字段', () {

@@ -18,6 +18,7 @@ jobs:
   test:
     if: github.ref == 'refs/heads/main'
     runs-on: xcode-27
+    timeout-minutes: 120
     permissions:
       contents: read
       actions: read
@@ -47,6 +48,9 @@ jobs:
       - name: 先执行本仓代码回归
         shell: bash
         run: node --test scripts/build.mjs
+      - name: 严格分析Dart并执行全部真实回归
+        shell: bash
+        run: node scripts/build.mjs ci-test
   native:
     needs: test
     if: github.ref == 'refs/heads/main'
@@ -65,11 +69,6 @@ jobs:
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with:
           node-version: 25.2.1
-      - uses: dtolnay/rust-toolchain@032958afbdc797a9164d3bc0b56325c1308924a5
-        with:
-          toolchain: 1.97.1
-          targets: aarch64-linux-android,aarch64-apple-ios,aarch64-apple-ios-sim,aarch64-apple-darwin
-          components: rust-src
       - name: 恢复本平台最新Cargo增量数据
         id: cargo_cache_restore
         continue-on-error: true

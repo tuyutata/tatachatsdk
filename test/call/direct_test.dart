@@ -1,7 +1,10 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:tatachat_sdk/call.dart';
+import 'package:tatachat_sdk/call/coordinator.dart';
+import 'package:tatachat_sdk/call/peer.dart';
+import 'package:tatachat_sdk/call/signal.dart';
+import 'package:tatachat_sdk/call/transport.dart';
 
 void main() {
   test('私聊通话按 offer answer ICE 和 hangup 收口', () async {

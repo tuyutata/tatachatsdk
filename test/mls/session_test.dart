@@ -6,7 +6,7 @@ import 'package:tatachat_sdk/tatachat_sdk.dart';
 import '../support/native_probe.dart';
 
 void main() {
-  final skip = chatSdkNativeSkipReason();
+  requireChatSdkNative();
   test('早到MLS密文在同一原生状态保存、去重及校验所有者', () async {
     final root = await Directory.systemTemp.createTemp('tatachat_pending_');
     addTearDown(() => root.delete(recursive: true));
@@ -30,7 +30,7 @@ void main() {
     await File('${store.path}/state.bin').writeAsString('broken', flush: true);
     await expectLater(store.readIdentity(), throwsA(isA<MlsNativeException>()));
     expect(await File('${store.path}/state.bin').readAsString(), 'broken');
-  }, skip: skip);
+  });
   test('未准备或符号链接存储目录不得用于MLS', () async {
     final root = await Directory.systemTemp.createTemp(
       'tatachat_storage_boundary_',

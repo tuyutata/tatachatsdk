@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:tatachat_sdk/ui.dart';
+import 'package:tatachat_sdk/ui/attachment/image_viewer_page.dart';
 
 // 用不存在的路径:widget 测试里解码真实图片会挂起 fake-async 时钟;errorBuilder
 // 同步渲染占位,足以验证结构与保存流程。真实内联渲染以真机/集成为准。

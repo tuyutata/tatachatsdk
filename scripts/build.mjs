@@ -122,7 +122,7 @@ function verifyDependencyVolume(work){
  finally{fs.rmSync(probe,{recursive:true,force:true});}
 }
 function ensureDependencyVolume(work,{run_id,signal}={}){
- if(work!==fixedWork('build/sdk'))fail('依赖映像只允许SDK编译任务');checkFixedWork(work);
+ if(![fixedWork('build/sdk'),fixedWork('test')].includes(work))fail('依赖映像只允许SDK编译或测试任务');checkFixedWork(work);
  const owner=readOwner(work),session=sessions.getStore();
  if(!owner||!alive(owner.pid)||!(session?.owner.nonce===owner.nonce||run_id&&owner.run_id===run_id))fail('依赖映像没有当前任务所有权');
  const {image,mount}=dependencyVolume(work),existing=mountedDependencyImage(work);
@@ -137,7 +137,7 @@ function ensureDependencyVolume(work,{run_id,signal}={}){
  verifyDependencyVolume(work);signal?.throwIfAborted();return mount;
 }
 function releaseDependencyVolume(work,nonce){
- if(work!==fixedWork('build/sdk'))return;
+ if(![fixedWork('build/sdk'),fixedWork('test')].includes(work))return;
  const {image,mount}=dependencyVolume(work),mounted=fs.existsSync(mount)&&fs.lstatSync(mount).dev!==fs.lstatSync(work).dev;
  if(!fs.existsSync(image)&&!mounted)return;
  if(!nonce||readOwner(work)?.nonce!==nonce)fail('依赖映像不属于本轮任务');
@@ -244,7 +244,7 @@ function prepareSourceView(){
  const session=sessions.getStore();if(!session)fail('工程视图缺少固定任务');
  const project=join(session.owner.work,'source');
  if(fs.existsSync(project)){directory(project);return project;}
- const omitted=new Set(['target','node_modules','build','dist','.dart_tool','.gradle','.symlinks','Pods','ephemeral','.cache','cache','tasks','tsconfig.tsbuildinfo']);
+ const omitted=new Set(['.git','target','node_modules','build','dist','.dart_tool','.gradle','.symlinks','Pods','ephemeral','.cache','cache','tasks','tsconfig.tsbuildinfo']);
  // 逐个直接子项复制，Node禁止把整个根直接cp到自身的子目录。
  fs.mkdirSync(project,{mode:0o700});
  const include=path=>!omitted.has(path.slice(path.lastIndexOf(sep)+1))&&!['tools/shared','tools/archives','rely/objects'].some(prefix=>relative(root,path).split(sep).join('/')===prefix);
@@ -498,8 +498,20 @@ function nativeCargoSources(text){
  for(const match of text.matchAll(/^source = "([^"]+)"$/gmu))if(match[1]!=='registry+https://github.com/rust-lang/crates.io-index')fail('Cargo来源超出本SDK原生闭包');
  return true;
 }
-export function requirements(platform,work) {
- checkWork(work);const declared=platformContract(platform);
+// 验证需求仅绑定已领取的test根；正式三端继续使用原来的最小原生合同。
+function requirementProfile(platform,work,purpose='build') {
+ const declared=platformContract(platform);
+ if(purpose==='build')return declared;
+ if(purpose!=='verification'||platform!=='sdk'||work!==fixedWork('test'))fail('测试资源用途或工作根无效');
+ const definitions=new Map(resourceDeclarations().tools.map(tool=>[tool.id,tool])),ids=new Set();
+ const include=id=>{if(ids.has(id))return;const tool=definitions.get(id);if(!tool)fail('测试工具缺少原有配方');ids.add(id);for(const dependency of tool.requires||[])include(dependency);};
+ for(const tool of declared.tools.filter(tool=>tool.id!=='android-ndk'))include(tool.id);
+ include('git');include('flutter');
+ return {...declared,tools:[...ids].map(id=>({id,version:definitions.get(id).version})),
+  locks:[...declared.locks,{ecosystem:'pub',path:'pubspec.lock'}]};
+}
+export function requirements(platform,work,{purpose='build'}={}) {
+ checkWork(work);const declared=requirementProfile(platform,work,purpose);
  const locks=declared.locks.map(value=>({...value}));lockedSources();
  // 原生源归档坐标归本产品已有声明；准备后才提出展开源码的Cargo锁。
  for(const lock of declared.locks){const file=join(root,lock.path);if(!existsSync(file)||!lstatSync(file).isFile()||lstatSync(file).isSymbolicLink())fail('原始锁缺失或带链接：'+lock.path);}
@@ -509,7 +521,7 @@ export function requirements(platform,work) {
 }
 
 export function resourceEnvironment(platform,work,receipt,base={}) {
- checkWork(work);const declared=platformContract(platform);
+ checkWork(work);const declared=requirementProfile(platform,work,receipt?.purpose);
  if(!receipt||receipt.schema!==1||receipt.product_id!==product||receipt.platform!==platform||receipt.work!==work||receipt.offline!==true
   ||!receipt.tools||!receipt.dependencies||!receipt.archives)fail('资源回执身份无效');
  const env={HOME:base.HOME,USER:base.USER,LOGNAME:base.LOGNAME,LANG:'zh_CN.UTF-8',LC_ALL:'C',
@@ -527,7 +539,7 @@ export function resourceEnvironment(platform,work,receipt,base={}) {
   if(!value||typeof value.path!=='string'||!isAbsolute(value.path)||resolve(value.path)!==value.path)fail('缺少准确版本的工具：'+tool.id);
   const s=lstatSync(value.path);if(!s.isFile()||!(s.mode&0o111))fail('工具入口必须是普通执行器：'+tool.id);
  }
- const aliases={node:'NODE',rust:'RUSTC'};
+ const aliases={node:'NODE',rust:'RUSTC',git:'GIT',flutter:'FLUTTER'};
  for(const [id,name]of Object.entries(aliases))if(receipt.tools[id])env[name]=receipt.tools[id].path;
  // POSIX旧Shell不进入正式PATH；基础工具只通过产品已验真的GNU投影交付。
  const paths=Object.entries(receipt.tools).filter(([id])=>id!=='posix').map(([,value])=>dirname(value.path));
@@ -1532,6 +1544,176 @@ return {buildRelease,verifyReleaseAssets};
 })();
 export const {buildRelease,verifyReleaseAssets}=releaseAssets;
 
+// CI验证入口先验真所属Run；本机调用在领取目录、获取资源或运行测试前失败。
+export function requireCiTestIdentity(environment,{call=spawnSync,platform=process.platform,arch=process.arch}={}) {
+ if(platform!=='darwin'||arch!=='arm64'||environment.GITHUB_ACTIONS!=='true'
+  ||environment.GITHUB_REPOSITORY!=='tuyutata/tatachatsdk'||environment.GITHUB_WORKFLOW!=='tatachatsdk.sdk'
+  ||environment.GITHUB_WORKFLOW_REF!=='tuyutata/tatachatsdk/.github/workflows/sdk.yml@refs/heads/main'
+  ||environment.GITHUB_EVENT_NAME!=='workflow_dispatch'||environment.GITHUB_REF!=='refs/heads/main'
+  ||environment.GITHUB_JOB!=='test'||!/^[a-f0-9]{40}$/u.test(environment.GITHUB_SHA||'')
+  ||!/^[1-9][0-9]*$/u.test(environment.GITHUB_RUN_ID||'')||!/^[1-9][0-9]*$/u.test(environment.GITHUB_RUN_ATTEMPT||'')
+  ||!Number.isSafeInteger(Number(environment.GITHUB_RUN_ID))||!Number.isSafeInteger(Number(environment.GITHUB_RUN_ATTEMPT)))fail('完整SDK测试只允许所属GitHub验证Job');
+ const result=call('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'});
+ if(result.status!==0||result.error||result.stdout.trim()!==environment.GITHUB_SHA)fail('GitHub测试源码提交不一致');
+}
+
+// JSON报告的成功结束允许包含跳过；必须另核对每个用例与完整文件清单。
+export function verifyDartTestReport(text,{project,files}={}) {
+ if(typeof text!=='string'||!text||Buffer.byteLength(text)>16*1024**2||!isAbsolute(project||'')
+  ||!Array.isArray(files)||!files.length||new Set(files).size!==files.length
+  ||files.some(file=>!/^test\/(?:[A-Za-z0-9_]+\/)*[A-Za-z0-9_]+_test\.dart$/u.test(file)))fail('Dart测试报告输入无效');
+ const expected=new Set(files),seenFiles=new Set(),testedFiles=new Set(),suites=new Map(),started=new Map(),finished=new Set();
+ const known=new Set(['start','allSuites','suite','debug','group','testStart','print','error','testDone','done']);
+ let began=false,ended=false,successfulEnd=false,passed=0,skipped=0,failed=0;
+ for(const line of text.split(/\r?\n/u).filter(value=>value.trim())) {
+  let value;try{value=JSON.parse(line);}catch{fail('Dart测试报告不是完整JSON流');}
+  if(!value||!known.has(value.type)||ended)fail('Dart测试报告事件或结束顺序无效');
+  if(value.type==='start'){if(began)fail('Dart测试报告重复开始');began=true;continue;}
+  if(!began)fail('Dart测试报告缺少开始事件');
+  if(value.type==='suite') {
+   const id=value.suite?.id,path=value.suite?.path;
+   if(!Number.isSafeInteger(id)||id<0||suites.has(id))fail('Dart测试套件身份无效');
+   let file=null;
+   if(path!=null){
+    if(typeof path!=='string')fail('Dart测试套件路径无效');
+    const absolute=path.startsWith('file:')?fileURLToPath(path):resolve(project,path);
+    file=relative(project,absolute).split(sep).join('/');
+    if(!expected.has(file))fail('Dart测试报告包含未声明文件');seenFiles.add(file);
+   }
+   suites.set(id,file);
+  }
+  if(value.type==='testStart') {
+   const id=value.test?.id;
+   if(!Number.isSafeInteger(id)||id<0||started.has(id)||!suites.has(value.test.suiteID))fail('Dart测试用例身份重复或无效');started.set(id,value.test);
+  }
+  if(value.type==='error')failed++;
+  if(value.type==='testDone') {
+   if(!started.has(value.testID)||finished.has(value.testID)||!['success','failure','error'].includes(value.result)
+    ||typeof value.hidden!=='boolean'||typeof value.skipped!=='boolean')fail('Dart测试完成事件无效');
+   finished.add(value.testID);if(value.skipped)skipped++;
+   if(value.result!=='success')failed++;
+   else if(!value.hidden&&!value.skipped){
+    const file=suites.get(started.get(value.testID).suiteID);if(!file)fail('Dart真实用例缺少所属文件');
+    passed++;testedFiles.add(file);
+   }
+  }
+  if(value.type==='done'){successfulEnd=value.success===true;ended=true;}
+ }
+ if(!began||!ended||!successfulEnd||started.size!==finished.size||!passed||skipped||failed
+  ||seenFiles.size!==expected.size||testedFiles.size!==expected.size)throw Object.assign(Error('Dart测试必须全量完成且零失败、零跳过'),
+   {testCounts:{files:seenFiles.size,passed,skipped,failed}});
+ return {files:seenFiles.size,passed,skipped,failed};
+}
+
+function ciSourceIdentity() {
+ const result=spawnSync('git',['ls-files','-z'],{cwd:root,encoding:'utf8'});
+ if(result.status!==0||result.error)fail('无法读取GitHub源码清单');
+ const hash=createHash('sha256');
+ for(const name of result.stdout.split('\0').filter(Boolean).sort()) {
+  const file=join(root,name),info=lstatSync(file);
+  if(!inside(root,file)||!info.isFile()||info.isSymbolicLink())fail('GitHub源码输入不是普通文件');
+  hash.update(name+'\0');hash.update(readFileSync(file));
+ }
+ return hash.digest('hex');
+}
+
+async function ciFlutterView(source,output) {
+ if(!isAbsolute(source)||realpathSync(source)!==source||!inside(fixedWork('test'),output)
+  ||inside(source,output)||inside(output,source)||existsSync(output))fail('Flutter测试工具视图边界无效');
+ const copy=async(from,to)=>{
+  const info=await viewFs.lstat(from);
+  if(info.isSymbolicLink()){
+   const canonical=await viewFs.realpath(from);if(!inside(source,canonical))fail('Flutter测试工具链接越界');
+   const input=await viewFs.readlink(from),target=isAbsolute(input)?relative(dirname(to),join(output,relative(source,input))):input;
+   await viewFs.symlink(target,to);return;
+  }
+  if(info.isDirectory()){await viewFs.mkdir(to,{mode:0o700});for(const name of await viewFs.readdir(from))await copy(join(from,name),join(to,name));}
+  else if(info.isFile()){await viewFs.copyFile(from,to,fsConstants.COPYFILE_EXCL);await viewFs.chmod(to,info.mode|0o200);}
+  else fail('Flutter测试工具存在特殊文件');
+ };
+ await copy(source,output);return output;
+}
+
+function ciTestFiles(project) {
+ const files=[];
+ const visit=(directory,prefix)=>{for(const name of readdirSync(directory).sort()){
+  const file=join(directory,name),info=lstatSync(file),relativeName=prefix+'/'+name;
+  if(info.isSymbolicLink())fail('Dart测试输入禁止链接');
+  if(info.isDirectory())visit(file,relativeName);else if(info.isFile()&&name.endsWith('_test.dart'))files.push(relativeName);
+ }};
+ visit(join(project,'test'),'test');if(!files.length)fail('Dart测试清单为空');return files;
+}
+
+// 验证工程完整包含源码合同输入；工程与SDK工具副本均只写当前test任务。
+export async function ciTest(environment=process.env,{signal}={}) {
+ requireCiTestIdentity(environment);signal?.throwIfAborted();
+ const sourceIdentity=ciSourceIdentity();let stage='准备',report=null,rustPassed=0;
+ const summary=state=>{
+  const file=environment.GITHUB_STEP_SUMMARY;
+  if(typeof file!=='string'||!isAbsolute(file)||!environment.RUNNER_TEMP||!inside(environment.RUNNER_TEMP,file)
+   ||!lstatSync(file).isFile()||lstatSync(file).isSymbolicLink())fail('GitHub测试摘要路径无效');
+  writeFileSync(file,'### TataChatSDK 完整验证\n\n'
+   +'- 状态：'+state+'；阶段：'+stage+'\n- 源码：'+environment.GITHUB_SHA+'\n'
+   +'- Rust通过：'+rustPassed+'\n- Dart文件：'+(report?.files??'未完成')+'；通过：'+(report?.passed??'未完成')
+   +'；跳过：'+(report?.skipped??'未完成')+'；失败：'+(report?.failed??'未完成')+'\n',{flag:'a'});
+ };
+ try {
+  const result=await withFixedWork('test',async work=>{
+   const receipt=await resources('sdk',work,{}, {purpose:'verification',environment,signal});
+   const supplied=resourceEnvironment('sdk',work,receipt,environment);
+   const project=createView(prepareSourceView(),join(work,'project'));
+   for(const [flat,mapped]of FLUTTER_INPUTS){const target=join(project,mapped);await viewFs.mkdir(dirname(target),{recursive:true});await viewFs.rename(join(project,flat),target);}
+   const flutter=await ciFlutterView(dirname(dirname(receipt.tools.flutter.path)),join(work,'flutter'));
+   const dart=join(flutter,'bin/cache/dart-sdk/bin/dart'),snapshot=join(flutter,'bin/cache/flutter_tools.snapshot');
+   for(const file of [dart,snapshot])if(!lstatSync(file).isFile()||lstatSync(file).isSymbolicLink())fail('Flutter测试工具入口缺失或经过链接');
+   const env={...supplied,HOME:join(work,'home'),USERPROFILE:join(work,'home'),FLUTTER_ROOT:flutter,
+    FLUTTER:join(flutter,'bin/flutter'),DART_EXECUTABLE:dart,
+    PATH:join(flutter,'bin')+':'+dirname(dart)+':'+supplied.PATH,
+    FLUTTER_SUPPRESS_ANALYTICS:'true',BOT:'true',CI:'true',PUB_HOSTED_URL:'https://pub.dev',
+    GIT_CONFIG_NOSYSTEM:'1',GIT_CONFIG_GLOBAL:'/dev/null',GIT_TERMINAL_PROMPT:'0',
+    CARGO_NET_OFFLINE:'true',RUST_TEST_THREADS:'1'};
+   await viewFs.mkdir(env.HOME,{recursive:true});
+   const runFlutter=(args,options={})=>runBuildProcess(dart,[snapshot,...args],env,project,{signal,...options});
+   const version=JSON.parse((await runFlutter(['--version','--machine'],{capture:true})).stdout);
+   if(version.frameworkVersion!==receipt.tools.flutter.version)fail('Flutter验证工具与唯一声明不一致');
+   stage='引擎';await runFlutter(['precache','--universal']);
+   stage='Pub';const lock=readFileSync(join(project,'pubspec.lock'));
+   await runFlutter(['pub','get','--offline','--enforce-lockfile']);
+   if(!readFileSync(join(project,'pubspec.lock')).equals(lock))fail('Dart测试改变了Pub锁');
+   stage='分析';await runFlutter(['analyze','--no-pub','--fatal-infos','--fatal-warnings']);
+   stage='Rust';const rust=await runBuildProcess(env.CARGO,['test','--manifest-path',join(root,'native/Cargo.toml'),'--locked','--offline','--all-targets'],env,root,{signal});
+   for(const match of rust.stdout.matchAll(/test result: ok\. (\d+) passed; (\d+) failed; (\d+) ignored;/gu)){
+    if(Number(match[2])||Number(match[3]))fail('Rust回归存在失败或忽略');rustPassed+=Number(match[1]);
+   }
+   if(!rustPassed)fail('Rust回归没有实际执行用例');process.stdout.write('Rust宿主回归通过：'+rustPassed+'\n');
+   stage='FFI';await runBuildProcess(receipt.tools.bash.path,['--noprofile','--norc','-c',BUILD_SHELL_SOURCES.native,'tatachatsdk-native','host'],env,root,{signal});
+   const native=join(env.CARGO_TARGET_DIR,'debug/libtatachat_sdk.dylib');
+   if(!lstatSync(native).isFile()||lstatSync(native).isSymbolicLink()||!inside(work,realpathSync(native)))fail('宿主MLS库不属于本轮任务');
+   const isar=isarCorePath(join(project,'.dart_tool/package_config.json'),env.PUB_CACHE,join(project,'pubspec.lock'));
+   if(!inside(work,isar))fail('Isar库不属于本轮Pub缓存');
+   env.TATACHATSDK_TEST_NATIVE_LIBRARY=native;env.ISAR_CORE_LIB_PATH=isar;
+   env.TATACHATSDK_TEST_WORK_ROOT=work;
+   stage='Flutter';const files=ciTestFiles(project),output=join(work,'dart-tests.json');
+   let testFailure;
+   try{await runFlutter(['test','--no-pub','--concurrency=1','--reporter=expanded','--file-reporter=json:'+output,'test']);}
+   catch(error){testFailure=error;}
+   try{
+    if(!lstatSync(output).isFile()||lstatSync(output).isSymbolicLink())fail('Dart机器报告缺失');
+    report=verifyDartTestReport(readFileSync(output,'utf8'),{project,files});
+   }catch(error){report=error.testCounts??null;throw testFailure??error;}
+   if(testFailure)throw testFailure;
+   if(!readFileSync(join(project,'pubspec.lock')).equals(lock)||ciSourceIdentity()!==sourceIdentity)fail('验证期间源码或锁被改写');
+   const status=spawnSync('git',['status','--porcelain','--untracked-files=all'],{cwd:root,encoding:'utf8'});
+   if(status.status!==0||status.stdout.trim())fail('GitHub测试在正式源码留下生成物');
+   stage='清场';return {rustPassed,...report};
+  },{environment});
+  stage='完成';summary('成功');return result;
+ } catch(error) {
+  try{summary('失败');}catch{process.stderr.write('GitHub测试摘要写入失败\n');}
+  throw error;
+ }
+}
+
 // GitHub缓存只在已领取的任务现场恢复；完整产物验真后另存快照供下次Run使用。
 function ciCargoCacheIdentity(target,work,environment){
  const digest=file=>createHash('sha256').update(readFileSync(join(root,file))).digest('hex');
@@ -2123,6 +2305,13 @@ async function runCommand(){
   if(process.argv.length!==3)fail('SDK候选版本入口参数无效');
   const plan=await ciVersionCheck();process.stdout.write(plan.label+'\n');return;
  }
+ if(process.argv[2]==='ci-test'){
+  if(process.argv.length!==3)fail('GitHub完整测试参数无效');
+  const cancellation=new AbortController(),abort=()=>cancellation.abort();
+  for(const name of ['SIGTERM','SIGINT'])process.once(name,abort);
+  try{process.stdout.write(JSON.stringify(await ciTest(process.env,{signal:cancellation.signal}))+'\n');}
+  finally{for(const name of ['SIGTERM','SIGINT'])process.removeListener(name,abort);}return;
+ }
  if(process.argv[2]==='ci-native'){
   if(process.argv.length!==4)fail('GitHub 原生目标参数无效');
   await ciNative(process.argv[3]);return;
@@ -2206,7 +2395,7 @@ async function runCommand(){
 
 
 // 原生编译、协议生成和分析配置的唯一正文；原有消费者入口只转交参数。
-export const BUILD_SHELL_SOURCES = Object.freeze({"native": "#!/usr/bin/env bash\nset -Eeuo pipefail\n# 失败只报告当前固定脚本行号和退出码，不记录命令参数或材料。\ntrap 'printf \"TataChatSDK 原生步骤失败：行 %s，退出码 %s\\n\" \"$LINENO\" \"$?\" >&2' ERR\n\nMODE=\"${1:-host}\"\nROOT=\"${TATACHATSDK_SOURCE_ROOT:?缺少本产品源码根}\"\nMANIFEST=\"$ROOT/native/Cargo.toml\"\nNODE_BIN=\"${PRODUCT_NODE_BIN:-${NODE:-}}\"\n[[ -n \"$NODE_BIN\" && -x \"$NODE_BIN\" ]] || { printf 'TataChatSDK缺少受控Node入口\\n' >&2; exit 1; }\n# 所有独立入口的工具临时状态归本产品target；宿主已交付的产品工作根继续归当前任务。\nPRODUCT_TEMP_SOURCE=\"$ROOT\"\nPRODUCT_TARGET_TEMP_ROOT=\"$(\"$NODE_BIN\" \"$PRODUCT_TEMP_SOURCE/scripts/build.mjs\" temporary-root \"${PLATFORM:-${platform:-}}\" 'sdk')\" || exit 1\nif [[ -z \"${PRODUCT_WORK_DIR:-}\" && \"${TMPDIR:-}\" != \"$PRODUCT_TEMP_SOURCE/target/\"* ]]; then\n  export TMPDIR=\"$PRODUCT_TARGET_TEMP_ROOT/\"\nfi\nTATACHATSDK_WORK_DIR=\"${TATACHATSDK_WORK_DIR:-${TMPDIR:-$PRODUCT_TARGET_TEMP_ROOT}/tatachatsdk/work}\"\nTATACHATSDK_NATIVE_OUTPUT_DIR=\"${TATACHATSDK_NATIVE_OUTPUT_DIR:-${TMPDIR:-$PRODUCT_TARGET_TEMP_ROOT}/tatachatsdk/output}\"\nTATACHATSDK_NATIVE_ANDROID_DIR=\"${TATACHATSDK_NATIVE_ANDROID_DIR:-$TATACHATSDK_NATIVE_OUTPUT_DIR/android}\"\nTATACHATSDK_NATIVE_IOS_DIR=\"${TATACHATSDK_NATIVE_IOS_DIR:-$TATACHATSDK_NATIVE_OUTPUT_DIR/ios}\"\nTATACHATSDK_NATIVE_MACOS_DIR=\"${TATACHATSDK_NATIVE_MACOS_DIR:-$TATACHATSDK_NATIVE_OUTPUT_DIR/macos}\"\nTARGET_DIR=\"${CARGO_TARGET_DIR:-$TATACHATSDK_WORK_DIR/cargo}\"\nexport CARGO_TARGET_DIR=\"$TARGET_DIR\"\nexport TATACHATSDK_WORK_DIR TATACHATSDK_NATIVE_OUTPUT_DIR\nexport TATACHATSDK_NATIVE_ANDROID_DIR TATACHATSDK_NATIVE_IOS_DIR TATACHATSDK_NATIVE_MACOS_DIR\n\ncase \"$MODE\" in\n  host|macos|android|ios)\n    \"$NODE_BIN\" --input-type=module - \"$ROOT\" \"$TATACHATSDK_WORK_DIR\" \"$TATACHATSDK_NATIVE_OUTPUT_DIR\" \\\n      \"$TATACHATSDK_NATIVE_ANDROID_DIR\" \"$TATACHATSDK_NATIVE_IOS_DIR\" \\\n      \"$TATACHATSDK_NATIVE_MACOS_DIR\" \"$TARGET_DIR\" <<'CHECK_OUTPUTS'\nimport {existsSync,realpathSync} from 'node:fs';\nimport {basename,dirname,isAbsolute,join,resolve,sep} from 'node:path';\nconst canonical=value=>{\n  let cursor=resolve(value),tail=[];\n  while(!existsSync(cursor)){const parent=dirname(cursor);if(parent===cursor)throw Error('目录不可解析');tail.unshift(basename(cursor));cursor=parent;}\n  return resolve(realpathSync(cursor),...tail);\n};\nconst [input,...writable]=process.argv.slice(2),source=canonical(input);\nconst inside=(base,value)=>value===base||value.startsWith(base+sep);\nfor(const value of writable){\n  const target=canonical(value);\n  if(!isAbsolute(value)||target===source||inside(source,target)&&!inside(join(source,'target'),target))\n    throw Error('TataChatSDK可写目录必须是源码外绝对路径');\n}\nCHECK_OUTPUTS\n    mkdir -p \"$TATACHATSDK_WORK_DIR\" \"$TATACHATSDK_NATIVE_OUTPUT_DIR\"\n    ;;\nesac\n\n# 中文注释：Rust 1.97.1 的优化型宿主 proc-macro 会产生不可加载的错位 Mach-O；\n# 仅把 Release 构建依赖固定为非优化、非裁剪，产品目标仍保持 optimized Release。\nexport CARGO_PROFILE_RELEASE_BUILD_OVERRIDE_OPT_LEVEL=0\nexport CARGO_PROFILE_RELEASE_BUILD_OVERRIDE_DEBUG=0\nexport CARGO_PROFILE_RELEASE_BUILD_OVERRIDE_STRIP=none\n\nensure_target() {\n  local target=\"$1\"\n  local compiler=\"${RUSTC:-rustc}\" sysroot libdir library\n  # 只核对实际编译器已具备的目标库；工具准备由开发环境或CI负责。\n  sysroot=\"$(\"$compiler\" --print sysroot)\" || return 1\n  libdir=\"$(\"$compiler\" --print target-libdir --target \"$target\")\" || return 1\n  # 仅统一官方Windows路径分隔符，不选择其他工具或目标。\n  sysroot=\"${sysroot//\\\\//}\"; libdir=\"${libdir//\\\\//}\"\n  if [[ \"$libdir\" == \"$sysroot/lib/rustlib/$target/lib\" && -d \"$libdir\" && ! -L \"$libdir\" ]]; then\n    for library in \"$libdir\"/libstd-*.rlib; do [[ -s \"$library\" && ! -L \"$library\" ]] && return 0; done\n  fi\n  echo \"Rust目标标准库缺失，请先在产品开发环境准备：$target\" >&2\n  return 1\n}\n\nassert_symbols() {\n  local library=\"$1\"\n  local nm_bin=\"${2:-nm}\"\n  local symbols\n  local nm_args=(-g)\n  # Gradle strips the regular ELF symbol table from the final APK but retains\n  # the dynamic exports required by Dart FFI. Read that runtime-visible table\n  # for ELF only; Mach-O keeps its existing global-symbol verification.\n  if file -b \"$library\" | grep -q 'ELF'; then\n    nm_args=(-D --defined-only)\n  fi\n  symbols=\"$(\"$nm_bin\" \"${nm_args[@]}\" \"$library\" 2>/dev/null | awk '{print $NF}' || true)\"\n  local required_symbols=(\n    tatachat_sdk_mls_identity_json\n    tatachat_sdk_mls_store_json\n    tatachat_sdk_mls_create_key_package_json\n    tatachat_sdk_mls_group_create_json\n    tatachat_sdk_mls_group_add_members_json\n    tatachat_sdk_mls_group_remove_members_json\n    tatachat_sdk_mls_group_create_message_json\n    tatachat_sdk_mls_group_process_json\n    tatachat_sdk_mls_group_state_json\n    tatachat_sdk_free_string\n  )\n  local symbol\n  for symbol in \"${required_symbols[@]}\"; do\n    if [[ \"$(grep -Ec \"^_?${symbol}$\" <<<\"$symbols\" || true)\" != 1 ]]; then\n      printf 'TataChatSDK required symbol %s must occur once in %s\\n' \\\n        \"$symbol\" \"$library\" >&2\n      exit 1\n    fi\n  done\n\n  # 中文注释：只导出现行OpenMLS边界；旧直聊、MLS包装和生产smoke接口禁止导出。\n  if grep -Eq '^_?tatachat_sdk_(device_identity|mls_encrypt|mls_decrypt|mls_rekey_state|mls_two_party_smoke)_json$' <<<\"$symbols\"; then\n    printf 'TataChatSDK legacy MLS/direct symbols found in %s\\n' \"$library\" >&2\n    exit 1\n  fi\n}\n\nbuild_host() {\n  cargo build --manifest-path \"$MANIFEST\" --locked\n  case \"$(uname -s)\" in\n    Darwin) library=\"$TARGET_DIR/debug/libtatachat_sdk.dylib\" ;;\n    Linux) library=\"$TARGET_DIR/debug/libtatachat_sdk.so\" ;;\n    *) printf 'Unsupported TataChatSDK host\\n' >&2; exit 1 ;;\n  esac\n  assert_symbols \"$library\"\n}\n\nndk_toolchain() {\n  local ndk_home=\"${1:-}\" toolchain\n  [[ -n \"$ndk_home\" && -d \"$ndk_home\" ]] || { printf '缺少准确交付的Android NDK\\n' >&2; return 1; }\n  case \"$(uname -s)\" in\n    Darwin)\n      toolchain=\"$ndk_home/toolchains/llvm/prebuilt/darwin-x86_64\"\n      [[ -d \"$toolchain\" ]] || toolchain=\"$ndk_home/toolchains/llvm/prebuilt/darwin-aarch64\"\n      ;;\n    Linux) toolchain=\"$ndk_home/toolchains/llvm/prebuilt/linux-x86_64\" ;;\n    *) printf 'Unsupported Android build host\\n' >&2; return 1 ;;\n  esac\n  [[ -d \"$toolchain\" ]] || { printf 'Android NDK toolchain not found\\n' >&2; return 1; }\n  printf '%s\\n' \"$toolchain\"\n}\n\nbuild_android() {\n  ensure_target aarch64-linux-android\n  local toolchain\n  toolchain=\"$(ndk_toolchain \"${ANDROID_NDK_HOME:-}\")\"\n  # 在Cargo耗时编译前实际执行固定NDK链接器并验真配套归档、符号工具。\n  local ndk_tool\n  for ndk_tool in aarch64-linux-android24-clang llvm-ar llvm-nm; do\n    [[ -x \"$toolchain/bin/$ndk_tool\" ]] || { printf 'Android NDK缺少受控工具：%s\\n' \"$ndk_tool\" >&2; exit 1; }\n    \"$toolchain/bin/$ndk_tool\" --version >/dev/null\n  done\n\n  export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=\"$toolchain/bin/aarch64-linux-android24-clang\"\n  export CC_aarch64_linux_android=\"$toolchain/bin/aarch64-linux-android24-clang\"\n  export AR_aarch64_linux_android=\"$toolchain/bin/llvm-ar\"\n  cargo build --manifest-path \"$MANIFEST\" --release --target aarch64-linux-android --locked\n\n  local destination=\"$TATACHATSDK_NATIVE_ANDROID_DIR/arm64-v8a\"\n  mkdir -p \"$destination\"\n  cp \"$TARGET_DIR/aarch64-linux-android/release/libtatachat_sdk.so\" \"$destination/\"\n  assert_symbols \"$destination/libtatachat_sdk.so\" \"$toolchain/bin/llvm-nm\"\n}\n\nbuild_ios_slice() {\n  local target=\"$1\" sdk=\"$2\" flag_name=\"$3\"\n  local sdk_path host_sdk target_flags=\"${!flag_name:-}\"\n  sdk_path=\"$(xcrun --sdk \"$sdk\" --show-sdk-path)\"\n  host_sdk=\"$(xcrun --sdk macosx --show-sdk-path)\"\n  [[ -d \"$sdk_path\" && -d \"$host_sdk\" && \"$sdk_path\" != *[[:space:]]* ]] || {\n    printf 'TataChatSDK Apple SDK path is invalid\\n' >&2; exit 1;\n  }\n  # 宿主宏只链接macOS SDK；目标专属参数选择真机或Simulator SDK，保留未裁剪Mach-O。\n  target_flags=\"${target_flags:+$target_flags }-C strip=none -C link-arg=-isysroot -C link-arg=$sdk_path -C link-arg=-Wl,-install_name,@rpath/TataChatSDK.framework/TataChatSDK\"\n  env SDKROOT=\"$host_sdk\" \"$flag_name=$target_flags\" \\\n    cargo build --manifest-path \"$MANIFEST\" --release --target \"$target\" --locked\n  local library=\"$TARGET_DIR/$target/release/libtatachat_sdk.dylib\"\n  local framework_root=\"$TARGET_DIR/$target-framework\"\n  local framework=\"$framework_root/TataChatSDK.framework\"\n  local nm_bin\n  nm_bin=\"$(xcrun --find llvm-nm)\"\n  assert_symbols \"$library\" \"$nm_bin\"\n  local string_offset\n  string_offset=\"$(otool -l \"$library\" | awk '/cmd LC_SYMTAB/{active=1;next} active&&/cmd /{active=0} active&&/stroff/{print $2}')\"\n  [[ -n \"$string_offset\" && $((string_offset % 8)) -eq 0 ]] || {\n    printf 'TataChatSDK iOS LINKEDIT string pool is not 8-byte aligned\\n' >&2\n    exit 1\n  }\n\n  # 中文注释：TataChatSDK 以自己的动态 Framework 进入宿主，Smoldot 不再承载或\n  # 保活任何聊天符号。Framework 的 install name 固定为标准 @rpath，由 Xcode\n  # 嵌入并签名，Dart FFI 只解析这一份已经装载的动态库。\n  if [[ -e \"$framework_root\" ]]; then\n    find \"$framework_root\" -depth -delete\n  fi\n  mkdir -p \"$framework/Headers\" \"$framework/Modules\"\n  cp \"$library\" \"$framework/TataChatSDK\"\n  chmod 755 \"$framework/TataChatSDK\"\n  cp \"$ROOT/native/tatachat_sdk.h\" \"$framework/Headers/tatachat_sdk.h\"\n  cat > \"$framework/Modules/module.modulemap\" <<'MODULEMAP'\nframework module TataChatSDK {\n  umbrella header \"tatachat_sdk.h\"\n  export *\n}\nMODULEMAP\n  cat > \"$framework/Info.plist\" <<'PLIST'\n<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<plist version=\"1.0\">\n<dict>\n  <key>CFBundleDevelopmentRegion</key><string>en</string>\n  <key>CFBundleExecutable</key><string>TataChatSDK</string>\n  <key>CFBundleIdentifier</key><string>org.cocoapods.TataChatSDK</string>\n  <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>\n  <key>CFBundleName</key><string>TataChatSDK</string>\n  <key>CFBundlePackageType</key><string>FMWK</string>\n  <key>CFBundleShortVersionString</key><string>1.0.0</string>\n  <key>CFBundleVersion</key><string>1</string>\n  <key>MinimumOSVersion</key><string>16.0</string>\n</dict>\n</plist>\nPLIST\n  assert_symbols \"$framework/TataChatSDK\" \"$nm_bin\"\n\n}\n\nbuild_ios() {\n  # 同一个iOS产物必须同时具备真机和Apple Silicon Simulator切片；缺目标先失败。\n  ensure_target aarch64-apple-ios\n  ensure_target aarch64-apple-ios-sim\n  export IPHONEOS_DEPLOYMENT_TARGET=16.0\n  build_ios_slice aarch64-apple-ios iphoneos CARGO_TARGET_AARCH64_APPLE_IOS_RUSTFLAGS\n  build_ios_slice aarch64-apple-ios-sim iphonesimulator CARGO_TARGET_AARCH64_APPLE_IOS_SIM_RUSTFLAGS\n  local xcframework=\"$TATACHATSDK_NATIVE_IOS_DIR/TataChatSDK.xcframework\"\n  mkdir -p \"$TATACHATSDK_NATIVE_IOS_DIR\"\n  if [[ -e \"$xcframework\" ]]; then\n    find \"$xcframework\" -depth -delete\n  fi\n  xcodebuild -create-xcframework \\\n    -framework \"$TARGET_DIR/aarch64-apple-ios-framework/TataChatSDK.framework\" \\\n    -framework \"$TARGET_DIR/aarch64-apple-ios-sim-framework/TataChatSDK.framework\" \\\n    -output \"$xcframework\"\n  local packaged variant nm_bin\n  nm_bin=\"$(xcrun --find llvm-nm)\"\n  for variant in ios-arm64 ios-arm64-simulator; do\n    packaged=\"$xcframework/$variant/TataChatSDK.framework/TataChatSDK\"\n    [[ -f \"$packaged\" && \"$(lipo -archs \"$packaged\")\" == arm64 ]] || {\n      printf 'TataChatSDK iOS slice missing or architecture invalid: %s\\n' \"$variant\" >&2; exit 1;\n    }\n    assert_symbols \"$packaged\" \"$nm_bin\"\n    otool -D \"$packaged\" | tail -n +2 | grep -qx '@rpath/TataChatSDK.framework/TataChatSDK' || {\n      printf 'TataChatSDK iOS framework install name is invalid\\n' >&2; exit 1;\n    }\n  done\n  # 回读Xcode实际平台元数据，不能用两个真机库冒充Simulator切片。\n  plutil -convert json -o - \"$xcframework/Info.plist\" | \"$NODE_BIN\" --input-type=commonjs -e '\nconst fs=require(\"node:fs\");\nconst libraries=JSON.parse(fs.readFileSync(0,\"utf8\")).AvailableLibraries;\nif(!Array.isArray(libraries))throw Error(\"TataChatSDK XCFramework平台元数据缺失\");\nconst identity=item=>JSON.stringify([item.LibraryIdentifier,item.SupportedPlatform,item.SupportedPlatformVariant||\"\",item.SupportedArchitectures]);\nconst actual=new Set(libraries.map(identity));\nconst expected=new Set([\n  JSON.stringify([\"ios-arm64\",\"ios\",\"\",[\"arm64\"]]),\n  JSON.stringify([\"ios-arm64-simulator\",\"ios\",\"simulator\",[\"arm64\"]]),\n]);\nif(libraries.length!==2||actual.size!==2||[...expected].some(value=>!actual.has(value)))\n  throw Error(\"TataChatSDK XCFramework必须包含准确真机与Simulator ARM64切片\");\n'\n}\n\nbuild_macos() {\n  ensure_target aarch64-apple-darwin\n  export MACOSX_DEPLOYMENT_TARGET=13.0\n\n  # 中文注释：目标专属参数不得污染宿主 proc-macro；host 模式仍只服务本机调试测试。\n  local macos_rustflags=\"${CARGO_TARGET_AARCH64_APPLE_DARWIN_RUSTFLAGS:-}\"\n  macos_rustflags=\"${macos_rustflags:+$macos_rustflags }-C strip=none -C link-arg=-Wl,-install_name,@rpath/libtatachat_sdk.dylib\"\n  CARGO_TARGET_AARCH64_APPLE_DARWIN_RUSTFLAGS=\"$macos_rustflags\" \\\n    cargo build --manifest-path \"$MANIFEST\" --release --target aarch64-apple-darwin --locked\n\n  local library=\"$TARGET_DIR/aarch64-apple-darwin/release/libtatachat_sdk.dylib\"\n  local destination=\"$TATACHATSDK_NATIVE_MACOS_DIR/libtatachat_sdk.dylib\"\n  local nm_bin\n  nm_bin=\"$(xcrun --find llvm-nm)\"\n  mkdir -p \"$TATACHATSDK_NATIVE_MACOS_DIR\"\n  cp \"$library\" \"$destination\"\n  [[ \"$(lipo -archs \"$destination\")\" == arm64 ]] || {\n    printf 'TataChatSDK macOS library must contain only arm64\\n' >&2\n    exit 1\n  }\n  file \"$destination\" | grep -q 'dynamically linked shared library' || {\n    printf 'TataChatSDK macOS artifact is not a dynamic library\\n' >&2\n    exit 1\n  }\n  assert_symbols \"$destination\" \"$nm_bin\"\n  otool -D \"$destination\" | tail -n +2 | grep -qx '@rpath/libtatachat_sdk.dylib' || {\n    printf 'TataChatSDK macOS install name is invalid\\n' >&2\n    exit 1\n  }\n}\n\nverify_android_package() {\n  local package=\"${1:?Android package is required}\"\n  local entry temporary packaged nm_bin\n  [[ -f \"$package\" ]] || { printf 'Android package not found: %s\\n' \"$package\" >&2; exit 1; }\n  case \"$package\" in\n    *.apk) entry='lib/arm64-v8a/libtatachat_sdk.so' ;;\n    *.aab) entry='base/lib/arm64-v8a/libtatachat_sdk.so' ;;\n    *) printf 'Unsupported Android package: %s\\n' \"$package\" >&2; exit 1 ;;\n  esac\n  temporary=\"$(mktemp -d)\"\n  packaged=\"$temporary/libtatachat_sdk.so\"\n  unzip -p \"$package\" \"$entry\" > \"$packaged\" || {\n    find \"$temporary\" -depth -delete\n    printf 'Android package missing TataChatSDK library\\n' >&2\n    exit 1\n  }\n  nm_bin=\"$(ndk_toolchain \"${ANDROID_NDK_HOME:-}\")/bin/llvm-nm\"\n  [[ -x \"$nm_bin\" ]] || {\n    find \"$temporary\" -depth -delete\n    printf 'Android NDK llvm-nm not found\\n' >&2\n    exit 1\n  }\n  assert_symbols \"$packaged\" \"$nm_bin\"\n  find \"$temporary\" -depth -delete\n  if unzip -Z1 \"$package\" | grep -E '(^|/)lib/(armeabi-v7a|x86|x86_64)/libtatachat_sdk\\.so$'; then\n    printf 'Android package contains unsupported TataChatSDK ABI\\n' >&2\n    exit 1\n  fi\n}\n\nverify_ios_package() {\n  local app_bundle=\"${1:?Runner.app is required}\"\n  local executable=\"$app_bundle/Runner\"\n  local framework=\"$app_bundle/Frameworks/TataChatSDK.framework/TataChatSDK\"\n  local nm_bin\n  [[ -f \"$executable\" ]] || { printf 'iOS Runner not found\\n' >&2; exit 1; }\n  [[ -f \"$framework\" ]] || { printf 'iOS package missing TataChatSDK.framework\\n' >&2; exit 1; }\n  [[ \"$(lipo -archs \"$framework\")\" == arm64 ]] || {\n    printf 'Packaged TataChatSDK framework must contain only arm64\\n' >&2\n    exit 1\n  }\n  file \"$framework\" | grep -q 'dynamically linked shared library' || {\n    printf 'Packaged TataChatSDK binary is not a dynamic framework\\n' >&2\n    exit 1\n  }\n  otool -L \"$executable\" | grep -q '@rpath/TataChatSDK.framework/TataChatSDK' || {\n    printf 'iOS Runner does not link the independent TataChatSDK framework\\n' >&2\n    exit 1\n  }\n  nm_bin=\"$(xcrun --find llvm-nm)\"\n  assert_symbols \"$framework\" \"$nm_bin\"\n}\n\ncase \"$MODE\" in\n  host) build_host ;;\n  macos) build_macos ;;\n  android) build_android ;;\n  ios) build_ios ;;\n  verify-android-package) verify_android_package \"${2:-}\" ;;\n  verify-ios-package) verify_ios_package \"${2:-}\" ;;\n  *) printf 'Usage: %s [host|macos|android|ios|verify-android-package|verify-ios-package]\\n' \"$0\" >&2; exit 64 ;;\nesac\n", "protocol": "#!/usr/bin/env bash\nset -euo pipefail\n\nroot=\"${TATACHATSDK_SOURCE_ROOT:?缺少本产品源码根}\"\nprotocol_dir=\"$root/lib/protocol\"\n# 所有独立入口的工具临时状态归本产品target；宿主已交付的产品工作根继续归当前任务。\nPRODUCT_TEMP_SOURCE=\"$root\"\nPRODUCT_TARGET_TEMP_ROOT=\"$(\"${PRODUCT_NODE_BIN:-${NODE:-node}}\" \"$PRODUCT_TEMP_SOURCE/scripts/build.mjs\" temporary-root \"${PLATFORM:-${platform:-}}\" 'sdk')\" || exit 1\nif [[ -z \"${PRODUCT_WORK_DIR:-}\" && \"${TMPDIR:-}\" != \"$PRODUCT_TEMP_SOURCE/target/\"* ]]; then\n  export TMPDIR=\"$PRODUCT_TARGET_TEMP_ROOT/\"\nfi\nwork_dir=\"${TATACHATSDK_WORK_DIR:?缺少本产品固定工作根}\"\n\n[[ \"$#\" -eq 0 ]] || { printf '%s\\n' 'TataChatSDK协议生成不接受参数' >&2; exit 1; }\ncase \"$(uname -s)/$(uname -m)\" in\n  Darwin/arm64) protoc_platform=macos ;;\n  Linux/aarch64) protoc_platform=linux-arm ;;\n  Linux/x86_64) protoc_platform=linux-amd ;;\n  *) printf '%s\\n' 'TataChatSDK协议生成宿主不受支持' >&2; exit 1 ;;\nesac\n\n# 两项生成工具均由SDK自己的锁定声明准备到源码外目录；禁止读取系统PATH中的偶然版本。\nprotoc_executable=\"$(\"${PRODUCT_NODE_BIN:?缺少本产品Node}\" \"$root/scripts/build.mjs\" prepare protoc \"$protoc_platform\" \\\n  \"$work_dir\")\"\nplugin_executable=\"$(\"${PRODUCT_NODE_BIN:?缺少本产品Node}\" \"$root/scripts/build.mjs\" prepare protoc_plugin sdk \\\n  \"$work_dir\")\"\n[[ \"$protoc_executable\" = /* && -f \"$protoc_executable\" && -x \"$protoc_executable\" ]] \\\n  || { printf '%s\\n' 'TataChatSDK protoc路径无效' >&2; exit 1; }\n[[ \"$plugin_executable\" = /* && -f \"$plugin_executable\" && -x \"$plugin_executable\" ]] \\\n  || { printf '%s\\n' 'TataChatSDK protoc_plugin路径无效' >&2; exit 1; }\n\noutput_dir=\"$work_dir/protocol\"\nmkdir -p \"$output_dir\"\n\"$protoc_executable\" \\\n  --proto_path=\"$protocol_dir\" \\\n  --dart_out=\"$output_dir\" \\\n  --plugin=\"protoc-gen-dart=$plugin_executable\" \\\n  \"$protocol_dir/basic_content.proto\" \\\n  \"$protocol_dir/media_content.proto\" \\\n  \"$protocol_dir/message.proto\" \\\n  \"$protocol_dir/attachment.proto\" \\\n  \"$protocol_dir/chat_frame.proto\"\n", "analysis": "include: package:flutter_lints/flutter.yaml\n\nanalyzer:\n  exclude:\n    # Isar 官方生成器会调用其自身标记为 experimental 的索引扩展；生成文件不手改。\n    - lib/storage/chat_isar.g.dart\n  language:\n    strict-casts: true\n    strict-inference: true\n    strict-raw-types: true\n\nlinter:\n  rules:\n    - avoid_print\n    - directives_ordering\n    - unawaited_futures\n    - use_super_parameters\n"});
+export const BUILD_SHELL_SOURCES = Object.freeze({"native": "#!/usr/bin/env bash\nset -Eeuo pipefail\n# 失败只报告当前固定脚本行号和退出码，不记录命令参数或材料。\ntrap 'printf \"TataChatSDK 原生步骤失败：行 %s，退出码 %s\\n\" \"$LINENO\" \"$?\" >&2' ERR\n\nMODE=\"${1:-host}\"\nROOT=\"${TATACHATSDK_SOURCE_ROOT:?缺少本产品源码根}\"\nMANIFEST=\"$ROOT/native/Cargo.toml\"\nNODE_BIN=\"${PRODUCT_NODE_BIN:-${NODE:-}}\"\n[[ -n \"$NODE_BIN\" && -x \"$NODE_BIN\" ]] || { printf 'TataChatSDK缺少受控Node入口\\n' >&2; exit 1; }\n# 所有独立入口的工具临时状态归本产品target；宿主已交付的产品工作根继续归当前任务。\nPRODUCT_TEMP_SOURCE=\"$ROOT\"\nPRODUCT_TARGET_TEMP_ROOT=\"${PRODUCT_WORK_DIR:-}\"\nif [[ -z \"$PRODUCT_TARGET_TEMP_ROOT\" ]]; then\n  PRODUCT_TARGET_TEMP_ROOT=\"$(\"$NODE_BIN\" \"$PRODUCT_TEMP_SOURCE/scripts/build.mjs\" temporary-root \"${PLATFORM:-${platform:-}}\" 'sdk')\" || exit 1\nfi\nif [[ -z \"${PRODUCT_WORK_DIR:-}\" && \"${TMPDIR:-}\" != \"$PRODUCT_TEMP_SOURCE/target/\"* ]]; then\n  export TMPDIR=\"$PRODUCT_TARGET_TEMP_ROOT/\"\nfi\nTATACHATSDK_WORK_DIR=\"${TATACHATSDK_WORK_DIR:-${TMPDIR:-$PRODUCT_TARGET_TEMP_ROOT}/tatachatsdk/work}\"\nTATACHATSDK_NATIVE_OUTPUT_DIR=\"${TATACHATSDK_NATIVE_OUTPUT_DIR:-${TMPDIR:-$PRODUCT_TARGET_TEMP_ROOT}/tatachatsdk/output}\"\nTATACHATSDK_NATIVE_ANDROID_DIR=\"${TATACHATSDK_NATIVE_ANDROID_DIR:-$TATACHATSDK_NATIVE_OUTPUT_DIR/android}\"\nTATACHATSDK_NATIVE_IOS_DIR=\"${TATACHATSDK_NATIVE_IOS_DIR:-$TATACHATSDK_NATIVE_OUTPUT_DIR/ios}\"\nTATACHATSDK_NATIVE_MACOS_DIR=\"${TATACHATSDK_NATIVE_MACOS_DIR:-$TATACHATSDK_NATIVE_OUTPUT_DIR/macos}\"\nTARGET_DIR=\"${CARGO_TARGET_DIR:-$TATACHATSDK_WORK_DIR/cargo}\"\nexport CARGO_TARGET_DIR=\"$TARGET_DIR\"\nexport TATACHATSDK_WORK_DIR TATACHATSDK_NATIVE_OUTPUT_DIR\nexport TATACHATSDK_NATIVE_ANDROID_DIR TATACHATSDK_NATIVE_IOS_DIR TATACHATSDK_NATIVE_MACOS_DIR\n\ncase \"$MODE\" in\n  host|macos|android|ios)\n    \"$NODE_BIN\" --input-type=module - \"$ROOT\" \"$TATACHATSDK_WORK_DIR\" \"$TATACHATSDK_NATIVE_OUTPUT_DIR\" \\\n      \"$TATACHATSDK_NATIVE_ANDROID_DIR\" \"$TATACHATSDK_NATIVE_IOS_DIR\" \\\n      \"$TATACHATSDK_NATIVE_MACOS_DIR\" \"$TARGET_DIR\" <<'CHECK_OUTPUTS'\nimport {existsSync,realpathSync} from 'node:fs';\nimport {basename,dirname,isAbsolute,join,resolve,sep} from 'node:path';\nconst canonical=value=>{\n  let cursor=resolve(value),tail=[];\n  while(!existsSync(cursor)){const parent=dirname(cursor);if(parent===cursor)throw Error('目录不可解析');tail.unshift(basename(cursor));cursor=parent;}\n  return resolve(realpathSync(cursor),...tail);\n};\nconst [input,...writable]=process.argv.slice(2),source=canonical(input);\nconst inside=(base,value)=>value===base||value.startsWith(base+sep);\nfor(const value of writable){\n  const target=canonical(value);\n  if(!isAbsolute(value)||target===source||inside(source,target)&&!inside(join(source,'target'),target))\n    throw Error('TataChatSDK可写目录必须是源码外绝对路径');\n}\nCHECK_OUTPUTS\n    mkdir -p \"$TATACHATSDK_WORK_DIR\" \"$TATACHATSDK_NATIVE_OUTPUT_DIR\"\n    ;;\nesac\n\n# 中文注释：Rust 1.97.1 的优化型宿主 proc-macro 会产生不可加载的错位 Mach-O；\n# 仅把 Release 构建依赖固定为非优化、非裁剪，产品目标仍保持 optimized Release。\nexport CARGO_PROFILE_RELEASE_BUILD_OVERRIDE_OPT_LEVEL=0\nexport CARGO_PROFILE_RELEASE_BUILD_OVERRIDE_DEBUG=0\nexport CARGO_PROFILE_RELEASE_BUILD_OVERRIDE_STRIP=none\n\nensure_target() {\n  local target=\"$1\"\n  local compiler=\"${RUSTC:-rustc}\" sysroot libdir library\n  # 只核对实际编译器已具备的目标库；工具准备由开发环境或CI负责。\n  sysroot=\"$(\"$compiler\" --print sysroot)\" || return 1\n  libdir=\"$(\"$compiler\" --print target-libdir --target \"$target\")\" || return 1\n  # 仅统一官方Windows路径分隔符，不选择其他工具或目标。\n  sysroot=\"${sysroot//\\\\//}\"; libdir=\"${libdir//\\\\//}\"\n  if [[ \"$libdir\" == \"$sysroot/lib/rustlib/$target/lib\" && -d \"$libdir\" && ! -L \"$libdir\" ]]; then\n    for library in \"$libdir\"/libstd-*.rlib; do [[ -s \"$library\" && ! -L \"$library\" ]] && return 0; done\n  fi\n  echo \"Rust目标标准库缺失，请先在产品开发环境准备：$target\" >&2\n  return 1\n}\n\nassert_symbols() {\n  local library=\"$1\"\n  local nm_bin=\"${2:-nm}\"\n  local symbols\n  local nm_args=(-g)\n  # Gradle strips the regular ELF symbol table from the final APK but retains\n  # the dynamic exports required by Dart FFI. Read that runtime-visible table\n  # for ELF only; Mach-O keeps its existing global-symbol verification.\n  if file -b \"$library\" | grep -q 'ELF'; then\n    nm_args=(-D --defined-only)\n  fi\n  symbols=\"$(\"$nm_bin\" \"${nm_args[@]}\" \"$library\" 2>/dev/null | awk '{print $NF}' || true)\"\n  local required_symbols=(\n    tatachat_sdk_mls_identity_json\n    tatachat_sdk_mls_store_json\n    tatachat_sdk_mls_create_key_package_json\n    tatachat_sdk_mls_group_create_json\n    tatachat_sdk_mls_group_add_members_json\n    tatachat_sdk_mls_group_remove_members_json\n    tatachat_sdk_mls_group_create_message_json\n    tatachat_sdk_mls_group_process_json\n    tatachat_sdk_mls_group_state_json\n    tatachat_sdk_free_string\n  )\n  local symbol\n  for symbol in \"${required_symbols[@]}\"; do\n    if [[ \"$(grep -Ec \"^_?${symbol}$\" <<<\"$symbols\" || true)\" != 1 ]]; then\n      printf 'TataChatSDK required symbol %s must occur once in %s\\n' \\\n        \"$symbol\" \"$library\" >&2\n      exit 1\n    fi\n  done\n\n  # 中文注释：只导出现行OpenMLS边界；旧直聊、MLS包装和生产smoke接口禁止导出。\n  if grep -Eq '^_?tatachat_sdk_(device_identity|mls_encrypt|mls_decrypt|mls_rekey_state|mls_two_party_smoke)_json$' <<<\"$symbols\"; then\n    printf 'TataChatSDK legacy MLS/direct symbols found in %s\\n' \"$library\" >&2\n    exit 1\n  fi\n}\n\nbuild_host() {\n  cargo build --manifest-path \"$MANIFEST\" --locked\n  case \"$(uname -s)\" in\n    Darwin) library=\"$TARGET_DIR/debug/libtatachat_sdk.dylib\" ;;\n    Linux) library=\"$TARGET_DIR/debug/libtatachat_sdk.so\" ;;\n    *) printf 'Unsupported TataChatSDK host\\n' >&2; exit 1 ;;\n  esac\n  assert_symbols \"$library\"\n}\n\nndk_toolchain() {\n  local ndk_home=\"${1:-}\" toolchain\n  [[ -n \"$ndk_home\" && -d \"$ndk_home\" ]] || { printf '缺少准确交付的Android NDK\\n' >&2; return 1; }\n  case \"$(uname -s)\" in\n    Darwin)\n      toolchain=\"$ndk_home/toolchains/llvm/prebuilt/darwin-x86_64\"\n      [[ -d \"$toolchain\" ]] || toolchain=\"$ndk_home/toolchains/llvm/prebuilt/darwin-aarch64\"\n      ;;\n    Linux) toolchain=\"$ndk_home/toolchains/llvm/prebuilt/linux-x86_64\" ;;\n    *) printf 'Unsupported Android build host\\n' >&2; return 1 ;;\n  esac\n  [[ -d \"$toolchain\" ]] || { printf 'Android NDK toolchain not found\\n' >&2; return 1; }\n  printf '%s\\n' \"$toolchain\"\n}\n\nbuild_android() {\n  ensure_target aarch64-linux-android\n  local toolchain\n  toolchain=\"$(ndk_toolchain \"${ANDROID_NDK_HOME:-}\")\"\n  # 在Cargo耗时编译前实际执行固定NDK链接器并验真配套归档、符号工具。\n  local ndk_tool\n  for ndk_tool in aarch64-linux-android24-clang llvm-ar llvm-nm; do\n    [[ -x \"$toolchain/bin/$ndk_tool\" ]] || { printf 'Android NDK缺少受控工具：%s\\n' \"$ndk_tool\" >&2; exit 1; }\n    \"$toolchain/bin/$ndk_tool\" --version >/dev/null\n  done\n\n  export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=\"$toolchain/bin/aarch64-linux-android24-clang\"\n  export CC_aarch64_linux_android=\"$toolchain/bin/aarch64-linux-android24-clang\"\n  export AR_aarch64_linux_android=\"$toolchain/bin/llvm-ar\"\n  cargo build --manifest-path \"$MANIFEST\" --release --target aarch64-linux-android --locked\n\n  local destination=\"$TATACHATSDK_NATIVE_ANDROID_DIR/arm64-v8a\"\n  mkdir -p \"$destination\"\n  cp \"$TARGET_DIR/aarch64-linux-android/release/libtatachat_sdk.so\" \"$destination/\"\n  assert_symbols \"$destination/libtatachat_sdk.so\" \"$toolchain/bin/llvm-nm\"\n}\n\nbuild_ios_slice() {\n  local target=\"$1\" sdk=\"$2\" flag_name=\"$3\"\n  local sdk_path host_sdk target_flags=\"${!flag_name:-}\"\n  sdk_path=\"$(xcrun --sdk \"$sdk\" --show-sdk-path)\"\n  host_sdk=\"$(xcrun --sdk macosx --show-sdk-path)\"\n  [[ -d \"$sdk_path\" && -d \"$host_sdk\" && \"$sdk_path\" != *[[:space:]]* ]] || {\n    printf 'TataChatSDK Apple SDK path is invalid\\n' >&2; exit 1;\n  }\n  # 宿主宏只链接macOS SDK；目标专属参数选择真机或Simulator SDK，保留未裁剪Mach-O。\n  target_flags=\"${target_flags:+$target_flags }-C strip=none -C link-arg=-isysroot -C link-arg=$sdk_path -C link-arg=-Wl,-install_name,@rpath/TataChatSDK.framework/TataChatSDK\"\n  env SDKROOT=\"$host_sdk\" \"$flag_name=$target_flags\" \\\n    cargo build --manifest-path \"$MANIFEST\" --release --target \"$target\" --locked\n  local library=\"$TARGET_DIR/$target/release/libtatachat_sdk.dylib\"\n  local framework_root=\"$TARGET_DIR/$target-framework\"\n  local framework=\"$framework_root/TataChatSDK.framework\"\n  local nm_bin\n  nm_bin=\"$(xcrun --find llvm-nm)\"\n  assert_symbols \"$library\" \"$nm_bin\"\n  local string_offset\n  string_offset=\"$(otool -l \"$library\" | awk '/cmd LC_SYMTAB/{active=1;next} active&&/cmd /{active=0} active&&/stroff/{print $2}')\"\n  [[ -n \"$string_offset\" && $((string_offset % 8)) -eq 0 ]] || {\n    printf 'TataChatSDK iOS LINKEDIT string pool is not 8-byte aligned\\n' >&2\n    exit 1\n  }\n\n  # 中文注释：TataChatSDK 以自己的动态 Framework 进入宿主，Smoldot 不再承载或\n  # 保活任何聊天符号。Framework 的 install name 固定为标准 @rpath，由 Xcode\n  # 嵌入并签名，Dart FFI 只解析这一份已经装载的动态库。\n  if [[ -e \"$framework_root\" ]]; then\n    find \"$framework_root\" -depth -delete\n  fi\n  mkdir -p \"$framework/Headers\" \"$framework/Modules\"\n  cp \"$library\" \"$framework/TataChatSDK\"\n  chmod 755 \"$framework/TataChatSDK\"\n  cp \"$ROOT/native/tatachat_sdk.h\" \"$framework/Headers/tatachat_sdk.h\"\n  cat > \"$framework/Modules/module.modulemap\" <<'MODULEMAP'\nframework module TataChatSDK {\n  umbrella header \"tatachat_sdk.h\"\n  export *\n}\nMODULEMAP\n  cat > \"$framework/Info.plist\" <<'PLIST'\n<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<plist version=\"1.0\">\n<dict>\n  <key>CFBundleDevelopmentRegion</key><string>en</string>\n  <key>CFBundleExecutable</key><string>TataChatSDK</string>\n  <key>CFBundleIdentifier</key><string>org.cocoapods.TataChatSDK</string>\n  <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>\n  <key>CFBundleName</key><string>TataChatSDK</string>\n  <key>CFBundlePackageType</key><string>FMWK</string>\n  <key>CFBundleShortVersionString</key><string>1.0.0</string>\n  <key>CFBundleVersion</key><string>1</string>\n  <key>MinimumOSVersion</key><string>16.0</string>\n</dict>\n</plist>\nPLIST\n  assert_symbols \"$framework/TataChatSDK\" \"$nm_bin\"\n\n}\n\nbuild_ios() {\n  # 同一个iOS产物必须同时具备真机和Apple Silicon Simulator切片；缺目标先失败。\n  ensure_target aarch64-apple-ios\n  ensure_target aarch64-apple-ios-sim\n  export IPHONEOS_DEPLOYMENT_TARGET=16.0\n  build_ios_slice aarch64-apple-ios iphoneos CARGO_TARGET_AARCH64_APPLE_IOS_RUSTFLAGS\n  build_ios_slice aarch64-apple-ios-sim iphonesimulator CARGO_TARGET_AARCH64_APPLE_IOS_SIM_RUSTFLAGS\n  local xcframework=\"$TATACHATSDK_NATIVE_IOS_DIR/TataChatSDK.xcframework\"\n  mkdir -p \"$TATACHATSDK_NATIVE_IOS_DIR\"\n  if [[ -e \"$xcframework\" ]]; then\n    find \"$xcframework\" -depth -delete\n  fi\n  xcodebuild -create-xcframework \\\n    -framework \"$TARGET_DIR/aarch64-apple-ios-framework/TataChatSDK.framework\" \\\n    -framework \"$TARGET_DIR/aarch64-apple-ios-sim-framework/TataChatSDK.framework\" \\\n    -output \"$xcframework\"\n  local packaged variant nm_bin\n  nm_bin=\"$(xcrun --find llvm-nm)\"\n  for variant in ios-arm64 ios-arm64-simulator; do\n    packaged=\"$xcframework/$variant/TataChatSDK.framework/TataChatSDK\"\n    [[ -f \"$packaged\" && \"$(lipo -archs \"$packaged\")\" == arm64 ]] || {\n      printf 'TataChatSDK iOS slice missing or architecture invalid: %s\\n' \"$variant\" >&2; exit 1;\n    }\n    assert_symbols \"$packaged\" \"$nm_bin\"\n    otool -D \"$packaged\" | tail -n +2 | grep -qx '@rpath/TataChatSDK.framework/TataChatSDK' || {\n      printf 'TataChatSDK iOS framework install name is invalid\\n' >&2; exit 1;\n    }\n  done\n  # 回读Xcode实际平台元数据，不能用两个真机库冒充Simulator切片。\n  plutil -convert json -o - \"$xcframework/Info.plist\" | \"$NODE_BIN\" --input-type=commonjs -e '\nconst fs=require(\"node:fs\");\nconst libraries=JSON.parse(fs.readFileSync(0,\"utf8\")).AvailableLibraries;\nif(!Array.isArray(libraries))throw Error(\"TataChatSDK XCFramework平台元数据缺失\");\nconst identity=item=>JSON.stringify([item.LibraryIdentifier,item.SupportedPlatform,item.SupportedPlatformVariant||\"\",item.SupportedArchitectures]);\nconst actual=new Set(libraries.map(identity));\nconst expected=new Set([\n  JSON.stringify([\"ios-arm64\",\"ios\",\"\",[\"arm64\"]]),\n  JSON.stringify([\"ios-arm64-simulator\",\"ios\",\"simulator\",[\"arm64\"]]),\n]);\nif(libraries.length!==2||actual.size!==2||[...expected].some(value=>!actual.has(value)))\n  throw Error(\"TataChatSDK XCFramework必须包含准确真机与Simulator ARM64切片\");\n'\n}\n\nbuild_macos() {\n  ensure_target aarch64-apple-darwin\n  export MACOSX_DEPLOYMENT_TARGET=13.0\n\n  # 中文注释：目标专属参数不得污染宿主 proc-macro；host 模式仍只服务本机调试测试。\n  local macos_rustflags=\"${CARGO_TARGET_AARCH64_APPLE_DARWIN_RUSTFLAGS:-}\"\n  macos_rustflags=\"${macos_rustflags:+$macos_rustflags }-C strip=none -C link-arg=-Wl,-install_name,@rpath/libtatachat_sdk.dylib\"\n  CARGO_TARGET_AARCH64_APPLE_DARWIN_RUSTFLAGS=\"$macos_rustflags\" \\\n    cargo build --manifest-path \"$MANIFEST\" --release --target aarch64-apple-darwin --locked\n\n  local library=\"$TARGET_DIR/aarch64-apple-darwin/release/libtatachat_sdk.dylib\"\n  local destination=\"$TATACHATSDK_NATIVE_MACOS_DIR/libtatachat_sdk.dylib\"\n  local nm_bin\n  nm_bin=\"$(xcrun --find llvm-nm)\"\n  mkdir -p \"$TATACHATSDK_NATIVE_MACOS_DIR\"\n  cp \"$library\" \"$destination\"\n  [[ \"$(lipo -archs \"$destination\")\" == arm64 ]] || {\n    printf 'TataChatSDK macOS library must contain only arm64\\n' >&2\n    exit 1\n  }\n  file \"$destination\" | grep -q 'dynamically linked shared library' || {\n    printf 'TataChatSDK macOS artifact is not a dynamic library\\n' >&2\n    exit 1\n  }\n  assert_symbols \"$destination\" \"$nm_bin\"\n  otool -D \"$destination\" | tail -n +2 | grep -qx '@rpath/libtatachat_sdk.dylib' || {\n    printf 'TataChatSDK macOS install name is invalid\\n' >&2\n    exit 1\n  }\n}\n\nverify_android_package() {\n  local package=\"${1:?Android package is required}\"\n  local entry temporary packaged nm_bin\n  [[ -f \"$package\" ]] || { printf 'Android package not found: %s\\n' \"$package\" >&2; exit 1; }\n  case \"$package\" in\n    *.apk) entry='lib/arm64-v8a/libtatachat_sdk.so' ;;\n    *.aab) entry='base/lib/arm64-v8a/libtatachat_sdk.so' ;;\n    *) printf 'Unsupported Android package: %s\\n' \"$package\" >&2; exit 1 ;;\n  esac\n  temporary=\"$(mktemp -d)\"\n  packaged=\"$temporary/libtatachat_sdk.so\"\n  unzip -p \"$package\" \"$entry\" > \"$packaged\" || {\n    find \"$temporary\" -depth -delete\n    printf 'Android package missing TataChatSDK library\\n' >&2\n    exit 1\n  }\n  nm_bin=\"$(ndk_toolchain \"${ANDROID_NDK_HOME:-}\")/bin/llvm-nm\"\n  [[ -x \"$nm_bin\" ]] || {\n    find \"$temporary\" -depth -delete\n    printf 'Android NDK llvm-nm not found\\n' >&2\n    exit 1\n  }\n  assert_symbols \"$packaged\" \"$nm_bin\"\n  find \"$temporary\" -depth -delete\n  if unzip -Z1 \"$package\" | grep -E '(^|/)lib/(armeabi-v7a|x86|x86_64)/libtatachat_sdk\\.so$'; then\n    printf 'Android package contains unsupported TataChatSDK ABI\\n' >&2\n    exit 1\n  fi\n}\n\nverify_ios_package() {\n  local app_bundle=\"${1:?Runner.app is required}\"\n  local executable=\"$app_bundle/Runner\"\n  local framework=\"$app_bundle/Frameworks/TataChatSDK.framework/TataChatSDK\"\n  local nm_bin\n  [[ -f \"$executable\" ]] || { printf 'iOS Runner not found\\n' >&2; exit 1; }\n  [[ -f \"$framework\" ]] || { printf 'iOS package missing TataChatSDK.framework\\n' >&2; exit 1; }\n  [[ \"$(lipo -archs \"$framework\")\" == arm64 ]] || {\n    printf 'Packaged TataChatSDK framework must contain only arm64\\n' >&2\n    exit 1\n  }\n  file \"$framework\" | grep -q 'dynamically linked shared library' || {\n    printf 'Packaged TataChatSDK binary is not a dynamic framework\\n' >&2\n    exit 1\n  }\n  otool -L \"$executable\" | grep -q '@rpath/TataChatSDK.framework/TataChatSDK' || {\n    printf 'iOS Runner does not link the independent TataChatSDK framework\\n' >&2\n    exit 1\n  }\n  nm_bin=\"$(xcrun --find llvm-nm)\"\n  assert_symbols \"$framework\" \"$nm_bin\"\n}\n\ncase \"$MODE\" in\n  host) build_host ;;\n  macos) build_macos ;;\n  android) build_android ;;\n  ios) build_ios ;;\n  verify-android-package) verify_android_package \"${2:-}\" ;;\n  verify-ios-package) verify_ios_package \"${2:-}\" ;;\n  *) printf 'Usage: %s [host|macos|android|ios|verify-android-package|verify-ios-package]\\n' \"$0\" >&2; exit 64 ;;\nesac\n", "protocol": "#!/usr/bin/env bash\nset -euo pipefail\n\nroot=\"${TATACHATSDK_SOURCE_ROOT:?缺少本产品源码根}\"\nprotocol_dir=\"$root/lib/protocol\"\n# 所有独立入口的工具临时状态归本产品target；宿主已交付的产品工作根继续归当前任务。\nPRODUCT_TEMP_SOURCE=\"$root\"\nPRODUCT_TARGET_TEMP_ROOT=\"$(\"${PRODUCT_NODE_BIN:-${NODE:-node}}\" \"$PRODUCT_TEMP_SOURCE/scripts/build.mjs\" temporary-root \"${PLATFORM:-${platform:-}}\" 'sdk')\" || exit 1\nif [[ -z \"${PRODUCT_WORK_DIR:-}\" && \"${TMPDIR:-}\" != \"$PRODUCT_TEMP_SOURCE/target/\"* ]]; then\n  export TMPDIR=\"$PRODUCT_TARGET_TEMP_ROOT/\"\nfi\nwork_dir=\"${TATACHATSDK_WORK_DIR:?缺少本产品固定工作根}\"\n\n[[ \"$#\" -eq 0 ]] || { printf '%s\\n' 'TataChatSDK协议生成不接受参数' >&2; exit 1; }\ncase \"$(uname -s)/$(uname -m)\" in\n  Darwin/arm64) protoc_platform=macos ;;\n  Linux/aarch64) protoc_platform=linux-arm ;;\n  Linux/x86_64) protoc_platform=linux-amd ;;\n  *) printf '%s\\n' 'TataChatSDK协议生成宿主不受支持' >&2; exit 1 ;;\nesac\n\n# 两项生成工具均由SDK自己的锁定声明准备到源码外目录；禁止读取系统PATH中的偶然版本。\nprotoc_executable=\"$(\"${PRODUCT_NODE_BIN:?缺少本产品Node}\" \"$root/scripts/build.mjs\" prepare protoc \"$protoc_platform\" \\\n  \"$work_dir\")\"\nplugin_executable=\"$(\"${PRODUCT_NODE_BIN:?缺少本产品Node}\" \"$root/scripts/build.mjs\" prepare protoc_plugin sdk \\\n  \"$work_dir\")\"\n[[ \"$protoc_executable\" = /* && -f \"$protoc_executable\" && -x \"$protoc_executable\" ]] \\\n  || { printf '%s\\n' 'TataChatSDK protoc路径无效' >&2; exit 1; }\n[[ \"$plugin_executable\" = /* && -f \"$plugin_executable\" && -x \"$plugin_executable\" ]] \\\n  || { printf '%s\\n' 'TataChatSDK protoc_plugin路径无效' >&2; exit 1; }\n\noutput_dir=\"$work_dir/protocol\"\nmkdir -p \"$output_dir\"\n\"$protoc_executable\" \\\n  --proto_path=\"$protocol_dir\" \\\n  --dart_out=\"$output_dir\" \\\n  --plugin=\"protoc-gen-dart=$plugin_executable\" \\\n  \"$protocol_dir/basic_content.proto\" \\\n  \"$protocol_dir/media_content.proto\" \\\n  \"$protocol_dir/message.proto\" \\\n  \"$protocol_dir/attachment.proto\" \\\n  \"$protocol_dir/chat_frame.proto\"\n", "analysis": "include: package:flutter_lints/flutter.yaml\n\nanalyzer:\n  exclude:\n    # Isar 官方生成器会调用其自身标记为 experimental 的索引扩展；生成文件不手改。\n    - lib/storage/chat_isar.g.dart\n  language:\n    strict-casts: true\n    strict-inference: true\n    strict-raw-types: true\n\nlinter:\n  rules:\n    - avoid_print\n    - directives_ordering\n    - unawaited_futures\n    - use_super_parameters\n"});
 // 依赖编译只接受调用产品本轮领取的目录与令牌；独立入口的固定根规则不变。
 export function nativeDependencyScope(args,environment){
  const work=environment.PRODUCT_WORK_DIR,nativeWork=environment.TATACHATSDK_WORK_DIR;
@@ -3362,11 +3551,57 @@ async function commitCandidate(pending,target,{signal}={}){
  const lock=target+'.lock';let handle;for(let n=0;n<500;n++){signal?.throwIfAborted();try{handle=await open(lock,'wx',0o600);break;}catch(e){if(e.code!=='EEXIST')throw e;await new Promise(r=>setTimeout(r,20));}}if(!handle)fail('原件提交锁等待超限');
  try{signal?.throwIfAborted();if(await stat(target)){}else await rename(pending,target);}finally{await handle.close();await rm(lock);}
 }
+// 准备产物身份与使用验收由本产品定义，供应端不解释组件布局。
+function toolSupplyKey(tool){const archive=toolArchive(tool);if(tool.id==='node')return archive.sha256;return archive.sha256+'-'+hash(JSON.stringify([tool,installTool.toString(),prepareToolSupply.toString()]));}
+async function validateToolPayload(tool,payload){
+ const archive=toolArchive(tool),base=await realpath(payload);if(base!==payload)fail('产品工具根经过链接');
+ for(const slot of [...new Set([archive.executable,...(tool.slots||[])])]){
+  const actual=await realpath(join(base,slot)),info=await lstat(actual);
+  if(!inside(base,actual)||!info.isFile()||!(info.mode&0o111))fail('产品工具声明入口缺失或越界');
+ }
+ for(const component of tool.components||[]){
+  const directory=component.target==='rust-src'?join(base,'lib/rustlib/src/rust/library'):join(base,'lib/rustlib',component.target,'lib');
+  if(!inside(base,await realpath(directory))||!(await lstat(directory)).isDirectory())fail('产品Rust组件缺失或越界');
+  if(component.target==='rust-src')for(const name of ['Cargo.toml','Cargo.lock']){const file=await realpath(join(directory,name));if(!inside(base,file)||!(await lstat(file)).isFile())fail('产品Rust源码原锁缺失');}
+ }
+}
+async function acceptToolSupply(tool,value){
+ if(tool.id==='xcode'){
+  if(value?.version!==tool.version||typeof value.path!=='string'||!isAbsolute(value.path))fail('产品Apple工具交付身份不符');
+  const path=await realpath(value.path),info=await lstat(path);if(path!==value.path||!info.isFile()||!(info.mode&0o111))fail('产品Apple工具交付入口无效');return value;
+ }
+ const archive=toolArchive(tool),suffix='/'+archive.executable;
+ if(value?.version!==tool.version||typeof value.path!=='string'||!value.path.endsWith(suffix))fail('产品工具交付身份不符');
+ const payload=value.root||value.path.slice(0,-suffix.length);
+ if(!isAbsolute(payload)||value.path!==join(payload,archive.executable))fail('产品工具交付路径不符');
+ await validateToolPayload(tool,payload);return value;
+}
+if(inlineTestEntry){
+ const {test}=await import('node:test'),{default:assert}=await import('node:assert/strict');
+ test('通用供给合同：本产品验收入口、版本及Rust组件，冷热领取使用同一检查',async t=>{
+  const fs=await import('node:fs/promises'),parent=join(root,'target/test');await fs.mkdir(parent,{recursive:true});
+  const work=await fs.mkdtemp(join(parent,'supply-contract-'));t.after(()=>fs.rm(work,{recursive:true,force:true}));
+  const node=supplyRequirements().tools.find(value=>value.id==='node'),payload=join(work,'payload');
+  assert.ok(node.cache_key);assert.equal(node.cache_key,toolSupplyKey(toolDefinitions.find(value=>value.id==='node')));
+  const executable=join(payload,toolArchive(node).executable);await fs.mkdir(dirname(executable),{recursive:true});await fs.writeFile(executable,'fixture',{mode:0o755});
+  const receipt={id:node.id,version:node.version,root:payload,path:executable};
+  assert.equal(await acceptToolSupply(node,receipt),receipt);assert.equal(await acceptToolSupply(node,receipt),receipt);
+  assert.equal(await acceptToolSupply({...node,id:'xcode',archive:undefined},receipt),receipt);
+  await assert.rejects(acceptToolSupply(node,{...receipt,version:'wrong'}),/身份/u);
+  await assert.rejects(acceptToolSupply(node,{...receipt,path:join(work,'outside')}),/身份|路径/u);
+  const rust={...node,id:'rust',components:[{target:'rust-src'},{target:'wasm32-unknown-unknown'}]};
+  await assert.rejects(validateToolPayload(rust,payload));
+  const library=join(payload,'lib/rustlib/src/rust/library');await fs.mkdir(library,{recursive:true});
+  for(const name of ['Cargo.toml','Cargo.lock'])await fs.writeFile(join(library,name),'fixture');
+  await fs.mkdir(join(payload,'lib/rustlib/wasm32-unknown-unknown/lib'),{recursive:true});await validateToolPayload(rust,payload);
+  await fs.rm(join(library,'Cargo.lock'));await assert.rejects(validateToolPayload(rust,payload));
+ });
+}
 async function installTool(library,tool,options,visiting=new Set()){
  const supplied=resourceSupplies.getStore();if(supplied&&!supplied.preparingTool){
   if(library.installed.has(tool.id))return library.installed.get(tool.id);
   const value=tool.id==='xcode'?await supplied.acquireApple({...supplyRequirements().apple,names:['xcodebuild']}).then(apple=>({path:apple.tools.xcodebuild,version:tool.version})):await supplied.acquireTool(supplyRequirements().tools.find(item=>item.id===tool.id));
-  library.installed.set(tool.id,value);return value;
+  await acceptToolSupply(tool,value);library.installed.set(tool.id,value);return value;
  }
 
  if(library.installed.has(tool.id))return library.installed.get(tool.id);if(visiting.has(tool.id))fail('工具声明循环：'+tool.id);visiting=new Set([...visiting,tool.id]);const archive=toolArchive(tool);
@@ -3646,7 +3881,7 @@ async function prepareResourceSupply(platform,work,previous,options){
  receipt.environment??={};receipt.environment["TATACHATSDK_RESOURCE_MODE"]='provided';return receipt;
 }
 async function materializeResources(platform,work,previous={},options={}){
- const owner=buildApi;owner.checkWork(work);const request=()=>owner.requirements(platform,work);const requirement=request(),environment=options.environment||process.env;
+ const owner=buildApi;owner.checkWork(work);const request=()=>owner.requirements(platform,work,{purpose:options.purpose});const requirement=request(),environment=options.environment||process.env;
  if(previous.schema!==undefined&&(previous.schema!==1||previous.product_id!==requirement.product_id||previous.platform!==platform||previous.work!==work))fail('资源请求身份无效');options={environment,fetcher:fetch,offline:false,...options};options.signal?.throwIfAborted();
  const store=options.storeRoot||join(homedir(),'.local/share/product-resources'),optionalTools=options.toolRoot||environment.PRODUCT_TOOL_ROOT,optionalDependencies=options.dependencyRoot?join(options.dependencyRoot,'objects'):environment.PRODUCT_DEPENDENCY_ROOT?join(environment.PRODUCT_DEPENDENCY_ROOT,'objects'):undefined;
  await directory(store,true);if(inside(root,store)||inside(store,root)||inside(work,store)||inside(store,work)||store===work)fail('原件库与源码或工作区交叉');
@@ -3654,11 +3889,11 @@ async function materializeResources(platform,work,previous={},options={}){
  const library={root:options.toolRoot||join(store,'tools'),work,tools:toolDefinitions,requested:requirement.tools,installed:new Map()};await directory(library.root,true);options={...options,platform,optionalTools,optionalDependencies,library,dependencyRoot:options.dependencyRoot||join(store,'rely'),sources:requirement.sources};
  for(const request of requirement.tools){const definition=toolDefinitions.find(x=>x.id===request.id);if(!definition||definition.version!==request.version)fail('需求与产品自己的工具配方不一致：'+request.id);}
  // 工具配方也可能先写本轮dependencies；挂载须在第一件工具准备之前完成。
- if(work===fixedWork('build/sdk'))ensureDependencyVolume(work,{run_id:previous.run_id,signal:options.signal});
+ if(work===fixedWork('build/sdk')||options.purpose==='verification')ensureDependencyVolume(work,{run_id:previous.run_id,signal:options.signal});
  // 直接使用声明的工具入口。
  const node=toolDefinitions.find(x=>x.id==='node');await installTool(library,node,options);
  const android=requirement.tools.some(x=>['android','android-sdk','android-ndk'].includes(x.id));for(const request of requirement.tools){if(android&&['android','android-sdk','android-ndk','cmake'].includes(request.id))continue;await installTool(library,toolDefinitions.find(x=>x.id===request.id),options);}
- const receipt={schema:1,product_id:requirement.product_id,platform,work,tools:Object.fromEntries(library.installed),dependencies:{},archives:{},environment:{},offline:true};for(const key of ['run_id','program_digest'])if(previous[key]!==undefined)receipt[key]=previous[key];
+ const receipt={schema:1,product_id:requirement.product_id,platform,work,...(options.purpose==='verification'?{purpose:'verification'}:{}),tools:Object.fromEntries(library.installed),dependencies:{},archives:{},environment:{},offline:true};for(const key of ['run_id','program_digest'])if(previous[key]!==undefined)receipt[key]=previous[key];
  for(const id of ['posix','bash','grep','sed'])await installTool(library,toolDefinitions.find(x=>x.id===id),options);receipt.tools=Object.fromEntries(library.installed);const foundation=await productFoundation(library,async(_,t)=>library.installed.get(t.id));receipt.environment=await appleEnvironment(library,options);receipt.environment.PATH=[receipt.environment.PATH,foundation.path,...[...library.installed].filter(([id])=>id!=='posix').map(([,x])=>dirname(x.path))].filter(Boolean).join(':');receipt.environment.PRODUCT_WORK_DIR=work;
  if(android)Object.assign(receipt.environment,await installAndroidResources(options));receipt.tools=Object.fromEntries(library.installed);
  for(const source of requirement.sources)await gitCheckout(source,join(work,'git-sources',source.name),options);
@@ -3917,12 +4152,12 @@ const isarCorePath=(...args)=>nativeLibraries.isarCorePath(...args);
 
 // 公开声明与候选配方；供给对象的领取、提交及删除只由调度方实现。
 function supplyRequirements(){
- const wanted=toolDefinitions.filter(tool=>tool.id!=='xcode').map(tool=>{const archive=toolArchive(tool);return {...tool,archive,slots:[...new Set([archive?.executable,...(tool.slots||[])].filter(Boolean))]};});
+ const wanted=toolDefinitions.filter(tool=>tool.id!=='xcode').map(tool=>{const archive=toolArchive(tool);return {...tool,archive,cache_key:toolSupplyKey(tool),slots:[...new Set([archive?.executable,...(tool.slots||[])].filter(Boolean))]};});
  const xcode=toolDefinitions.find(tool=>tool.id==='xcode');
  return {tools:wanted,apple:{version:xcode.version,source:xcode.source,names:[...new Set([...Object.keys(appleSystemTools),...appleBundleTools])]}};
 }
 function assertWorkQuiescent(work){for(const pid of supplyGroups.get(work)||[])try{process.kill(-pid,0);fail('资源工具退出未确认');}catch(error){if(error.code!=='ESRCH')throw error;}if(retainedResourcePath(work))fail('资源工具退出未确认');}
-async function prepareToolSupply(tool,{original,payload,work,signal,offline,acquireOriginal,acquireTool,acquireApple,publishCandidate,environment,finalPayload}){
+async function prepareToolSupply(tool,{payload,work,signal,offline,acquireOriginal,acquireTool,acquireApple,publishCandidate,environment,finalPayload}){
  const at=await fixedScratch(join(work,'.tool-recipe-'+tool.id+'-'+randomUUID()));
  const library={root:at,work,tools:toolDefinitions,installed:new Map(),requested:[]};
  const context={work,toolRoot:at,dependencyRoot:join(work,'dependencies'),acquireOriginal,acquireTool,acquireApple,publishCandidate,preparingTool:true};
@@ -3932,7 +4167,7 @@ async function prepareToolSupply(tool,{original,payload,work,signal,offline,acqu
   for(const id of new Set(ids)){if(id==='xcode'){const apple=await acquireApple({...supplyRequirements().apple,names:['xcodebuild']});library.installed.set(id,{path:apple.tools.xcodebuild,version:toolDefinitions.find(t=>t.id===id).version});}else{const entry=supplyRequirements().tools.find(t=>t.id===id);if(!entry)fail('工具前置未声明');library.installed.set(id,await acquireTool(entry));}}
   const value=await installTool(library,definition,{library,signal,offline,environment,finalPayload,dependencyRoot:context.dependencyRoot});
   const executable=toolArchive(definition).executable,built=value.path.slice(0,-executable.length-1);await chmod(built,0o700);await rm(payload,{recursive:true,force:true});await rename(built,payload);
-  return {schema:1,id:tool.id,version:tool.version,payload,original};
+  await validateToolPayload(tool,payload);return {schema:1,id:tool.id,version:tool.version,payload};
  });}finally{assertWorkQuiescent(work);await rm(at,{recursive:true,force:true});}
 }
 
@@ -4913,6 +5148,7 @@ test('真实工程视图进入当前固定根并在入口完成后清空',async(
  const before=fs.readFileSync(join(root,'scripts/build.mjs'));
  await withFixedWork('test',async work=>{
   const project=prepareSourceView();assert.equal(project,join(work,'source'));
+  assert.equal(fs.existsSync(join(project,'.git')),false);
   assert.deepEqual(fs.readFileSync(join(project,'scripts/build.mjs')),before);
   assert.equal(fs.existsSync(join(project,'target')),false);
   assert.equal(prepareSourceView(),project);
@@ -5508,5 +5744,107 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2){
    assert.equal(calls.filter(([,method])=>method==='POST').length,0);
    assert.ok(calls.some(([path])=>path.endsWith(`/actions/runs/${id}`)));
   }finally{globalThis.fetch=originalFetch;globalThis.setTimeout=originalTimer;}
+ });
+}
+
+// 完整模块初始化后登记验证用例，工具配方只从本仓唯一声明读取。
+if(testSession&&process.argv.length===2&&resolve(process.argv[1]||'')===fileURLToPath(import.meta.url)){
+ const {test}=await import('node:test'),{default:assert}=await import('node:assert/strict');
+ const verificationEnvironment=()=>({GITHUB_ACTIONS:'true',GITHUB_REPOSITORY:'tuyutata/tatachatsdk',GITHUB_WORKFLOW:'tatachatsdk.sdk',
+  GITHUB_WORKFLOW_REF:'tuyutata/tatachatsdk/.github/workflows/sdk.yml@refs/heads/main',GITHUB_EVENT_NAME:'workflow_dispatch',
+  GITHUB_REF:'refs/heads/main',GITHUB_JOB:'test',GITHUB_SHA:'a'.repeat(40),GITHUB_RUN_ID:'123',GITHUB_RUN_ATTEMPT:'1'});
+ test('完整Dart验证先拒绝本机、错Run和错提交，不领取资源',async()=>{
+  let calls=0;const options={platform:'darwin',arch:'arm64',call:(file,args)=>{calls++;assert.equal(file,'git');assert.deepEqual(args,['rev-parse','HEAD']);return {status:0,stdout:'a'.repeat(40)+'\n'};}};
+  requireCiTestIdentity(verificationEnvironment(),options);assert.equal(calls,1);
+  for(const key of Object.keys(verificationEnvironment())){
+   const env=verificationEnvironment();env[key]='invalid';calls=0;
+   assert.throws(()=>requireCiTestIdentity(env,options),/只允许/);assert.equal(calls,0);
+  }
+  assert.throws(()=>requireCiTestIdentity(verificationEnvironment(),{...options,platform:'linux'}),/只允许/);
+  assert.throws(()=>requireCiTestIdentity(verificationEnvironment(),{...options,call:()=>({status:0,stdout:'b'.repeat(40)})}),/源码提交/);
+  await assert.rejects(ciTest({}),/只允许/);
+ });
+ test('测试资源闭包拥有Pub和Flutter，正式原生需求仍保持最小',()=>{
+  const normal=requirements('sdk',fixedWork('test')),verify=requirements('sdk',fixedWork('test'),{purpose:'verification'});
+  assert.deepEqual(normal.tools,contract.platforms.sdk.tools);assert.deepEqual(normal.locks,contract.platforms.sdk.locks);
+  assert.equal(verify.tools.find(tool=>tool.id==='flutter').version,resourceDeclarations().tools.find(tool=>tool.id==='flutter').version);
+  assert.ok(verify.tools.some(tool=>tool.id==='git'));assert.ok(!verify.tools.some(tool=>tool.id==='android-ndk'));
+  assert.deepEqual(verify.locks,[...normal.locks,{ecosystem:'pub',path:'pubspec.lock'}]);
+  assert.throws(()=>requirements('sdk',fixedWork('build/sdk'),{purpose:'verification'}),/用途/);
+  assert.throws(()=>requirements('sdk',fixedWork('test'),{purpose:'unknown'}),/用途/);
+ });
+ const reportFixture=()=>[
+  {type:'start',protocolVersion:'0.1.0'},
+  {type:'allSuites',count:2},
+  {type:'suite',suite:{id:1,path:'test/a_test.dart'}},
+  {type:'testStart',test:{id:0,suiteID:1}},
+  {type:'testDone',testID:0,result:'success',hidden:true,skipped:false},
+  {type:'testStart',test:{id:1,suiteID:1}},
+  {type:'testDone',testID:1,result:'success',hidden:false,skipped:false},
+  {type:'suite',suite:{id:2,path:'test/b_test.dart'}},
+  {type:'testStart',test:{id:2,suiteID:2}},
+  {type:'testDone',testID:2,result:'success',hidden:false,skipped:false},
+  {type:'done',success:true},
+ ];
+ const reportOptions={project:'/fixture',files:['test/a_test.dart','test/b_test.dart']};
+ const reportText=values=>values.map(value=>JSON.stringify(value)).join('\n')+'\n';
+ test('Dart报告核对全量文件，加载和收尾虚拟用例不计业务通过数',()=>{
+  assert.deepEqual(verifyDartTestReport(reportText(reportFixture()),reportOptions),{files:2,passed:2,skipped:0,failed:0});
+ });
+ test('Dart报告拒绝跳过、迟到错误、零用例、漏文件和未完整结束',()=>{
+  const skipped=reportFixture();skipped[6]={...skipped[6],skipped:true};
+  assert.throws(()=>verifyDartTestReport(reportText(skipped),reportOptions),error=>error.testCounts?.skipped===1);
+  const failed=reportFixture();failed[9]={...failed[9],result:'failure'};failed[10].success=false;
+  assert.throws(()=>verifyDartTestReport(reportText(failed),reportOptions),error=>error.testCounts?.failed===1);
+  const late=reportFixture();late.splice(-1,0,{type:'error',testID:1,error:'synthetic',stackTrace:'',isFailure:true});
+  const missing=reportFixture().filter(value=>value.type!=='suite'||value.suite.id!==2);
+  const hidden=reportFixture().map(value=>value.type==='testDone'?{...value,hidden:true}:value);
+  for(const value of [late,missing,hidden,reportFixture().slice(0,-1),reportFixture().slice(1),[...reportFixture(),{type:'print',message:'late'}]]){
+   assert.throws(()=>verifyDartTestReport(reportText(value),reportOptions));
+  }
+ });
+ test('Dart报告拒绝重复身份、伪造路径、损坏和超限输入',()=>{
+  const duplicate=reportFixture();duplicate.splice(6,0,{type:'testStart',test:{id:1}});
+  const outside=reportFixture();outside[2].suite.path='../other_test.dart';
+  const incomplete=reportFixture();incomplete.splice(9,1);
+  for(const input of [reportText(duplicate),reportText(outside),reportText(incomplete),'broken','x'.repeat(16*1024**2+1)]){
+   assert.throws(()=>verifyDartTestReport(input,reportOptions));
+  }
+  assert.throws(()=>verifyDartTestReport(reportText(reportFixture()),{...reportOptions,files:[]}));
+ });
+ test('Flutter测试工具副本不写只读原件并拒绝外部链接',async t=>{
+  const area=fixedScratch(join(fixedWork('test'),'flutter-verification-')),source=join(area,'source'),output=join(area,'view');
+  t.after(()=>rmSync(area,{recursive:true,force:true}));mkdirSync(source);writeFileSync(join(source,'entry'),'original',{mode:0o444});
+  await ciFlutterView(source,output);writeFileSync(join(output,'entry'),'changed');assert.equal(readFileSync(join(source,'entry'),'utf8'),'original');
+  assert.equal(lstatSync(join(source,'entry')).mode&0o200,0);
+  await assert.rejects(ciFlutterView(source,output),/边界/);
+  symlinkSync('/etc/passwd',join(source,'external'));
+  await assert.rejects(ciFlutterView(source,join(area,'rejected')),/链接越界/);
+ });
+ test('Dart测试清单完整递归且拒绝空集与链接文件',t=>{
+  const area=fixedScratch(join(fixedWork('test'),'dart-discovery-')),directory=join(area,'test');
+  t.after(()=>rmSync(area,{recursive:true,force:true}));mkdirSync(join(directory,'nested'),{recursive:true});
+  writeFileSync(join(directory,'a_test.dart'),'synthetic');writeFileSync(join(directory,'nested/b_test.dart'),'synthetic');
+  writeFileSync(join(directory,'helper.dart'),'support');
+  assert.deepEqual(ciTestFiles(area),['test/a_test.dart','test/nested/b_test.dart']);
+  symlinkSync('/etc/passwd',join(directory,'foreign_test.dart'));assert.throws(()=>ciTestFiles(area),/禁止链接/);
+  unlinkSync(join(directory,'foreign_test.dart'));unlinkSync(join(directory,'a_test.dart'));unlinkSync(join(directory,'nested/b_test.dart'));
+  assert.throws(()=>ciTestFiles(area),/清单为空/);
+ });
+ test('宿主正文继承测试工作根，不再创建另一份SDK编译现场',t=>{
+  const area=fixedScratch(join(fixedWork('test'),'native-test-root-')),node=join(area,'node');
+  t.after(()=>rmSync(area,{recursive:true,force:true}));writeFileSync(node,'#!/bin/sh\nexit 77\n',{mode:0o700});
+  const result=spawnSync('/bin/bash',['--noprofile','--norc','-c',BUILD_SHELL_SOURCES.native,'fixture','unknown'],{
+   env:{PATH:'/usr/bin:/bin',PRODUCT_NODE_BIN:node,PRODUCT_WORK_DIR:area,TATACHATSDK_SOURCE_ROOT:area},encoding:'utf8'});
+  assert.equal(result.status,64);assert.equal(existsSync(join(area,'target')),false);
+ });
+ test('GitHub完整验证在三端编译前运行并保持现有清理和版本门禁',()=>{
+  const workflow=readFileSync(join(root,'.github/workflows/sdk.yml'),'utf8'),native=workflow.slice(workflow.indexOf('\n  native:'),workflow.indexOf('\n  release:'));
+  const verification=workflow.slice(workflow.indexOf('\n  test:'),workflow.indexOf('\n  native:'));
+  assert.match(verification,/node --test scripts\/build.mjs/u);assert.match(verification,/node scripts\/build.mjs ci-test/u);
+  assert.ok(verification.indexOf('node --test')<verification.indexOf('build.mjs ci-test'));
+  assert.match(native,/needs: test/u);assert.doesNotMatch(verification,/continue-on-error/u);
+  assert.doesNotMatch(native,/dtolnay\/rust-toolchain/u);assert.match(native,/fail-fast: false/u);
+  assert.match(workflow,/needs\.test\.result == 'success'/u);
  });
 }

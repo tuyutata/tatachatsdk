@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_chat_core/flutter_chat_core.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:tatachat_sdk/attachment.dart';
-import 'package:tatachat_sdk/ui.dart';
+import 'package:tatachat_sdk/attachment/voice_recorder.dart';
+import 'package:tatachat_sdk/ui/attachment/voice_message_player.dart';
 
 void main() {
   test('语音单条唯一上限为三分钟', () {

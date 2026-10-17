@@ -404,102 +404,63 @@ class MlsNativeBindings {
 }
 
 DynamicLibrary _loadChatSdkLibrary() {
-  // iOS 由 TataChatSDK 自己的 CocoaPods 目标链接、嵌入并签名动态 XCFramework；dyld
-  // 在 Dart 启动前已经装载该 Framework，因此从当前进程解析其唯一 C FFI 符号。
-  // Smoldot 不再参与 TataChatSDK 的编译、链接、导出或加载。
-  if (Platform.isIOS) {
-    return DynamicLibrary.process();
-  }
-  final candidates = <String>[];
-  final cwd = Directory.current.path;
-  if (Platform.isMacOS) {
-    candidates.addAll([
-      path.join(cwd, 'native', 'target', 'debug', 'libtatachat_sdk.dylib'),
-      path.join(cwd, 'native', 'target', 'release', 'libtatachat_sdk.dylib'),
-      path.join(
-        cwd,
-        '..',
-        'tatachatsdk',
-        'native',
-        'target',
-        'debug',
-        'libtatachat_sdk.dylib',
-      ),
-      path.join(
-        cwd,
-        '..',
-        'tatachatsdk',
-        'native',
-        'target',
-        'release',
-        'libtatachat_sdk.dylib',
-      ),
-      'libtatachat_sdk.dylib',
-    ]);
-  } else if (Platform.isWindows) {
-    candidates.addAll([
-      path.join(cwd, 'native', 'target', 'debug', 'tatachat_sdk.dll'),
-      path.join(cwd, 'native', 'target', 'release', 'tatachat_sdk.dll'),
-      path.join(
-        cwd,
-        '..',
-        'tatachatsdk',
-        'native',
-        'target',
-        'debug',
-        'tatachat_sdk.dll',
-      ),
-      path.join(
-        cwd,
-        '..',
-        'tatachatsdk',
-        'native',
-        'target',
-        'release',
-        'tatachat_sdk.dll',
-      ),
-      'tatachat_sdk.dll',
-    ]);
-  } else {
-    candidates.addAll([
-      path.join(cwd, 'native', 'target', 'debug', 'libtatachat_sdk.so'),
-      path.join(cwd, 'native', 'target', 'release', 'libtatachat_sdk.so'),
-      path.join(
-        cwd,
-        '..',
-        'tatachatsdk',
-        'native',
-        'target',
-        'debug',
-        'libtatachat_sdk.so',
-      ),
-      path.join(
-        cwd,
-        '..',
-        'tatachatsdk',
-        'native',
-        'target',
-        'release',
-        'libtatachat_sdk.so',
-      ),
-      'libtatachat_sdk.so',
-    ]);
-  }
-
-  Object? lastError;
-  for (final candidate in candidates) {
-    if (candidate.startsWith('lib') || File(candidate).existsSync()) {
-      try {
-        return DynamicLibrary.open(candidate);
-      } catch (e) {
-        lastError = e;
-      }
+  // iOS由TataChatSDK自己的CocoaPods目标装载动态Framework，沿用正式插件合同。
+  // TataChatSDK 自己的 CocoaPods 目标不依赖其它产品原生库。
+  if (Platform.isIOS) return DynamicLibrary.process();
+  if (Platform.environment.containsKey('FLUTTER_TEST')) {
+    final work = Platform.environment['TATACHATSDK_TEST_WORK_ROOT'];
+    final library = Platform.environment['TATACHATSDK_TEST_NATIVE_LIBRARY'];
+    if (work == null ||
+        library == null ||
+        !path.isAbsolute(work) ||
+        !path.isAbsolute(library) ||
+        path.normalize(work) != work ||
+        path.normalize(library) != library ||
+        FileSystemEntity.typeSync(work, followLinks: false) !=
+            FileSystemEntityType.directory ||
+        Directory(work).resolveSymbolicLinksSync() != work ||
+        FileSystemEntity.typeSync(library, followLinks: false) !=
+            FileSystemEntityType.file ||
+        File(library).resolveSymbolicLinksSync() != library ||
+        !path.isWithin(work, library)) {
+      throw MlsNativeException(
+        MlsNativeErrorCode.libraryUnavailable,
+        '测试MLS动态库必须显式属于本轮验证任务',
+      );
     }
+    final marker = File(path.join(work, '.active.json'));
+    if (FileSystemEntity.typeSync(marker.path, followLinks: false) !=
+        FileSystemEntityType.file) {
+      throw MlsNativeException(
+        MlsNativeErrorCode.libraryUnavailable,
+        '测试MLS动态库缺少本轮任务守卫',
+      );
+    }
+    final owner = jsonDecode(marker.readAsStringSync());
+    if (owner is! Map<String, dynamic> ||
+        owner['product_id'] != 'tatachatsdk' ||
+        owner['work'] != work ||
+        owner['state'] != 'running') {
+      throw MlsNativeException(
+        MlsNativeErrorCode.libraryUnavailable,
+        '测试MLS动态库任务身份不一致',
+      );
+    }
+    return DynamicLibrary.open(library);
   }
-  throw MlsNativeException(
-    MlsNativeErrorCode.libraryUnavailable,
-    '无法加载 libtatachat_sdk native 库: $lastError',
-  );
+  final library = Platform.isMacOS
+      ? 'libtatachat_sdk.dylib'
+      : Platform.isWindows
+      ? 'tatachat_sdk.dll'
+      : 'libtatachat_sdk.so';
+  try {
+    return DynamicLibrary.open(library);
+  } on Object {
+    throw MlsNativeException(
+      MlsNativeErrorCode.libraryUnavailable,
+      '无法加载独立TataChatSDK动态库',
+    );
+  }
 }
 
 /// OpenMLS FFI 的结构化错误类别。
