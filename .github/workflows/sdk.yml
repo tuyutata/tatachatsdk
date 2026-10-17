@@ -1,6 +1,14 @@
 name: tatachatsdk.sdk
+run-name: "TataChatSDK-${{ inputs.version }}"
 'on':
   workflow_dispatch:
+    inputs:
+      version:
+        description: 本轮候选成功版本，由产品派发入口计算
+        required: true
+        type: string
+env:
+  SDK_VERSION: "${{ inputs.version }}"
 concurrency:
   group: "${{ github.repository }}-sdk"
   cancel-in-progress: false
@@ -10,6 +18,9 @@ jobs:
   test:
     if: github.ref == 'refs/heads/main'
     runs-on: xcode-27
+    permissions:
+      contents: read
+      actions: read
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
@@ -28,6 +39,11 @@ jobs:
           /usr/bin/xcrun --find llvm-nm >/dev/null
           /usr/bin/xcodebuild -version >/dev/null
           test -x /usr/bin/plutil
+      - name: 核对候选版本和Run名称
+        env:
+          GH_TOKEN: "${{ github.token }}"
+        shell: bash
+        run: node scripts/build.mjs ci-version-check
       - name: 先执行本仓代码回归
         shell: bash
         run: node --test scripts/build.mjs
@@ -88,6 +104,7 @@ jobs:
     timeout-minutes: 120
     permissions:
       contents: write
+      actions: read
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
@@ -137,7 +154,7 @@ jobs:
     if: always() && github.ref == 'refs/heads/main'
     runs-on: xcode-27
     permissions:
-      contents: read
+      contents: write
       actions: write
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09

@@ -596,6 +596,8 @@ ZIP先读取并验证中央目录、总解压尺寸、路径及链接关系，�
 
 ## GitHub自动化
 
+版本按完整塔塔自动化的真实成功结果推进；失败、取消和草稿不消耗版本。三个十进制段按1.0.9→1.1.0、1.9.9→2.0.0进位，后两段各为0到9，首段以BigInt处理而不受JavaScript Number上限限制。产品派发前从已成功Run关联的正式Release求下一候选，通过Workflow输入冻结；Runner再次核对候选，Run、Tag、Release统一采用`TataChatSDK-版本号`，不带平台、Run ID或Attempt。Run ID、Attempt及源码SHA保存在Release元数据中。删除已完成旧Run前保存其已核验成功/失败结论，避免Run保留清理丢失版本依据；旧Tag仅用于读取既有成功版本，并按十进制进位规范化后推进。已有版本而无可验证成功依据时失败，不重置计数。产品派发拒绝同一SDK的活动Run；并发竞争或手动填写的旧候选仍会被Runner重新核对并拒绝，避免成功版本重用。失败或取消后留下的同名候选只在Run结论、Release元数据与Tag提交均匹配时清理，先删除并回查Tag，再删除Release；随后使用相同候选版本重试。成功版本和活动候选不覆盖。
+
 `.github/workflows/sdk.yml` 在三个独立 Xcode 27 ARM64 Runner Job 中调用本仓 `scripts/build.mjs`，分别编译 Android ARM64、iOS 真机与模拟器、macOS ARM64 原生资产；`fail-fast: false` 使某端失败不取消另外两端。三端全部成功后，同一 Workflow 的汇总 Job 使用 `build.mjs` 组装并验真唯一 `tatachatsdk.tgz`，创建草稿、逐件回读后公开一个 GitHub Tag/Release。失败只撤销本轮已确认创建的 Release/Tag。外部分发目的地仍未确定，真实成功以GitHub当前运行回执为准。
 
 `cargo-retention` 与末尾 `run-retention` 分别管理 Actions Cargo缓存和Workflow Run，不互相删除对方资源。末尾Run清理Job只清理该仓库、`main`和本SDK Workflow的已完成旧Run；根据测试、原生矩阵、Release与Cargo缓存清理Job的终态把当前Run作为待完成的最新成功或失败候选，并保留另一类最新记录。当前Run身份通过GitHub `actions/runs/{run_id}`接口读取，历史候选通过工作流Run列表读取；旧push Run可清理。任何活动Run、其它工作流与其它分支均不删除。两类清理分别校验保留结果；接口或收敛检查失败时明确报错，不输出成功回执。清理Job失败不改变已完成的原生编译或Release Job结论，但会使最终GitHub Run失败；Tag/Release资产不由Run清理删除。控制台任务栏仍单独展示本机活动任务，GitHub镜像只保存本SDK `main` 手动派发已完成Run的最新成功和失败记录。
@@ -616,7 +618,7 @@ Run `38687909851` 的test及Android、iOS、macOS三个native Job全部成功；
 
 Run `38690355897` 的test及三端native Job再次全部成功，Release Job已装配并验真本轮三端正式包，但创建草稿后按Tag查询Release得到GitHub 404；GitHub文档说明该接口只返回已发布Release。旧撤销同时尝试删除草稿尚未建立的Tag，返回422；事后回读本仓Release与Tag均为空。现先从有写权限可见的Release分页列表按本轮Tag核对草稿、目标提交与唯一资产摘要，发布后再按Tag和Git ref回读，并下载唯一资产核对实际字节。失败撤销先核对本轮Tag是否存在，仅在Tag身份与提交均匹配时连同本轮Release删除；无Tag的草稿只删除草稿。正式发布结果仍待下一次GitHub工作流验收。
 
-三个native Job各自通过GitHub Actions Cache恢复同平台最近一次Cargo Release目标目录；缓存键绑定macOS ARM64、平台、`native/Cargo.lock`与本仓编译实现，运行身份使成功快照拥有新键。产品在固定工作根领取和清空之后才恢复，验真原生产物后、清场前将本轮Cargo目录复制到Runner临时缓存现场；两次复制优先使用APFS写时复制，不共享可写硬链接。缓存元数据另核对本仓源码路径、工具版本、Runner映像和平台；不兼容或缓存损坏时干净编译。保存新缓存后只按本仓main、本平台缓存ID尽力删除旧版本，目标为三端各保留最新成功快照；缓存服务失败会明确显示，但不阻断已经验真的正式原生产物。缓存不进入源码、资源原件、七天原生交付Artifact或正式Release资产。缓存恢复、保存和原生编译分别记录耗时与字节，真实提速待成功GitHub运行验证。GitHub可能按仓库容量与闲置期限淘汰缓存，因此“保留最新一份”指尚在GitHub缓存服务内的当前快照，不承诺无限期存在。
+三个native Job各自通过GitHub Actions Cache恢复同平台最近一次Cargo Release目标目录；缓存键绑定macOS ARM64、平台、`native/Cargo.lock`与本仓编译实现，运行身份使成功快照拥有新键。产品在固定工作根领取和清空之后才恢复，验真原生产物后、清场前将本轮Cargo目录复制到Runner临时缓存现场；两次复制优先使用APFS写时复制，不共享可写硬链接。缓存元数据另核对本仓源码路径、工具版本、Runner映像和平台；不兼容或缓存损坏时干净编译。缓存清理将本轮输入键与历史候选键分开校验：本轮键必须准确匹配当前Run/Attempt，历史候选允许同平台main分支下任意合法旧Run/Attempt；错平台、错分支和损坏键在删除前拒绝。本轮未保存快照时保留该平台最新既有成功快照；没有历史缓存时保留零份。保存新缓存后只按本仓main、本平台缓存ID删除旧版本，目标为三端各保留最新成功快照；缓存服务失败会明确显示，但不阻断已经验真的正式原生产物。缓存不进入源码、资源原件、七天原生交付Artifact或正式Release资产。缓存恢复、保存和原生编译分别记录耗时与字节，真实提速待成功GitHub运行验证。GitHub可能按仓库容量与闲置期限淘汰缓存，因此“保留最新一份”指尚在GitHub缓存服务内的当前快照，不承诺无限期存在。
 
 ## GitHub塔塔门禁与同类记录清理
 
@@ -635,3 +637,7 @@ Run `38690355897` 的test及三端native Job再次全部成功，Release Job已�
 ## 产品自有编译前测试
 
 完整 Build 由本产品在首次资源回执后运行自己登记的 Node 回归，成功后才进入工程准备和正式编译。测试所需 Node 及其它资源按本仓平台声明验真：独立执行由本产品准备，控制台调度仅按本仓声明供给并调用完整 Build，不选择测试文件或限定测试工具。测试夹具的固定根映射到本仓 `target/test/sessions/<本轮随机会话>/`，子进程继承会话身份；退出时由本产品核对守卫和工具进程后仅清理该会话。正式 `target/build/<平台>` 的领取与收尾规则保持。合成阶段注入只在本仓测试上下文有效，正式完整 Build 必须先运行本仓测试。
+
+## 塔塔自动化任务归属
+
+本产品现有 `scripts/build.mjs` 公开 `dispatchProductAutomation`、`startAutomation`、`recoverAutomation`，独立负责本仓 `main` 的 GitHub Workflow 派发、Run/Job/日志观察、原 Run 取消及任务恢复。`tata/tatachatsdk.mjs` 只把控制台动作交给产品入口；控制台只提供任务宿主和带仓库、动作、平台、原任务身份的短期授权。产品入口逐项核对动作 ID、归属产品、平台、流程、二级授权及非生产声明。派发无准确 Run 回执时不得重试；已接收 Run 的后续读回失败只恢复原 Run，不能再次派发。取消必须确认 GitHub 终态，恢复必须核对仓库、workflow、平台和原 Run ID。若派发回执已持久化但首次读回中断、尚无SHA，只允许凭准确所属文件、动作和原Run URL重新读取同一Run，身份核对成功后冻结其SHA；已冻结的SHA不允许漂移，无效SHA不能按缺失处理。控制台任务的定时重连通过宿主恢复回调重新建立原任务授权上下文；独立调用仍使用本产品恢复入口，失败保持原 Run 并安排再次重连。独立调用可向 `dispatchProductAutomation` 显式交付仓库令牌；令牌不写入源码、日志或任务回执。记录镜像、资产和发布入口不属于本次迁移。同文件模拟回归覆盖准确派发、已接收 Run 的读回中断、伪造身份、Job 终态、过期授权后的原 Run 取消与恢复；这些夹具不调用真实 GitHub。
