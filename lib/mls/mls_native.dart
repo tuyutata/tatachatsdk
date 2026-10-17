@@ -437,8 +437,15 @@ DynamicLibrary _loadChatSdkLibrary() {
       );
     }
     final owner = jsonDecode(marker.readAsStringSync());
+    final lease = Platform.environment['PRODUCT_WORK_LEASE'];
     if (owner is! Map<String, dynamic> ||
-        owner['product_id'] != 'tatachatsdk' ||
+        owner['schema'] != 1 ||
+        owner['product_id'] is! String ||
+        !RegExp(r'^[a-z][a-z0-9_]*$').hasMatch(owner['product_id'] as String) ||
+        lease == null || lease.isEmpty || lease.length > 128 ||
+        owner['nonce'] != lease ||
+        owner['pid'] is! int ||
+        (owner['pid'] as int) < 2 ||
         owner['work'] != work ||
         owner['state'] != 'running') {
       throw MlsNativeException(

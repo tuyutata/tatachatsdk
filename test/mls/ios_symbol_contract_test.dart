@@ -135,6 +135,10 @@ void main() {
       expect(loader, contains('TataChatSDK 自己的 CocoaPods 目标'));
       expect(loader, contains('TATACHATSDK_TEST_NATIVE_LIBRARY'));
       expect(loader, contains('TATACHATSDK_TEST_WORK_ROOT'));
+      expect(loader, contains('PRODUCT_WORK_LEASE'));
+      expect(loader, contains("owner['nonce']"));
+      expect(loader, contains("owner['schema'] != 1"));
+      expect(loader, contains('lease.isEmpty || lease.length > 128'));
       expect(loader, isNot(contains("'native', 'target'")));
       expect(loader, isNot(contains("'..',")));
       expect(File('ios/tatachat_sdk_ffi.podspec').existsSync(), isFalse);
