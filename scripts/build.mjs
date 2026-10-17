@@ -5231,13 +5231,18 @@ if(testSession&&process.argv.length===2&&resolve(process.argv[1]||'')===fileURLT
   assert.throws(()=>requireCiTestIdentity(verificationEnvironment(),{...options,call:()=>({status:0,stdout:'b'.repeat(40)})}),/源码提交/);
   await assert.rejects(ciTest({}),/只允许/);
  });
- test('测试资源闭包拥有Pub和Flutter，正式原生需求仍保持最小',()=>{
+ test('测试资源闭包拥有Pub和Flutter，正式原生需求仍保持最小',async()=>{
   const normal=requirements('sdk',fixedWork('test')),verify=requirements('sdk',fixedWork('test'),{purpose:'verification'});
   assert.deepEqual(normal.tools,contract.platforms.sdk.tools);assert.deepEqual(normal.locks,contract.platforms.sdk.locks);
   assert.equal(verify.tools.find(tool=>tool.id==='flutter').version,resourceDeclarations().tools.find(tool=>tool.id==='flutter').version);
   assert.ok(verify.tools.some(tool=>tool.id==='git'));assert.ok(!verify.tools.some(tool=>tool.id==='android-ndk'));
   assert.deepEqual(verify.locks,[...normal.locks,{ecosystem:'pub',path:'pubspec.lock'}]);
-  assert.throws(()=>requirements('sdk',fixedWork('build/sdk'),{purpose:'verification'}),/用途/);
+  // 先领取真实夹具现场，再验证用途拒绝，避免缺目录抢先触发ENOENT。
+  await withFixedWork('build/sdk',async work=>{
+   assert.deepEqual(requirements('sdk',work).tools,normal.tools);
+   assert.throws(()=>requirements('sdk',work,{purpose:'verification'}),/用途/);
+  });
+  assert.equal(existsSync(fixedWork('build/sdk')),false);
   assert.throws(()=>requirements('sdk',fixedWork('test'),{purpose:'unknown'}),/用途/);
  });
  const reportFixture=()=>[
@@ -5323,23 +5328,35 @@ export const automationClient=Object.freeze({automationRepository,automationWork
 if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===import.meta.filename){
  const {test}=await import('node:test'),{default:assert}=await import('node:assert/strict');
  test('独立自动化接口不接收任务宿主，准确派发与错误回执只请求一次',async()=>{
-  const api=automationClient,workflows=api.automationWorkflows||api.automationWorkflow;
+  const api=automationClient,workflows=api.automationWorkflows;
   const platform=Object.keys(workflows)[0],workflow=workflows[platform],repository=api.automationRepository;
-  const dispatch=api.dispatchAutomation||api.dispatchProductAutomation||api.dispatch;
-  let dispatches=0,mode='success';
+  const prefix='/repos/'+repository,active=prefix+'/actions/workflows/'+workflow+'/runs?branch=main&per_page=100&page=1';
+  const releases=prefix+'/releases?per_page=100&page=1',dispatch=prefix+'/actions/workflows/'+workflow+'/dispatches';
+  let dispatches=0,mode='success';const requests=[];
   const run={id:731,run_number:1,run_attempt:1,path:'.github/workflows/'+workflow,event:'workflow_dispatch',head_branch:'main',
    head_sha:'a'.repeat(40),repository:{full_name:repository},status:'completed',conclusion:'success',
-   html_url:'https://github.com/'+repository+'/actions/runs/731'};
+   html_url:'https://github.com/'+repository+'/actions/runs/731',display_title:'TataChatSDK-1.0.0'};
   const fetchImpl=async(url,options)=>{
-   if(new URL(url).pathname.endsWith('/dispatches')){
+   const parsed=new URL(url),path=parsed.pathname+parsed.search;assert.equal(parsed.origin,'https://api.github.com');
+   requests.push(options.method+' '+path);
+   // 使用真实派发前置：先查活动Run和成功版本，再POST一次并回读准确Run。
+   if(path===active){assert.equal(options.method,'GET');return Response.json({workflow_runs:[]});}
+   if(path===releases){assert.equal(options.method,'GET');return Response.json([]);}
+   if(path===dispatch){
     dispatches++;assert.equal(options.method,'POST');
+    assert.deepEqual(JSON.parse(options.body),{ref:'main',inputs:{version:'1.0.0'}});
     return mode==='ambiguous'?new Response(null,{status:204}):Response.json({workflow_run_id:731,html_url:run.html_url});
    }
-   assert.ok(new URL(url).pathname.endsWith('/runs/731'));
+   assert.equal(path,prefix+'/actions/runs/731');assert.equal(options.method,'GET');
    return Response.json(mode==='wrong'?{...run,head_sha:'invalid'}:run);
   };
-  const invoke=()=>api.automationTransport?api.automationTransport.run({fetchImpl},()=>dispatch(platform,'fixture',{fetchImpl})):dispatch(platform,'fixture',{fetchImpl});
-  assert.equal((await invoke()).id,731);assert.equal(dispatches,1);
-  for(const failure of ['ambiguous','wrong']){mode=failure;dispatches=0;await assert.rejects(invoke);assert.equal(dispatches,1);}
+  const invoke=()=>api.dispatchProductAutomation(platform,'fixture',{fetchImpl});
+  const expected=['GET '+active,'GET '+releases,'POST '+dispatch,'GET '+prefix+'/actions/runs/731'];
+  assert.equal((await invoke()).id,731);assert.equal(dispatches,1);assert.deepEqual(requests,expected);
+  for(const failure of ['ambiguous','wrong']){
+   mode=failure;dispatches=0;requests.length=0;
+   await assert.rejects(invoke,failure==='ambiguous'?/准确 Run 回执/:/身份/);
+   assert.equal(dispatches,1);assert.deepEqual(requests,failure==='ambiguous'?expected.slice(0,3):expected);
+  }
  });
 }

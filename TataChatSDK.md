@@ -672,3 +672,10 @@ GitHub接口使用普通参数和已授权令牌，返回本仓既有版本计�
 已有native-dependency公开入口支持macOS/Linux的host。SDK按相同原生实现构建并核对符号，把宿主库复制到显式TATACHATSDK_NATIVE_HOST_DIR；编译缓存和产物均属于调用方已领取的target/build/ios、target/build/android或target/test现场，原生源码只读。SDK不替调用方清场；任务身份、令牌、进程、Cargo根及输出路径均须通过原入口检查。独立产品任务以真实现场、随机令牌和进程为身份；控制台调用另保留准确九位任务号，GitHub调用使用完整Run、Attempt、repository和源码SHA，不把控制台编号作为独立执行前置，也不截断Run号或建立假任务。
 
 Flutter测试装载显式库时核对同一真实调用方的.active.json、产品身份格式、工作根、running状态和非空且最多128字符的PRODUCT_WORK_LEASE，允许SDK自身测试与通过公开host入口交付的产品回归；不硬编码只有本SDK才能消费。不扫描邻仓/用户缓存，不改变生产端动态库与iOS进程装载方式。新增host正常、越界、错误任务、GitHub Run不匹配及原有移动端边界回归，均须GitHub执行验收。此扩展不实现任何钱包能力。
+
+
+## 测试夹具的现场与派发请求边界
+
+资源用途拒绝回归必须先由本仓withFixedWork领取真实测试会话的build/sdk现场，再经公开requirements验证用途拒绝并由原入口清场；缺少目录的ENOENT不能替代用途校验结论。正式资源目录与用途约束保持。
+
+独立自动化接口回归使用本产品唯一automationClient.dispatchProductAutomation，夹具按真实顺序响应活动Run查询、正式Release版本查询、一次POST派发和准确Run回读，候选display_title须与版本计划一致。正常、歧义回执与错SHA均保留原拒绝约束，并核对每轮派发恰好一次及实际请求顺序；夹具不访问真实网络。完整验收仍由控制台发起GitHub测试、三端编译及既有发布流程，失败即停止推进。
