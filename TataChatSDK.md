@@ -640,3 +640,8 @@ ChatConversationHost.prepareAttachment为可选Future<void> Function(String user
 同一次附件过程可能在选取前和发送前分别核对，以覆盖长时间选取/录制和中途失效；宿主复用同一Future/短期结果，不能为每次回调重新请求。异常沿原错误显示停止动作，已切用户/账户/会话或已销毁页面的迟到结果不得继续处理/发送。原文件归属、媒体大小、时长、上传与清理约束保持。
 
 宿主回归沿用原native-dependency入口的host动作：仅借用调用产品已领取的ios/android任务，继续核对run_id、nonce、进程归属、目录身份和Cargo闭包。复用原host构建及符号验真，将本轮宿主库交付到调用方声明的TATACHATSDK_NATIVE_HOST_DIR；不改变协议、依赖或工具版本。
+
+
+第2步运行时附件边界：原ChatRuntimeHost保持，产品可选择实现同文件ChatAttachmentAuthorizationHost.prepareAttachment(account, allowRefresh, expectedDeviceId)。SDK只等待布尔许可并复核原账户/绑定围栏，不解释会员。主动sendMedia/sendGroupAttachment在大小/加密前以及长加密后复核；主动downloadAttachment可刷新。自动上传/补发、入站及页面自动补取只用缓存，不主动刷新；缓存缺失/过期保留原待发密文和控制消息。直聊普通消息继续，群聊沿原顺序；没有新缓存、计时器或状态表。有效缓存取得后可继续原重试，原受众/MLS/文件清理/服务端权限保持。
+
+运行时新附件ID仅含ASCII字母、数字、下划线及连字符，并保持1～128字符，沿用原MLS/HTTP严格校验。生成器保留毫秒值和128位安全随机数；会话归属仍由原绑定围栏、受众和服务端检查确定。

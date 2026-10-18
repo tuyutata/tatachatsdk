@@ -75,6 +75,15 @@ abstract interface class ChatRuntimeHost {
   Future<void> invalidateAccount(String accountId);
 }
 
+/// 可选的异步附件边界；SDK不解释产品会员。后台只能使用宿主已有有效结果。
+abstract interface class ChatAttachmentAuthorizationHost {
+  Future<bool> prepareAttachment(
+    ChatRuntimeAccount account, {
+    required bool allowRefresh,
+    String? expectedDeviceId,
+  });
+}
+
 class _RetryableAsyncDisposer {
   _RetryableAsyncDisposer(this._operation);
 
@@ -2806,24 +2815,60 @@ class ChatRuntimeCore {
     _outboundRetryTimers[key] = timer;
   }
 
+  Future<bool> _prepareAttachmentAuthorization(
+    ChatRuntimeAccount account, {
+    required bool allowRefresh,
+    String? expectedDeviceId,
+    ChatBindingFenceToken? bindingToken,
+  }) async {
+    final host = _host;
+    if (host is! ChatAttachmentAuthorizationHost) return true;
+    final allowed = await (host as ChatAttachmentAuthorizationHost)
+        .prepareAttachment(
+          account,
+          allowRefresh: allowRefresh,
+          expectedDeviceId: expectedDeviceId,
+        );
+    _ensureActive();
+    final current = await _readAccount(expectedAccountId: account.accountId);
+    if (current.userId != account.userId ||
+        current.bindingRevision != account.bindingRevision ||
+        current.bindingScope != account.bindingScope ||
+        current.hostIndex != account.hostIndex) {
+      throw StateError('附件授权期间账户绑定已变化');
+    }
+    if (bindingToken != null) {
+      await _store.validateBindingFenceToken(bindingToken);
+    }
+    return allowed;
+  }
+
+  void _requireAttachmentSize(ChatMessageKind kind, int? byteSize) {
+    if (byteSize == null || byteSize < 0) throw StateError('附件大小无效');
+    if (_host.mediaLimits.exceedsForKind(kind, byteSize)) {
+      throw ChatMediaTooLargeException(
+        byteSize: byteSize,
+        limitBytes: _host.mediaLimits.limitForKind(kind),
+        kind: kind,
+      );
+    }
+  }
+
   Future<List<ChatDeliveryResult>> sendMedia({
     required String peerUserId,
     required String conversationId,
     required ChatMediaDraft media,
     ChatMediaLocalCommitNotifier? onLocalCommitted,
   }) async {
-    if (_host.mediaLimits.exceedsForKind(media.kind, media.byteSize)) {
-      throw ChatMediaTooLargeException(
-        byteSize: media.byteSize,
-        limitBytes: _host.mediaLimits.limitForKind(media.kind),
-        kind: media.kind,
-      );
+    final account = await _readAccount();
+    if (!await _prepareAttachmentAuthorization(account, allowRefresh: true)) {
+      throw StateError('宿主附件授权不可用');
     }
+    _requireAttachmentSize(media.kind, media.byteSize);
     final attachmentId = _newPendingAttachmentId(
       conversationId,
       DateTime.now().millisecondsSinceEpoch,
     );
-    final account = await _readAccount();
     final bindingToken = await _convergeBindingFence(account);
     final content = await _prepareEncryptedMedia(
       bindingToken: bindingToken,
@@ -2927,7 +2972,12 @@ class ChatRuntimeCore {
       attachmentId,
     );
     try {
-      return await engine.seal(
+      // 非UI首次发送同样在原绑定围栏内准备保护根；后续路径/符号链接校验仍由MLS执行。
+      await _runBindingFileMutation(bindingToken, () async {
+        final root = await _attachmentDirectoryForToken(bindingToken);
+        await root.create(recursive: true);
+      });
+      final content = await engine.seal(
         attachmentId: attachmentId,
         byteSize: media.byteSize,
         source: File(media.sourcePath),
@@ -2955,8 +3005,19 @@ class ChatRuntimeCore {
           cipherSha256: d.cipherSha256,
         ),
       );
+      // 长处理结束后再核验；拒绝仍进入原MLS abort及临时文件清理分支。
+      if (!await _prepareAttachmentAuthorization(
+        account,
+        allowRefresh: true,
+        expectedDeviceId: context.deviceId,
+        bindingToken: bindingToken,
+      )) {
+        throw StateError('宿主附件授权不可用');
+      }
+      _requireAttachmentSize(media.kind, media.byteSize);
+      return content;
     } catch (error, stackTrace) {
-      // 名册失效后的清理只复核当前绑定，不再要求已经失效的原聊天名册。
+      // 名册或附件授权失效后，清理只复核当前绑定，不再要求失效的名册或会员。
       // 身份失效则禁止旧令牌写入，准确协议状态仍受七天过期清理约束。
       try {
         final cleanup = await _attachmentEngine(context);
@@ -3213,15 +3274,12 @@ class ChatRuntimeCore {
     required ChatMediaDraft media,
     ChatMediaLocalCommitNotifier? onLocalCommitted,
   }) {
-    if (_host.mediaLimits.exceedsForKind(media.kind, media.byteSize)) {
-      throw ChatMediaTooLargeException(
-        byteSize: media.byteSize,
-        limitBytes: _host.mediaLimits.limitForKind(media.kind),
-        kind: media.kind,
-      );
-    }
     return () async {
       final account = await _readAccount();
+      if (!await _prepareAttachmentAuthorization(account, allowRefresh: true)) {
+        throw StateError('宿主附件授权不可用');
+      }
+      _requireAttachmentSize(media.kind, media.byteSize);
       if (!await _host.canSend(account.userId)) {
         throw StateError('当前会话尚未通过宿主发送授权');
       }
@@ -3401,7 +3459,12 @@ class ChatRuntimeCore {
     final bindingToken = context.bindingToken;
     final content = ChatPayloadCodec.decode(controlPlaintext);
     if (content.isMedia) {
-      await _downloadIncomingCloudAttachment(context, conversationId, content);
+      await _downloadIncomingCloudAttachment(
+        context,
+        conversationId,
+        content,
+        allowRefresh: true,
+      );
     }
     final cacheDirectory = await _attachmentDirectoryForToken(bindingToken);
     return ChatFlow.downloadAttachment(
@@ -3557,6 +3620,20 @@ class ChatRuntimeCore {
         continue;
       }
       final content = ChatPayloadCodec.decode(item.payload);
+      if (content.isMedia && _host is ChatAttachmentAuthorizationHost) {
+        final allowed = await _prepareAttachmentAuthorization(
+          context.account,
+          allowRefresh: false,
+          expectedDeviceId: context.deviceId,
+          bindingToken: context.bindingToken,
+        );
+        if (!allowed) {
+          // 未知/到期只暂缓；不新增刷新、退避或丢弃待发密文。
+          if (item.conversationId.startsWith('grp:')) return true;
+          continue;
+        }
+        _requireAttachmentSize(content.kind, content.byteSize);
+      }
       if (!item.conversationId.startsWith('grp:') && content.isMedia) {
         final attachmentId = content.attachmentId ?? '';
         if (attachmentId.isEmpty) return true;
@@ -3711,6 +3788,17 @@ class ChatRuntimeCore {
     ChatPendingOutgoingMessage pending,
     ChatContent content,
   ) async {
+    if (!await _prepareAttachmentAuthorization(
+      context.account,
+      allowRefresh: false,
+      expectedDeviceId: context.deviceId,
+      bindingToken: context.bindingToken,
+    )) {
+      throw StateError('宿主附件授权暂缓');
+    }
+    if (_host is ChatAttachmentAuthorizationHost) {
+      _requireAttachmentSize(content.kind, content.byteSize);
+    }
     final attachmentId = content.attachmentId ?? '';
     final cipherByteSize = content.cipherByteSize ?? -1;
     final cipherSha256 = content.cipherSha256 ?? '';
@@ -3739,6 +3827,17 @@ class ChatRuntimeCore {
       throw StateError('Chat 本地待上传附件密文缺失');
     }
     try {
+      if (!await _prepareAttachmentAuthorization(
+        context.account,
+        allowRefresh: false,
+        expectedDeviceId: context.deviceId,
+        bindingToken: context.bindingToken,
+      )) {
+        throw StateError('宿主附件授权暂缓');
+      }
+      if (_host is ChatAttachmentAuthorizationHost) {
+        _requireAttachmentSize(content.kind, content.byteSize);
+      }
       await context.transport.uploadEncryptedAttachment(
         attachmentId: attachmentId,
         recipientUserIds: _attachmentRecipientUserIds(content),
@@ -3876,6 +3975,17 @@ class ChatRuntimeCore {
     ChatPendingOutgoingMessage pending,
     ChatContent content,
   ) async {
+    if (!await _prepareAttachmentAuthorization(
+      context.account,
+      allowRefresh: false,
+      expectedDeviceId: context.deviceId,
+      bindingToken: context.bindingToken,
+    )) {
+      throw StateError('宿主附件授权暂缓');
+    }
+    if (_host is ChatAttachmentAuthorizationHost) {
+      _requireAttachmentSize(content.kind, content.byteSize);
+    }
     final attachmentId = content.attachmentId ?? '';
     final cipherByteSize = content.cipherByteSize ?? -1;
     final cipherSha256 = content.cipherSha256 ?? '';
@@ -3899,6 +4009,17 @@ class ChatRuntimeCore {
         throw StateError('Chat 群待上传附件密文缺失');
       }
       try {
+        if (!await _prepareAttachmentAuthorization(
+          context.account,
+          allowRefresh: false,
+          expectedDeviceId: context.deviceId,
+          bindingToken: context.bindingToken,
+        )) {
+          throw StateError('宿主附件授权暂缓');
+        }
+        if (_host is ChatAttachmentAuthorizationHost) {
+          _requireAttachmentSize(content.kind, content.byteSize);
+        }
         await context.transport.uploadEncryptedAttachment(
           attachmentId: attachmentId,
           recipientUserIds: recipients,
@@ -4945,8 +5066,9 @@ class ChatRuntimeCore {
   Future<void> _downloadIncomingCloudAttachment(
     ChatRuntimeAccountContext context,
     String conversationId,
-    ChatContent content,
-  ) {
+    ChatContent content, {
+    bool allowRefresh = false,
+  }) {
     final attachmentId = content.attachmentId ?? '';
     final key = '${context.account.accountId}|$conversationId|$attachmentId';
     final existing = _incomingAttachmentDownloads[key];
@@ -4959,6 +5081,19 @@ class ChatRuntimeCore {
           for (var attempt = 0; attempt <= 4; attempt += 1) {
             if (attempt > 0) {
               await Future<void>.delayed(_outboundRetryDelays[attempt - 1]);
+            }
+            // 自动补取同样只用有效缓存；主动点击才允许刷新，ACK/受众与原重试保持。
+            if (!await _prepareAttachmentAuthorization(
+              context.account,
+              allowRefresh: allowRefresh,
+              expectedDeviceId: context.deviceId,
+              bindingToken: context.bindingToken,
+            )) {
+              if (allowRefresh) throw StateError('宿主附件授权不可用');
+              return;
+            }
+            if (_host is ChatAttachmentAuthorizationHost) {
+              _requireAttachmentSize(content.kind, content.byteSize);
             }
             try {
               await _cacheIncomingCloudAttachment(
@@ -5284,7 +5419,8 @@ String _newPendingMessageId(String conversationId, int millis) =>
     'pending:${_safePath(conversationId)}:$millis:${_newNonce()}';
 
 String _newPendingAttachmentId(String conversationId, int millis) =>
-    'attachment:${_safePath(conversationId)}:$millis:${_newNonce()}';
+    // 附件ID遵守原MLS及HTTP字符合同；会话隔离仍由存储和授权上下文承担。
+    'attachment_${millis}_${_newNonce()}';
 
 String _newNonce() {
   final random = Random.secure();
