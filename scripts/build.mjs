@@ -2042,15 +2042,30 @@ if(testSession&&process.argv.length===2&&resolve(process.argv[1]||'')===fileURLT
  });
  test('失败候选按同版本重试，成功候选和错误Tag拒绝覆盖',async()=>{
   const label='塔塔聊天·SDK·v1.1.0',sha='a'.repeat(40),row={id:55,tag_name:label,target_commitish:sha,body:'fixture proof'};
-  const plan={label,owned:[{row,identity:{sha},conclusion:'failure'}]},removed=[];
-  const request=async path=>path.startsWith('releases/')?removed.includes('releases/55')?null:row:
-   removed.some(value=>value.startsWith('git/refs/'))?null:{object:{type:'commit',sha}};
-  await clearSDKFailedCandidate(plan,{request,remove:async path=>removed.push(path)});
-  assert.deepEqual(removed,['git/refs/tags/'+label,'releases/55']);
+  const plan={label,owned:[{row,identity:{sha},conclusion:'failure'}]},removed=[],requests=[];
+  // 中文展示名在API路径中按UTF-8编码；金标不调用生产名称生成器。
+  const encoded='%E5%A1%94%E5%A1%94%E8%81%8A%E5%A4%A9%C2%B7SDK%C2%B7v1.1.0';
+  const tagRead='git/ref/tags/'+encoded,tagDelete='git/refs/tags/'+encoded;
+  const request=async path=>{
+   requests.push(['GET',path]);
+   if(path==='releases/55')return removed.includes(path)?null:row;
+   if(path===tagRead)return removed.includes(tagDelete)?null:{object:{type:'commit',sha}};
+   assert.fail('未声明的失败候选读取：'+path);
+  };
+  await clearSDKFailedCandidate(plan,{request,remove:async path=>{
+   assert.ok([tagDelete,'releases/55'].includes(path),'只删除准确失败候选');
+   requests.push(['DELETE',path]);removed.push(path);
+  }});
+  assert.deepEqual(removed,[tagDelete,'releases/55']);
+  assert.deepEqual(requests,[['GET','releases/55'],['GET',tagRead],['DELETE',tagDelete],
+   ['GET',tagRead],['DELETE','releases/55'],['GET','releases/55']]);
   for(const conclusion of ['success','active','unknown'])await assert.rejects(clearSDKFailedCandidate({label,owned:[{...plan.owned[0],conclusion}]},
    {request,remove:()=>assert.fail('不得删除成功或未定候选')}),/已有成功或未结束/);
-  await assert.rejects(clearSDKFailedCandidate(plan,{request:async path=>path.startsWith('releases/')?row:
-   {object:{type:'commit',sha:'b'.repeat(40)}},remove:()=>assert.fail('不得删除其它提交')}),/Tag身份漂移/);
+  await assert.rejects(clearSDKFailedCandidate(plan,{request:async path=>{
+   if(path==='releases/55')return row;
+   if(path===tagRead)return {object:{type:'commit',sha:'b'.repeat(40)}};
+   assert.fail('未声明的Tag身份读取：'+path);
+  },remove:()=>assert.fail('不得删除其它提交')}),/Tag身份漂移/);
  });
  test('SDK候选版本入口核对Run名称和准确任务身份',async()=>{
   const env={GITHUB_ACTIONS:'true',GITHUB_REPOSITORY:sdkVersionRepository,GITHUB_WORKFLOW:'塔塔聊天·SDK',
