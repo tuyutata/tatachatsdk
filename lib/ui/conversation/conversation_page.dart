@@ -69,10 +69,26 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
   Future<void>? _voiceStartInFlight;
   bool _deleting = false;
   String? _pageError;
+  late final bool Function() _attachmentContextCurrent;
 
   @override
   void initState() {
     super.initState();
+    final origin = (
+      widget.currentUserId,
+      widget.accountId,
+      widget.conversationId,
+      widget.sdk,
+    );
+    _attachmentContextCurrent = () =>
+        mounted &&
+        origin ==
+            (
+              widget.currentUserId,
+              widget.accountId,
+              widget.conversationId,
+              widget.sdk,
+            );
     _voiceRecorder = VoiceRecorder(onMaximumReached: _sendVoiceResult);
     _voiceRecorder.state.addListener(_onVoiceStateChanged);
     _mediaCompressor = MediaCompressor(
@@ -208,8 +224,18 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
     }
   }
 
+  Future<bool> _prepareAttachment() async {
+    if (!_attachmentContextCurrent()) return false;
+    await widget.host.prepareAttachment?.call(widget.currentUserId);
+    // 整个附件动作归本页初始会话；选取/录音期间换账户也不能交给新会话。
+    return _attachmentContextCurrent() && _requireSendPermission();
+  }
+
   Future<void> _sendMediaDrafts(Iterable<ChatMediaDraft> drafts) async {
     if (_conversationController.attachmentBusy || !_requireSendPermission()) {
+      return;
+    }
+    if (!await _prepareAttachment() || _conversationController.attachmentBusy) {
       return;
     }
     final prepared = drafts.toList(growable: false);
@@ -290,6 +316,7 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
   }
 
   Future<ChatMediaDraft> _buildMediaDraft(PickedMediaFile picked) async {
+    if (!await _prepareAttachment()) throw StateError('聊天会话已变化');
     final path = await _mediaCompressor.ensureWithinLimit(
       path: picked.path,
       kind: picked.kind,
@@ -320,6 +347,13 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
     if (!_requireSendPermission()) return;
     _togglePanel(ChatComposerPanel.none);
     try {
+      if ((action == ChatComposerAction.gallery ||
+              action == ChatComposerAction.capture ||
+              action == ChatComposerAction.file) &&
+          !await _prepareAttachment()) {
+        return;
+      }
+      if (!mounted) return;
       switch (action) {
         case ChatComposerAction.gallery:
           await _pickGallery();
@@ -406,7 +440,9 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
       return;
     }
     late final Future<void> pending;
-    pending = _voiceRecorder.start();
+    pending = () async {
+      if (await _prepareAttachment()) await _voiceRecorder.start();
+    }();
     _voiceStartInFlight = pending;
     try {
       await pending;
@@ -450,6 +486,7 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
   Future<void> _sendVoiceResult(VoiceRecordingResult result) async {
     final file = File(result.path);
     try {
+      if (!await _prepareAttachment()) return;
       await _sendMediaDrafts([
         ChatMediaDraft(
           kind: ChatMessageKind.audio,

@@ -22,10 +22,15 @@ class ChatConversationHost {
     this.onTransfer,
     this.onLocation,
     this.actionIconBuilder,
+    this.prepareAttachment,
   });
 
   final ChatViewStyle style;
   final ChatMediaLimitPolicy mediaLimits;
+
+  /// 可选宿主准备边界：附件选取/录制、处理和发送前等待；打开聊天和文字不调用。
+  /// SDK不解析会员或查链，宿主自行合并请求、校验会话及额度；失败以异常停止动作。
+  final Future<void> Function(String userId)? prepareAttachment;
   final bool Function(String userId) canSend;
   final String Function(String userId) unavailableMessage;
   final String Function(Object error) errorMessage;
