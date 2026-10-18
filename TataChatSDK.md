@@ -703,3 +703,15 @@ gzip使用Node内置流解压；XZ只使用已交付的同一受控bsdtar，先�
 内部消费者直接导入类型所属模块：通话页面使用call/flutter_peer.dart中的FlutterCallPeer，信令回归的ICE配置来自call/transport.dart。不依赖其它模块的间接import，不恢复已删除的聚合壳文件；唯一外部聚合入口仍为lib/tatachat_sdk.dart。严格分析继续包含全部源码和测试，info与warning仍作为失败。
 
 工具执行保留真实退出码，超时、取消、输入或启动错误与进程组收尾错误独立记录，不让信号错误掩盖首错。信号仅作用于本轮spawn取得的进程组；ESRCH视为已退出，其它状态为未知，诊断只包含固定系统类别和数值errno。主进程正常退出留下的同组后台工具须终止并确认；本轮spawn取得的PID在执行期间固定，最终仅明确ESRCH确认整组退出，中途EPERM等诊断独立保留，不能在最终确认退出后继续误判。仅工具退出码被接受且没有超时、取消、输入、启动、登记等错误时允许交付；最终仍EPERM、活动或其它未知状态必须失败并保留本轮现场。未取得有效本轮PID不能证明退出。原Node前置回归覆盖EPERM到ESRCH的确定时序、持续EPERM/活动、无PID、真实非零退出、正常和失败父进程的后台后代、超时和取消；信号系统调用可显式注入合成边界，生产默认仍为系统process.kill，不从环境选择。全部SDK测试和编译继续只在GitHub执行。
+
+
+## 可等待的宿主附件准备（前后端联调第2步）
+
+ChatConversationHost.prepareAttachment为可选Future<void> Function(String userId)。SDK在选图/文件/拍摄、开始录音、媒体处理及实际附件发送前await它；文字、表情、页面打开和重连不调用。宿主负责合并进行中的请求、核对当前账户/设备/会话、会员与有效期限；SDK不导入公民会员模型，不直接调用CitizenServe或查链。缺省null保持其他产品原行为。
+
+同一次附件过程可能在选取前和发送前分别核对，以覆盖长时间选取/录制和中途失效；宿主复用同一Future/短期结果，不能为每次回调重新请求。异常沿原错误显示停止动作，已切用户/账户/会话或已销毁页面的迟到结果不得继续处理/发送。原文件归属、媒体大小、时长、上传与清理约束保持。
+
+
+第2步运行时附件边界：原ChatRuntimeHost保持，产品可选择实现同文件ChatAttachmentAuthorizationHost.prepareAttachment(account, allowRefresh, expectedDeviceId)。SDK只等待布尔许可并复核原账户/绑定围栏，不解释会员。主动sendMedia/sendGroupAttachment在大小/加密前以及长加密后复核；主动downloadAttachment可刷新。自动上传/补发、入站及页面自动补取只用缓存，不主动刷新；缓存缺失/过期保留原待发密文和控制消息。直聊普通消息继续，群聊沿原顺序；没有新缓存、计时器或状态表。有效缓存取得后可继续原重试，原受众/MLS/文件清理/服务端权限保持。
+
+运行时新附件ID仅含ASCII字母、数字、下划线及连字符，并保持1～128字符，沿用原MLS/HTTP严格校验。生成器保留毫秒值和128位安全随机数；会话归属仍由原绑定围栏、受众和服务端检查确定。

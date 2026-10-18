@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:fixnum/fixnum.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:tatachat_sdk/mls/mls_attachment.dart';
 import 'package:tatachat_sdk/tatachat_sdk.dart';
 
 import '../support/isar_test_env.dart';
@@ -47,14 +48,27 @@ final class _Push implements ChatPushBridge {
   Future<void> dispose() async {}
 }
 
-final class _Host implements ChatRuntimeHost {
+final class _Host implements ChatRuntimeHost, ChatAttachmentAuthorizationHost {
   ChatRuntimeAccount account = _account;
+  ChatMediaLimitPolicy limits = const ChatUnlimitedMediaLimitPolicy();
+  final checks = <({bool refresh, String? device})>[];
+  Future<bool> Function()? authorizeAttachment;
+  @override
+  Future<bool> prepareAttachment(
+    ChatRuntimeAccount account, {
+    required bool allowRefresh,
+    String? expectedDeviceId,
+  }) async {
+    checks.add((refresh: allowRefresh, device: expectedDeviceId));
+    return await authorizeAttachment?.call() ?? true;
+  }
+
   Completer<ChatAccess>? access;
   final enteredAccess = Completer<void>();
   @override
   ChatPushBridge get push => _Push();
   @override
-  ChatMediaLimitPolicy get mediaLimits => const ChatUnlimitedMediaLimitPolicy();
+  ChatMediaLimitPolicy get mediaLimits => limits;
   @override
   Future<bool> canSend(String userId) async => true;
   @override
@@ -250,6 +264,53 @@ final class _Transport implements ChatServiceTransport {
     };
   }
 
+  int uploads = 0, downloads = 0, resolutions = 0;
+  List<MlsKeyPackage> remotePackages = [];
+  Future<void> Function()? onUpload, onDownload;
+  @override
+  Future<void> uploadEncryptedAttachment({
+    required String attachmentId,
+    required List<String> recipientUserIds,
+    required File cipherFile,
+    required int cipherByteSize,
+    required String cipherSha256,
+    required int createdAtMillis,
+  }) async {
+    uploads++;
+    await onUpload?.call();
+    throw StateError('synthetic paused upload');
+  }
+
+  @override
+  Future<void> downloadEncryptedAttachment({
+    required String attachmentId,
+    required File target,
+    required int expectedByteSize,
+    required String expectedSha256,
+  }) async {
+    downloads++;
+    await onDownload?.call();
+    throw StateError('synthetic paused download');
+  }
+
+  @override
+  Future<List<MlsKeyPackage>> resolveKeyPackages(String userId) async {
+    resolutions++;
+    return userId == 'user-a' ? published : remotePackages;
+  }
+
+  @override
+  Future<ChatDeliveryResult> sendEncryptedMessage({
+    required String messageId,
+    required List<int> messageBytes,
+    required String recipientUserId,
+    required String recipientDeviceId,
+  }) async => ChatDeliveryResult(
+    messageId: messageId,
+    transportType: ChatTransportType.server,
+    state: ChatMessageDeliveryState.sent,
+  );
+
   @override
   dynamic noSuchMethod(Invocation invocation) =>
       throw StateError('unexpected transport operation');
@@ -262,6 +323,7 @@ final class _Fixture {
   final _Crypto crypto;
   final ChatStore store;
   late _Transport transport;
+  int transportCreates = 0;
   late final ChatRuntimeCore runtime = ChatRuntimeCore(
     host: host,
     store: store,
@@ -276,8 +338,10 @@ final class _Fixture {
       },
     ),
     cryptoFactory: (_, _) => crypto,
-    transportFactory: ({required identity, required accessProvider}) =>
-        transport = _Transport(accessProvider, store),
+    transportFactory: ({required identity, required accessProvider}) {
+      transportCreates++;
+      return transport = _Transport(accessProvider, store);
+    },
   );
   static Future<_Fixture> create() async {
     final temporary = await Directory.systemTemp.createTemp(
@@ -297,10 +361,342 @@ final class _Fixture {
   }
 }
 
+// 仅延迟真实Rust MLS已生成的附件帧；不替代任何密码学、受众或存储检查。
+class _SlowNative extends NativeMlsCrypto {
+  _SlowNative({required super.identity, required super.stateStore});
+  Completer<void>? release;
+  final encrypted = Completer<void>();
+  String? attachmentGroup;
+  @override
+  Future<MlsWireMessage> groupCreateMessage(
+    String groupId,
+    List<int> plaintext,
+  ) async {
+    final result = await super.groupCreateMessage(groupId, plaintext);
+    if (groupId.startsWith('attachment:') && release != null) {
+      attachmentGroup = groupId;
+      if (!encrypted.isCompleted) encrypted.complete();
+      await release!.future;
+    }
+    return result;
+  }
+}
+
+const _conversation = 'dm:user-a:user-b';
+ChatContent _media() => ChatContent.media(
+  kind: ChatMessageKind.file,
+  attachmentId: 'attachment-a',
+  fileName: 'source.bin',
+  mime: 'application/octet-stream',
+  byteSize: 1,
+  attachmentChatEpoch: 1,
+  attachmentGroupId: MlsAttachment.groupId('user-a:$_device', 'attachment-a'),
+  attachmentWelcome: 'AQ',
+  attachmentMemberIdentities: ['user-a:$_device', 'user-b:${'b' * 64}'],
+  attachmentSenderMemberIdentity: 'user-a:$_device',
+  attachmentChunkCount: 1,
+  plainSha256: 'a' * 64,
+  cipherByteSize: 2,
+  cipherSha256: 'b' * 64,
+);
+ChatBinding get _binding => ChatBinding(
+  userId: _account.userId,
+  accountId: _account.accountId,
+  bindingRevision: _account.bindingRevision,
+  bindingScope: _account.bindingScope,
+);
+Future<ChatBindingFenceToken> _seedMedia(
+  _Fixture fixture, {
+  bool group = false,
+  bool text = false,
+}) async {
+  await fixture.runtime.ensureReady(_account.accountId);
+  final token = await fixture.store.captureBindingFenceToken(_binding),
+      conversation = group ? 'grp:test' : _conversation;
+  await fixture.store.savePendingOutgoingMessage(
+    bindingToken: token,
+    ownerUserId: _account.userId,
+    currentAccountId: _account.accountId,
+    localMessageId: 'pending:attachment-a',
+    conversationId: conversation,
+    recipientUserId: group ? conversation : 'user-b',
+    messageKind: ChatMessageKind.file,
+    payload: ChatPayloadCodec.encode(_media()),
+    createdAtMillis: DateTime.now().millisecondsSinceEpoch,
+  );
+  if (text) {
+    await fixture.store.savePendingOutgoingMessage(
+      bindingToken: token,
+      ownerUserId: _account.userId,
+      currentAccountId: _account.accountId,
+      localMessageId: 'pending:text',
+      conversationId: _conversation,
+      recipientUserId: 'user-b',
+      messageKind: ChatMessageKind.text,
+      payload: ChatPayloadCodec.encode(ChatContent.text('ordinary text')),
+      createdAtMillis: DateTime.now().millisecondsSinceEpoch + 1,
+    );
+  }
+  return token;
+}
+
+class _ZeroLimit implements ChatMediaLimitPolicy {
+  const _ZeroLimit();
+  @override
+  int limitForKind(ChatMessageKind kind) => 0;
+  @override
+  int limitForMime(String type) => 0;
+  @override
+  bool exceedsForKind(ChatMessageKind kind, int bytes) => bytes > 0;
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   useIsolatedChatIsar();
   setUp(() => SharedPreferences.setMockInitialValues({}));
+  for (final group in [false, true]) {
+    test('运行时${group ? '群聊' : '单聊'}发送先等待授权，拒绝不处理/落盘/上传', () async {
+      final f = await _Fixture.create(), gate = Completer<bool>();
+      f.host.authorizeAttachment = () => gate.future;
+      const draft = ChatMediaDraft(
+        kind: ChatMessageKind.file,
+        fileName: 'source.bin',
+        contentType: 'application/octet-stream',
+        sourcePath: '/not-read',
+        byteSize: 1,
+      );
+      final pending = group
+          ? f.runtime.sendGroupAttachment(groupId: 'grp:test', media: draft)
+          : f.runtime.sendMedia(
+              peerUserId: 'user-b',
+              conversationId: _conversation,
+              media: draft,
+            );
+      final denied = expectLater(pending, throwsA(isA<StateError>()));
+      await Future<void>.delayed(Duration.zero);
+      expect(f.host.checks.map((c) => c.refresh), [true]);
+      expect(f.transportCreates, 0);
+      gate.complete(false);
+      await denied;
+      expect(f.transportCreates, 0);
+    });
+    test('运行时${group ? '群聊' : '单聊'}授权返回后仍执行原大小限制', () async {
+      final f = await _Fixture.create();
+      f.host.authorizeAttachment = () async {
+        f.host.limits = const _ZeroLimit();
+        return true;
+      };
+      const draft = ChatMediaDraft(
+        kind: ChatMessageKind.file,
+        fileName: 'source.bin',
+        contentType: 'application/octet-stream',
+        sourcePath: '/not-read',
+        byteSize: 1,
+      );
+      await expectLater(
+        group
+            ? f.runtime.sendGroupAttachment(groupId: 'grp:test', media: draft)
+            : f.runtime.sendMedia(
+                peerUserId: 'user-b',
+                conversationId: _conversation,
+                media: draft,
+              ),
+        throwsA(isA<ChatMediaTooLargeException>()),
+      );
+      expect(f.transportCreates, 0);
+    });
+    test('自动${group ? '群聊' : '单聊'}附件无有效缓存保持队列，禁止主动刷新及上传', () async {
+      final f = await _Fixture.create(),
+          token = await _seedMedia(f, group: group, text: !group);
+      f.host.authorizeAttachment = () async => false;
+      await f.runtime.retryOutgoing();
+      expect(f.transport.uploads, 0);
+      expect(f.host.checks, isNotEmpty);
+      expect(
+        f.host.checks.every((c) => !c.refresh && c.device == _device),
+        isTrue,
+      );
+      final pending = await f.store.readPendingOutgoingMessages(
+        bindingToken: token,
+        ownerUserId: _account.userId,
+        currentAccountId: _account.accountId,
+      );
+      expect(
+        pending.any((p) => p.localMessageId == 'pending:attachment-a'),
+        isTrue,
+      );
+      if (!group) {
+        expect(
+          f.transport.resolutions,
+          greaterThan(0),
+          reason: '未知附件不阻止后续普通文字走原流程',
+        );
+      }
+    });
+  }
+  test('授权等待期间账户revision变化，旧结果不继续加密', () async {
+    final f = await _Fixture.create(), gate = Completer<bool>();
+    f.host.authorizeAttachment = () => gate.future;
+    final pending = f.runtime.sendMedia(
+      peerUserId: 'user-b',
+      conversationId: _conversation,
+      media: const ChatMediaDraft(
+        kind: ChatMessageKind.file,
+        fileName: 'x',
+        contentType: 'application/octet-stream',
+        sourcePath: '/not-read',
+        byteSize: 1,
+      ),
+    );
+    final rejected = expectLater(pending, throwsA(isA<StateError>()));
+    await Future<void>.delayed(Duration.zero);
+    f.host.account = const ChatRuntimeAccount(
+      hostIndex: 0,
+      bindingScope: 'changed',
+      userId: 'user-a',
+      bindingRevision: 2,
+      accountId: 'account-a',
+      displayName: 'A',
+    );
+    gate.complete(true);
+    await rejected;
+    expect(f.transportCreates, 0);
+  });
+  test('主动下载等待授权且核对设备，拒绝时无对象读取', () async {
+    final f = await _Fixture.create();
+    f.host.authorizeAttachment = () async => false;
+    await expectLater(
+      f.runtime.downloadAttachment(
+        conversationId: _conversation,
+        controlPlaintext: ChatPayloadCodec.encode(_media()),
+      ),
+      throwsA(isA<StateError>()),
+    );
+    expect(f.host.checks.single.refresh, isTrue);
+    expect(f.host.checks.single.device, _device);
+    expect(f.transport.downloads, 0);
+  });
+  test('页面自动补取缺缓存不刷新不下载', () async {
+    final f = await _Fixture.create();
+    f.host.authorizeAttachment = () async => false;
+    await f.runtime.resolveCachedMediaPaths(
+      conversationId: _conversation,
+      contents: [_media()],
+    );
+    await f.runtime.close();
+    expect(f.host.checks, isNotEmpty);
+    expect(f.host.checks.every((c) => !c.refresh), isTrue);
+    expect(f.transport.downloads, 0);
+  });
+  test('自动补取有缓存才下载，失效后停止原重试且不刷新', () async {
+    final f = await _Fixture.create();
+    var allowed = true;
+    f.host.authorizeAttachment = () async => allowed;
+    await f.runtime.ensureReady(_account.accountId);
+    final entered = Completer<void>();
+    f.transport.onDownload = () async {
+      allowed = false;
+      if (!entered.isCompleted) entered.complete();
+    };
+    await f.runtime.resolveCachedMediaPaths(
+      conversationId: _conversation,
+      contents: [_media()],
+    );
+    await entered.future.timeout(const Duration(seconds: 5));
+    await f.runtime.close();
+    expect(f.transport.downloads, 1);
+    expect(f.host.checks.every((c) => !c.refresh), isTrue);
+  });
+  test('普通文字持久入口不调用附件授权', () async {
+    final f = await _Fixture.create();
+    f.host.authorizeAttachment = () async => throw StateError('must not ask');
+    await f.runtime.sendText(
+      peerUserId: 'user-b',
+      conversationId: _conversation,
+      text: 'ordinary',
+    );
+    expect(f.host.checks, isEmpty);
+  });
+  test('真实MLS长处理后再次授权，拒绝不落待发记录且清理未提交密文', () async {
+    final temp = await Directory.systemTemp.createTemp('runtime-auth-real-'),
+        root = Directory(await temp.resolveSymbolicLinks());
+    final host = _Host(), store = ChatStore();
+    late _Transport transport;
+    late _SlowNative slow;
+    final peerStore = MlsStateStore(
+      await Directory('${root.path}/peer').create(),
+      ownerUserId: 'user-b',
+    );
+    final peerIdentity = await peerStore.initializeIdentity();
+    final peerPackage = await NativeMlsCrypto(
+      identity: peerIdentity,
+      stateStore: peerStore,
+    ).createKeyPackage(peerIdentity, lastResort: true);
+    final selfStore = MlsStateStore(
+      await Directory('${root.path}/self').create(),
+      ownerUserId: 'user-a',
+    );
+    final selfIdentity = await selfStore.initializeIdentity();
+    final runtime = ChatRuntimeCore(
+      host: host,
+      store: store,
+      documentsDirectoryProvider: () async => root,
+      stateStoreFactory: (_) async => selfStore,
+      cryptoFactory: (identity, state) =>
+          slow = _SlowNative(identity: identity, stateStore: state),
+      transportFactory: ({required identity, required accessProvider}) =>
+          transport = _Transport(accessProvider, store)
+            ..remotePackages = [peerPackage],
+    );
+    addTearDown(() async {
+      await runtime.close();
+      await root.delete(recursive: true);
+    });
+    await runtime.ensureReady(_account.accountId);
+    slow.release = Completer<void>();
+    final file = await File('${root.path}/source.bin').writeAsBytes([1, 2, 3]);
+    host.authorizeAttachment = () async => host.checks.length == 1;
+    final rejected = expectLater(
+      runtime.sendMedia(
+        peerUserId: 'user-b',
+        conversationId: _conversation,
+        media: ChatMediaDraft(
+          kind: ChatMessageKind.file,
+          fileName: 'source.bin',
+          contentType: 'application/octet-stream',
+          sourcePath: file.path,
+          byteSize: 3,
+        ),
+      ),
+      throwsA(isA<StateError>()),
+    );
+    await slow.encrypted.future.timeout(const Duration(seconds: 10));
+    expect(host.checks.length, 1);
+    final attachmentId = slow.attachmentGroup!.substring(
+      'attachment:user-a:${selfIdentity.deviceId}:'.length,
+    );
+    expect(RegExp(r'^[A-Za-z0-9_-]{1,128}$').hasMatch(attachmentId), isTrue);
+    slow.release!.complete();
+    await rejected;
+    expect(host.checks.map((c) => c.refresh), [true, true]);
+    expect(transport.uploads, 0);
+    final token = await store.captureBindingFenceToken(_binding);
+    expect(
+      await store.readPendingOutgoingMessages(
+        bindingToken: token,
+        ownerUserId: 'user-a',
+        currentAccountId: 'account-a',
+      ),
+      isEmpty,
+    );
+    expect(
+      root
+          .listSync(recursive: true)
+          .whereType<File>()
+          .where((f) => f.path.endsWith('.cipher')),
+      isEmpty,
+    );
+  });
   test('停止最后实时订阅后，旧补拉不落库不ACK；重连重发同一KeyPackage', () async {
     final fixture = await _Fixture.create();
     final stop = await fixture.runtime.startRealtimeSync(
