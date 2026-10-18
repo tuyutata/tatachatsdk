@@ -1542,7 +1542,7 @@ export const {buildRelease,verifyReleaseAssets}=releaseAssets;
 // CI验证入口先验真所属Run；本机调用在领取目录、获取资源或运行测试前失败。
 export function requireCiTestIdentity(environment,{call=spawnSync,platform=process.platform,arch=process.arch}={}) {
  if(platform!=='darwin'||arch!=='arm64'||environment.GITHUB_ACTIONS!=='true'
-  ||environment.GITHUB_REPOSITORY!=='tuyutata/tatachatsdk'||environment.GITHUB_WORKFLOW!=='tatachatsdk.sdk'
+  ||environment.GITHUB_REPOSITORY!=='tuyutata/tatachatsdk'||environment.GITHUB_WORKFLOW!=='塔塔聊天·SDK'
   ||environment.GITHUB_WORKFLOW_REF!=='tuyutata/tatachatsdk/.github/workflows/sdk.yml@refs/heads/main'
   ||environment.GITHUB_EVENT_NAME!=='workflow_dispatch'||environment.GITHUB_REF!=='refs/heads/main'
   ||environment.GITHUB_JOB!=='test'||!/^[a-f0-9]{40}$/u.test(environment.GITHUB_SHA||'')
@@ -1762,7 +1762,7 @@ async function snapshotCiCargoCache(target,work,stage,environment){
 export async function ciNative(target,environment=process.env){
  if(!['android','ios','macos'].includes(target)||environment.GITHUB_ACTIONS!=='true'
   ||environment.GITHUB_REPOSITORY!=='tuyutata/tatachatsdk'
-  ||environment.GITHUB_WORKFLOW!=='tatachatsdk.sdk'
+  ||environment.GITHUB_WORKFLOW!=='塔塔聊天·SDK'
   ||environment.GITHUB_REF!=='refs/heads/main'||environment.GITHUB_EVENT_NAME!=='workflow_dispatch'
   ||!/^[a-f0-9]{40}$/u.test(environment.GITHUB_SHA||'')
   ||!/^[1-9][0-9]*$/u.test(environment.GITHUB_RUN_ID||'')
@@ -1798,7 +1798,8 @@ export async function ciNative(target,environment=process.env){
 
 // 版本按十进制进位，首段使用BigInt；失败Run和运行序号都不消耗正式版本。
 const sdkVersionRepository='tuyutata/tatachatsdk';
-const sdkVersionProduct='TataChatSDK';
+const sdkVersionProduct='塔塔聊天';
+function sdkArtifactName(platform,version){const title={sdk:'SDK',android:'Android',ios:'iOS',macos:'macOS'}[platform];if(!title)fail('SDK产物平台无效');sdkVersionOrdinal(version);return sdkVersionProduct+'·'+title+'·v'+version;}
 function sdkVersionOrdinal(version,{historical=false}={}){
  const match=/^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/u.exec(version||'');
  if(!match||!historical&&(match[2].length!==1||match[3].length!==1))fail('SDK十进制版本无效');
@@ -1814,10 +1815,12 @@ function sdkVersionSeed(){
 function sdkReleaseIdentity(release){
  const tag=release?.tag_name;
  if(typeof tag!=='string')return null;
- const current=/^TataChatSDK-((?:0|[1-9][0-9]*)\.[0-9]\.[0-9])$/u.exec(tag);
+ const current=/^塔塔聊天·SDK·v((?:0|[1-9][0-9]*)\.[0-9]\.[0-9])$/u.exec(tag);
+ // 既有TataChatSDK成功Tag只作历史事实读取，防止改展示名导致成功版本归零。
+ const previous=/^TataChatSDK-((?:0|[1-9][0-9]*)\.[0-9]\.[0-9])$/u.exec(tag);
  // 旧Tag只作为既有成功版本的来源读取，不再生成旧名称。
  const historical=/^tatachatsdk-sdk-v([0-9]+\.[0-9]+\.[0-9]+)-r([1-9][0-9]*)-a([1-9][0-9]*)$/u.exec(tag);
- if(!current&&!historical)return null;
+ if(!current&&!previous&&!historical)return null;
  const sources=[...(release.body||'').matchAll(/^Source: ([a-f0-9]{40})$/gmu)];
  const runs=[...(release.body||'').matchAll(/^Run: ([1-9][0-9]*) \/ ([1-9][0-9]*)$/gmu)];
  const source=sources[0],run=runs[0];
@@ -1825,7 +1828,7 @@ function sdkReleaseIdentity(release){
   ||!Number.isSafeInteger(Number(run[1]))||!Number.isSafeInteger(Number(run[2]))
   ||release.target_commitish!==source[1]||historical&&(historical[2]!==run[1]||historical[3]!==run[2]))
   fail('SDK历史Release版本身份无效');
- const version=sdkVersionText(sdkVersionOrdinal((current||historical)[1],{historical:Boolean(historical)}));
+ const version=sdkVersionText(sdkVersionOrdinal((current||previous||historical)[1],{historical:Boolean(historical)}));
  const marks=[...(release.body||'').matchAll(/^Automation-Conclusion: (success|failure)$/gmu)];
  if(marks.length>1)fail('SDK历史Release结论重复');
  return {version,sha:source[1],runId:Number(run[1]),attempt:Number(run[2]),conclusion:marks[0]?.[1]??null};
@@ -1860,7 +1863,7 @@ async function sdkVersionPlan(request){
   const next=sdkVersionOrdinal(item.identity.version);return value===null||next>value?next:value;
  },null);
  const version=latest===null?sdkVersionSeed():nextSDKVersion(sdkVersionText(latest));
- return {version,label:sdkVersionProduct+'-'+version,owned};
+ return {version,label:sdkArtifactName('sdk',version),owned};
 }
 async function clearSDKFailedCandidate(plan,{request,remove}){
  const stale=plan.owned.find(value=>value.row.tag_name===plan.label);if(!stale)return;
@@ -1883,7 +1886,7 @@ function sdkVersionReader(environment,call){return path=>{
 };}
 export async function ciVersionCheck(environment=process.env,{call=spawnSync}={}){
  if(environment.GITHUB_ACTIONS!=='true'||environment.GITHUB_REPOSITORY!==sdkVersionRepository
-  ||environment.GITHUB_WORKFLOW!=='tatachatsdk.sdk'||environment.GITHUB_REF!=='refs/heads/main'
+  ||environment.GITHUB_WORKFLOW!=='塔塔聊天·SDK'||environment.GITHUB_REF!=='refs/heads/main'
   ||environment.GITHUB_EVENT_NAME!=='workflow_dispatch'
   ||environment.GITHUB_WORKFLOW_REF!==sdkVersionRepository+'/.github/workflows/sdk.yml@refs/heads/main'
   ||!['GITHUB_RUN_ID','GITHUB_RUN_ATTEMPT'].every(key=>/^[1-9][0-9]*$/u.test(environment[key]||'')&&Number.isSafeInteger(Number(environment[key])))
@@ -1903,7 +1906,7 @@ export function ciCachePrune(target,key,environment=process.env,{call=spawnSync}
  const suffix='-'+environment.GITHUB_RUN_ID+'-'+environment.GITHUB_RUN_ATTEMPT;
  const prefix='tatachatsdk-cargo-v1-macOS-ARM64-'+target+'-';
  if(!['android','ios','macos'].includes(target)||environment.GITHUB_ACTIONS!=='true'
-  ||environment.GITHUB_REPOSITORY!=='tuyutata/tatachatsdk'||environment.GITHUB_WORKFLOW!=='tatachatsdk.sdk'
+  ||environment.GITHUB_REPOSITORY!=='tuyutata/tatachatsdk'||environment.GITHUB_WORKFLOW!=='塔塔聊天·SDK'
   ||environment.GITHUB_REF!=='refs/heads/main'||environment.GITHUB_EVENT_NAME!=='workflow_dispatch'
   ||environment.GITHUB_WORKFLOW_REF!=='tuyutata/tatachatsdk/.github/workflows/sdk.yml@refs/heads/main'
   ||!/^[a-f0-9]{40}$/u.test(environment.GITHUB_SHA||'')
@@ -1939,7 +1942,7 @@ export function ciCachePrune(target,key,environment=process.env,{call=spawnSync}
 export function ciRunPrune(outcome,environment=process.env,{call=spawnSync}={}){
  const repository='tuyutata/tatachatsdk',workflow='.github/workflows/sdk.yml';
  if(!['success','failure'].includes(outcome)||environment.GITHUB_ACTIONS!=='true'
-  ||environment.GITHUB_REPOSITORY!==repository||environment.GITHUB_WORKFLOW!=='tatachatsdk.sdk'
+  ||environment.GITHUB_REPOSITORY!==repository||environment.GITHUB_WORKFLOW!=='塔塔聊天·SDK'
   ||environment.GITHUB_WORKFLOW_REF!==repository+'/'+workflow+'@refs/heads/main'
   ||environment.GITHUB_REF!=='refs/heads/main'||environment.GITHUB_EVENT_NAME!=='workflow_dispatch'
   ||!/^[a-f0-9]{40}$/u.test(environment.GITHUB_SHA||'')
@@ -2012,7 +2015,7 @@ if(testSession&&process.argv.length===2&&resolve(process.argv[1]||'')===fileURLT
  });
  test('SDK版本只从真实成功正式Release递增，失败取消草稿不占号',async()=>{
   const sha='a'.repeat(40);
-  const release=(id,version,{draft=false,conclusion}={})=>({id,tag_name:'TataChatSDK-'+version,target_commitish:sha,
+  const release=(id,version,{draft=false,conclusion}={})=>({id,tag_name:sdkArtifactName('sdk',version),target_commitish:sha,
    body:'Source: '+sha+'\nRun: '+id+' / 1'+(conclusion?'\nAutomation-Conclusion: '+conclusion:''),
    draft,prerelease:false,published_at:draft?null:'2026-10-16T00:00:00Z'});
   const rows=[release(11,'1.0.9'),release(12,'1.9.9'),release(13,'2.0.0'),release(14,'3.0.0',{draft:true})];
@@ -2022,16 +2025,23 @@ if(testSession&&process.argv.length===2&&resolve(process.argv[1]||'')===fileURLT
     event:'workflow_dispatch',head_branch:'main',repository:{full_name:sdkVersionRepository},status:'completed',
     conclusion:id===12?'failure':id===13?'cancelled':'success'};
   };
-  const plan=await sdkVersionPlan(request);assert.equal(plan.version,'1.1.0');assert.equal(plan.label,'TataChatSDK-1.1.0');
+  const plan=await sdkVersionPlan(request);assert.equal(plan.version,'1.1.0');assert.equal(plan.label,'塔塔聊天·SDK·v1.1.0');
   assert.throws(()=>sdkReleaseIdentity({...rows[0],body:rows[0].body+'\nSource: '+sha}),/版本身份无效/);
   assert.equal((await sdkVersionPlan(async path=>path.startsWith('releases?')?[release(11,'1.0.9',{conclusion:'success'})]:null)).version,'1.1.0');
   await assert.rejects(sdkVersionPlan(async path=>path.startsWith('releases?')?[release(11,'1.0.9')]:null),/成功依据缺失/);
+  // 展示名迁移继续读取原成功事实，失败重试不改变既有版本算法。
+  const previous={...release(18,'1.1.8'),tag_name:'TataChatSDK-1.1.8'};
+  const migrated=await sdkVersionPlan(async path=>path.startsWith('releases?')?[previous]:{id:18,run_attempt:1,head_sha:sha,
+   path:'.github/workflows/sdk.yml',event:'workflow_dispatch',head_branch:'main',repository:{full_name:sdkVersionRepository},status:'completed',conclusion:'success'});
+  assert.equal(migrated.version,'1.1.9');assert.equal(migrated.label,'塔塔聊天·SDK·v1.1.9');
+  for(const [platform,title]of Object.entries({sdk:'SDK',android:'Android',ios:'iOS',macos:'macOS'}))assert.equal(sdkArtifactName(platform,'1.1.9'),'塔塔聊天·'+title+'·v1.1.9');
+  assert.throws(()=>sdkArtifactName('windows','1.1.9'),/平台无效/);assert.throws(()=>sdkArtifactName('sdk','01.1.9'),/版本无效/);
   const legacy={...release(18,'1.0.0'),tag_name:'tatachatsdk-sdk-v1.0.18-r18-a1'};
   assert.equal((await sdkVersionPlan(async path=>path.startsWith('releases?')?[legacy]:{id:18,run_attempt:1,head_sha:sha,
    path:'.github/workflows/sdk.yml',event:'workflow_dispatch',head_branch:'main',repository:{full_name:sdkVersionRepository},status:'completed',conclusion:'success'})).version,'1.1.9');
  });
  test('失败候选按同版本重试，成功候选和错误Tag拒绝覆盖',async()=>{
-  const label='TataChatSDK-1.1.0',sha='a'.repeat(40),row={id:55,tag_name:label,target_commitish:sha,body:'fixture proof'};
+  const label='塔塔聊天·SDK·v1.1.0',sha='a'.repeat(40),row={id:55,tag_name:label,target_commitish:sha,body:'fixture proof'};
   const plan={label,owned:[{row,identity:{sha},conclusion:'failure'}]},removed=[];
   const request=async path=>path.startsWith('releases/')?removed.includes('releases/55')?null:row:
    removed.some(value=>value.startsWith('git/refs/'))?null:{object:{type:'commit',sha}};
@@ -2043,14 +2053,14 @@ if(testSession&&process.argv.length===2&&resolve(process.argv[1]||'')===fileURLT
    {object:{type:'commit',sha:'b'.repeat(40)}},remove:()=>assert.fail('不得删除其它提交')}),/Tag身份漂移/);
  });
  test('SDK候选版本入口核对Run名称和准确任务身份',async()=>{
-  const env={GITHUB_ACTIONS:'true',GITHUB_REPOSITORY:sdkVersionRepository,GITHUB_WORKFLOW:'tatachatsdk.sdk',
+  const env={GITHUB_ACTIONS:'true',GITHUB_REPOSITORY:sdkVersionRepository,GITHUB_WORKFLOW:'塔塔聊天·SDK',
    GITHUB_REF:'refs/heads/main',GITHUB_EVENT_NAME:'workflow_dispatch',GH_TOKEN:'fixture',GITHUB_SHA:'a'.repeat(40),
    GITHUB_WORKFLOW_REF:sdkVersionRepository+'/.github/workflows/sdk.yml@refs/heads/main',
    GITHUB_RUN_ID:'200',GITHUB_RUN_ATTEMPT:'1',SDK_VERSION:'1.0.0'};
   const call=(_name,args)=>({status:0,stdout:JSON.stringify(args.at(-1).includes('/releases?')?[]:
    {id:200,run_attempt:1,head_sha:env.GITHUB_SHA,path:'.github/workflows/sdk.yml',repository:{full_name:sdkVersionRepository},
-    head_branch:'main',event:'workflow_dispatch',display_title:'TataChatSDK-1.0.0'})});
-  assert.equal((await ciVersionCheck(env,{call})).label,'TataChatSDK-1.0.0');
+    head_branch:'main',event:'workflow_dispatch',display_title:'塔塔聊天·SDK·v1.0.0'})});
+  assert.equal((await ciVersionCheck(env,{call})).label,'塔塔聊天·SDK·v1.0.0');
   await assert.rejects(ciVersionCheck({...env,SDK_VERSION:'1.0.1'},{call}),/已变化/);
   await assert.rejects(ciVersionCheck({...env,GITHUB_RUN_ID:'201'},{call}),/已变化/);
   const wrongTitle=(...args)=>{const result=call(...args),value=JSON.parse(result.stdout);
@@ -2072,7 +2082,7 @@ if(testSession&&process.argv.length===2&&resolve(process.argv[1]||'')===fileURLT
   });
  });
  test('GitHub Cargo缓存清理仅删除本平台旧ID并保留当前快照',()=>{
-  const env={GITHUB_ACTIONS:'true',GITHUB_REPOSITORY:'tuyutata/tatachatsdk',GITHUB_WORKFLOW:'tatachatsdk.sdk',
+  const env={GITHUB_ACTIONS:'true',GITHUB_REPOSITORY:'tuyutata/tatachatsdk',GITHUB_WORKFLOW:'塔塔聊天·SDK',
    GITHUB_REF:'refs/heads/main',GITHUB_EVENT_NAME:'workflow_dispatch',GITHUB_WORKFLOW_REF:'tuyutata/tatachatsdk/.github/workflows/sdk.yml@refs/heads/main',
    GITHUB_SHA:'a'.repeat(40),GITHUB_RUN_ID:'123',GITHUB_RUN_ATTEMPT:'1',GH_TOKEN:'fixture'};
   const prefix='tatachatsdk-cargo-v1-macOS-ARM64-ios-',key=prefix+'a'.repeat(64)+'-123-1',old=prefix+'a'.repeat(64)+'-122-1';
@@ -2096,12 +2106,12 @@ if(testSession&&process.argv.length===2&&resolve(process.argv[1]||'')===fileURLT
   assert.match(cache,/\n        env:\n          CARGO_CACHE_KEY:/u);
   assert.match(runs,/needs: \[test, native, release, cargo-retention\]/u);
   assert.match(runs,/ci-run-prune/u);assert.doesNotMatch(runs,/continue-on-error/u);
-  assert.match(workflow,/run-name: "TataChatSDK-\$\{\{ inputs.version \}\}"/u);
+  assert.match(workflow,/run-name: "塔塔聊天·SDK·v\$\{\{ inputs.version \}\}"/u);
   assert.match(workflow,/run: node scripts\/build.mjs ci-version-check/u);
   assert.match(runs,/contents: write/u);
  });
  test('Cargo缓存未保存时仍只保留本平台最新一份既有缓存',()=>{
-  const env={GITHUB_ACTIONS:'true',GITHUB_REPOSITORY:'tuyutata/tatachatsdk',GITHUB_WORKFLOW:'tatachatsdk.sdk',
+  const env={GITHUB_ACTIONS:'true',GITHUB_REPOSITORY:'tuyutata/tatachatsdk',GITHUB_WORKFLOW:'塔塔聊天·SDK',
    GITHUB_REF:'refs/heads/main',GITHUB_EVENT_NAME:'workflow_dispatch',
    GITHUB_WORKFLOW_REF:'tuyutata/tatachatsdk/.github/workflows/sdk.yml@refs/heads/main',
    GITHUB_SHA:'a'.repeat(40),GITHUB_RUN_ID:'124',GITHUB_RUN_ATTEMPT:'1',GH_TOKEN:'fixture'};
@@ -2119,7 +2129,7 @@ if(testSession&&process.argv.length===2&&resolve(process.argv[1]||'')===fileURLT
   assert.deepEqual(deleted,[1]);
  });
  test('Cargo缓存候选拒绝错平台分支和损坏身份，无历史缓存时保留零份',()=>{
-  const env={GITHUB_ACTIONS:'true',GITHUB_REPOSITORY:'tuyutata/tatachatsdk',GITHUB_WORKFLOW:'tatachatsdk.sdk',
+  const env={GITHUB_ACTIONS:'true',GITHUB_REPOSITORY:'tuyutata/tatachatsdk',GITHUB_WORKFLOW:'塔塔聊天·SDK',
    GITHUB_REF:'refs/heads/main',GITHUB_EVENT_NAME:'workflow_dispatch',
    GITHUB_WORKFLOW_REF:'tuyutata/tatachatsdk/.github/workflows/sdk.yml@refs/heads/main',
    GITHUB_SHA:'a'.repeat(40),GITHUB_RUN_ID:'124',GITHUB_RUN_ATTEMPT:'1',GH_TOKEN:'fixture'};
@@ -2136,7 +2146,7 @@ if(testSession&&process.argv.length===2&&resolve(process.argv[1]||'')===fileURLT
   }}),{target:'android',key:null,retained:0,deleted:0});
  });
  test('GitHub Run留存只删除本工作流main旧记录并预留本轮结果',()=>{
-  const env={GITHUB_ACTIONS:'true',GITHUB_REPOSITORY:'tuyutata/tatachatsdk',GITHUB_WORKFLOW:'tatachatsdk.sdk',
+  const env={GITHUB_ACTIONS:'true',GITHUB_REPOSITORY:'tuyutata/tatachatsdk',GITHUB_WORKFLOW:'塔塔聊天·SDK',
    GITHUB_WORKFLOW_REF:'tuyutata/tatachatsdk/.github/workflows/sdk.yml@refs/heads/main',GITHUB_REF:'refs/heads/main',
    GITHUB_EVENT_NAME:'workflow_dispatch',GITHUB_SHA:'a'.repeat(40),GITHUB_RUN_ID:'200',GITHUB_RUN_NUMBER:'20',GITHUB_RUN_ATTEMPT:'1',GH_TOKEN:'fixture'};
   const run=(id,number,conclusion,event='workflow_dispatch')=>({id,run_number:number,run_attempt:1,path:'.github/workflows/sdk.yml',
@@ -2156,13 +2166,13 @@ if(testSession&&process.argv.length===2&&resolve(process.argv[1]||'')===fileURLT
   assert.throws(()=>ciRunPrune('success',{...env,GITHUB_REPOSITORY:'another/repo'},{call}),/身份无效/);
  });
  test('旧Run删除前保存真实版本结论，证明写入失败时不删除Run',()=>{
-  const env={GITHUB_ACTIONS:'true',GITHUB_REPOSITORY:sdkVersionRepository,GITHUB_WORKFLOW:'tatachatsdk.sdk',
+  const env={GITHUB_ACTIONS:'true',GITHUB_REPOSITORY:sdkVersionRepository,GITHUB_WORKFLOW:'塔塔聊天·SDK',
    GITHUB_WORKFLOW_REF:sdkVersionRepository+'/.github/workflows/sdk.yml@refs/heads/main',GITHUB_REF:'refs/heads/main',
    GITHUB_EVENT_NAME:'workflow_dispatch',GITHUB_SHA:'a'.repeat(40),GITHUB_RUN_ID:'200',GITHUB_RUN_NUMBER:'20',GITHUB_RUN_ATTEMPT:'1',GH_TOKEN:'fixture'};
   const make=(id,number,conclusion)=>({id,run_number:number,run_attempt:1,path:'.github/workflows/sdk.yml',event:'workflow_dispatch',
    repository:{full_name:sdkVersionRepository},head_branch:'main',head_sha:env.GITHUB_SHA,status:'completed',conclusion});
   const success=make(199,19,'success'),failure=make(198,18,'failure'),current={...make(200,20,null),status:'in_progress'};
-  const release={id:55,tag_name:'TataChatSDK-1.0.9',target_commitish:env.GITHUB_SHA,
+  const release={id:55,tag_name:'塔塔聊天·SDK·v1.0.9',target_commitish:env.GITHUB_SHA,
    body:'Source: '+env.GITHUB_SHA+'\nRun: 199 / 1',draft:false,prerelease:false,published_at:'2026-10-16T00:00:00Z'};
   const simulate=writeOK=>{
    const events=[];let deleted=false;
@@ -2185,7 +2195,7 @@ if(testSession&&process.argv.length===2&&resolve(process.argv[1]||'')===fileURLT
   simulate(true);simulate(false);
  });
  test('GitHub Run失败时保留最新成功并删除较旧失败与成功',()=>{
-  const env={GITHUB_ACTIONS:'true',GITHUB_REPOSITORY:'tuyutata/tatachatsdk',GITHUB_WORKFLOW:'tatachatsdk.sdk',
+  const env={GITHUB_ACTIONS:'true',GITHUB_REPOSITORY:'tuyutata/tatachatsdk',GITHUB_WORKFLOW:'塔塔聊天·SDK',
    GITHUB_WORKFLOW_REF:'tuyutata/tatachatsdk/.github/workflows/sdk.yml@refs/heads/main',GITHUB_REF:'refs/heads/main',
    GITHUB_EVENT_NAME:'workflow_dispatch',GITHUB_SHA:'b'.repeat(40),GITHUB_RUN_ID:'300',GITHUB_RUN_NUMBER:'30',GITHUB_RUN_ATTEMPT:'1',GH_TOKEN:'fixture'};
   const make=(id,number,conclusion)=>({id,run_number:number,run_attempt:1,path:'.github/workflows/sdk.yml',
@@ -2209,7 +2219,7 @@ export async function ciRelease(environment=process.env,{call=spawnSync}={}){
  const repo='tuyutata/tatachatsdk',sha=environment.GITHUB_SHA,run=environment.GITHUB_RUN_ID,
   attempt=environment.GITHUB_RUN_ATTEMPT,number=environment.GITHUB_RUN_NUMBER;
  if(environment.GITHUB_ACTIONS!=='true'||environment.GITHUB_REPOSITORY!==repo
-  ||environment.GITHUB_WORKFLOW!=='tatachatsdk.sdk'||environment.GITHUB_REF!=='refs/heads/main'
+  ||environment.GITHUB_WORKFLOW!=='塔塔聊天·SDK'||environment.GITHUB_REF!=='refs/heads/main'
   ||environment.GITHUB_EVENT_NAME!=='workflow_dispatch'||environment.GITHUB_WORKFLOW_REF!==repo+'/.github/workflows/sdk.yml@refs/heads/main'
   ||!/^[a-f0-9]{40}$/u.test(sha||'')||[run,attempt,number].some(value=>!/^[1-9][0-9]*$/u.test(value||'')||!Number.isSafeInteger(Number(value)))
   ||call('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).stdout?.trim()!==sha||!environment.GH_TOKEN)
@@ -2221,7 +2231,7 @@ export async function ciRelease(environment=process.env,{call=spawnSync}={}){
  const base=join(environment.RUNNER_TEMP,'tatachatsdk-assemble'),native=join(base,'native'),output=join(base,'release');
  if(existsSync(base))fail('本轮单包汇总现场已存在');mkdirSync(native,{recursive:true});
  for(const target of ['android','ios','macos']){
-  const input=join(environment.RUNNER_TEMP,'native-artifacts','native-'+target),receipt=JSON.parse(readFileSync(join(input,'receipt.json'),'utf8'));
+  const input=join(environment.RUNNER_TEMP,'native-artifacts',sdkArtifactName(target,plan.version)),receipt=JSON.parse(readFileSync(join(input,'receipt.json'),'utf8'));
   const archive=join(input,'native.tgz');
   if(receipt.schema!==1||receipt.product_id!=='tatachatsdk'||receipt.target!==target
    ||receipt.source_sha!==sha||receipt.run_id!==Number(run)||receipt.run_attempt!==Number(attempt)
@@ -2246,7 +2256,7 @@ export async function ciRelease(environment=process.env,{call=spawnSync}={}){
   remove:path=>gh(['api','-X','DELETE','repos/'+repo+'/'+path])});
  let created=false;
  try{
-  gh(['release','create',tag,archive,'--repo',repo,'--target',sha,'--title',plan.label,'--notes',notes,'--draft','--latest=false']);created=true;
+  gh(['release','create',tag,archive+'#'+plan.label+'.tgz','--repo',repo,'--target',sha,'--title',plan.label,'--notes',notes,'--draft','--latest=false']);created=true;
   // GitHub按Tag查询只返回已发布Release；草稿从授权可见的分页列表按本轮Tag核对。
   let draft;
   for(let page=1;page<=10000;page++){
@@ -2257,12 +2267,12 @@ export async function ciRelease(environment=process.env,{call=spawnSync}={}){
    if(rows.length<100)break;
   }
   if(!draft||!Number.isSafeInteger(draft.id)||draft.id<1||!draft.draft||draft.name!==plan.label||draft.target_commitish!==sha||draft.assets?.length!==1
-   ||draft.assets[0].name!=='tatachatsdk.tgz'||draft.assets[0].state!=='uploaded'
+   ||draft.assets[0].name!=='tatachatsdk.tgz'||draft.assets[0].label!==plan.label+'.tgz'||draft.assets[0].state!=='uploaded'
    ||draft.assets[0].size!==lstatSync(archive).size||draft.assets[0].digest!=='sha256:'+digest)fail('单包草稿回读无效');
   gh(['release','edit',tag,'--repo',repo,'--draft=false']);
   const final=api('releases/tags/'+encodeURIComponent(tag)),ref=api('git/ref/tags/'+encodeURIComponent(tag));
   if(final.id!==draft.id||final.draft||final.prerelease||final.name!==plan.label||final.tag_name!==tag||!final.published_at
-   ||final.target_commitish!==sha||final.assets?.length!==1||final.assets[0].digest!=='sha256:'+digest
+   ||final.target_commitish!==sha||final.assets?.length!==1||final.assets[0].label!==plan.label+'.tgz'||final.assets[0].digest!=='sha256:'+digest
    ||ref.ref!=='refs/tags/'+tag||ref.object?.sha!==sha||ref.object?.type!=='commit')fail('正式单包 Release 未确认');
   const download=join(base,'readback');mkdirSync(download);gh(['release','download',tag,'--repo',repo,'--dir',download]);
   if(createHash('sha256').update(readFileSync(join(download,'tatachatsdk.tgz'))).digest('hex')!==digest)fail('单包回读字节不符');
@@ -2497,13 +2507,15 @@ const resourceInternals=await (async()=>{
 const {fixedScratch,trackWorkProcess,workEnvironment,checkScratchPath}=targetInternals;
 const buildApi={checkWork,contract,lockedSources,materializeAnalysisOptions,requirements,resourceEnvironment,resourceSourceRoot,temporaryRoot,testRoot};
 const {AsyncLocalStorage}=await import('node:async_hooks');
-const {writeFileSync:writeGroupRecord,existsSync,readFileSync,constants}=await import('node:fs');
+const {writeFileSync:writeGroupRecord,existsSync,readFileSync,constants,createWriteStream}=await import('node:fs');
 const {createHash,randomUUID}=await import('node:crypto');
 const {lstat,realpath,readdir,readlink,symlink,copyFile,cp,readFile,writeFile,mkdir,mkdtemp,rename,rm:removeResourcePath,chmod,open,utimes}=await import('node:fs/promises');
 const {dirname,join,resolve,relative,isAbsolute,sep,parse,win32,posix}=await import('node:path');
 const {fileURLToPath,pathToFileURL}=await import('node:url');
 const {homedir}=await import('node:os');
-const {gunzipSync,inflateRawSync}=await import('node:zlib');
+const {createGunzip,createInflateRaw}=await import('node:zlib');
+const {Readable,Transform,Writable}=await import('node:stream');
+const {pipeline}=await import('node:stream/promises');
 const {spawn}=await import('node:child_process');
 const {createRequire}=await import('node:module');
 const resourceMain=Boolean(!process.execArgv.some(value=>/^(?:-e|--eval(?:=|$)|--input-type(?:=|$))/u.test(value)) && process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url));
@@ -2524,18 +2536,19 @@ async function rm(path,options) {
  if(retainedResourcePath(path))throw Error('资源工具退出未确认，保留工作目录');
  return removeResourcePath(path,options);
 }
-function runResourceProcess(command,args,{signal,maxBuffer=8*1024**2,timeout=3600000,encoding='utf8',quietOutput=false,...options}={}) {
+function runResourceProcess(command,args,{signal,maxBuffer=8*1024**2,timeout=3600000,encoding='utf8',quietOutput=false,stdoutSink,maxStdoutBytes=maxBuffer,...options}={}) {
 
 
  signal?.throwIfAborted();
- if(!Number.isSafeInteger(maxBuffer)||maxBuffer<=0||!Number.isSafeInteger(timeout)||timeout<=0)throw Error('资源进程边界参数无效');
+ if(!Number.isSafeInteger(maxBuffer)||maxBuffer<=0||!Number.isSafeInteger(timeout)||timeout<=0
+  ||stdoutSink!==undefined&&(typeof stdoutSink!=='function'||!Number.isSafeInteger(maxStdoutBytes)||maxStdoutBytes<=0))throw Error('资源进程边界参数无效');
  return new Promise((ok,reject)=>{
   const child=spawn(command,args,{...options,env:workEnvironment(options.env),detached:process.platform!=='win32',stdio:['ignore','pipe','pipe']});
   trackWorkProcess(child.pid);
   const supply=resourceSupplies.getStore(),groups=supply?.work?(supplyGroups.get(supply.work)||new Set()):null;
   const record=()=>{if(groups)writeGroupRecord(join(supply.work,'.resource-active.json'),JSON.stringify({pid:process.pid,groups:[...groups]})+'\n');};
   if(groups&&Number.isSafeInteger(child.pid)){supplyGroups.set(supply.work,groups);groups.add(child.pid);record();}
-  const output=[],errors=[];let bytes=0,done=false,closed=false,failure=null,probe=null,force=null,limit=null;
+  const output=[],errors=[];let bytes=0,stdoutBytes=0,stdoutDone=!stdoutSink,done=false,closed=false,failure=null,probe=null,force=null,limit=null;
   const groupExists=()=>{
    if(process.platform==='win32')return !closed;
    if(!child.pid)return false;
@@ -2557,7 +2570,7 @@ function runResourceProcess(command,args,{signal,maxBuffer=8*1024**2,timeout=360
   };
   const confirm=()=>{
    if(done)return;
-   if(closed&&!groupExists()) {
+   if(closed&&!groupExists()&&stdoutDone) {
     const stdout=Buffer.concat(output),stderr=Buffer.concat(errors);
     finish(failure,{stdout:encoding==='buffer'?stdout:stdout.toString(encoding),stderr:encoding==='buffer'?stderr:stderr.toString(encoding)});return;
    }
@@ -2571,7 +2584,15 @@ function runResourceProcess(command,args,{signal,maxBuffer=8*1024**2,timeout=360
   const cancel=()=>requestStop(signal.reason instanceof Error?signal.reason:Error('资源进程已取消'));
   const timer=setTimeout(()=>requestStop(Error('资源进程超时')),timeout);
   signal?.addEventListener('abort',cancel,{once:true});if(signal?.aborted)cancel();
-  for(const [stream,parts]of [[child.stdout,output],[child.stderr,errors]])stream.on('data',chunk=>{
+  // 二进制归档输出逐块等待写入，保留流背压；结束还须等真实写入和整组退出。
+  if(stdoutSink)void (async()=>{
+   try{for await(const chunk of child.stdout){
+    if(done)break;stdoutBytes+=chunk.length;
+    if(stdoutBytes>maxStdoutBytes){requestStop(Error('资源进程归档输出超限'));continue;}
+    if(!failure)await stdoutSink(chunk);
+   }}catch(error){requestStop(error);}finally{stdoutDone=true;if(!done&&probe===null)confirm();}
+  })();
+  for(const [stream,parts]of (stdoutSink?[[child.stderr,errors]]:[[child.stdout,output],[child.stderr,errors]]))stream.on('data',chunk=>{
    if(done)return;bytes+=chunk.length;
    if(bytes>maxBuffer){requestStop(Error('资源进程输出超限'));return;}
    parts.push(chunk);if(!quietOutput)process.stderr.write(chunk);
@@ -2622,7 +2643,7 @@ async function resourceWork(work){
 async function acquireArchive(entry,{store,work,offline=false,fetcher=fetch,signal,maxBytes=4*1024**3}={}){
 
  const url=checkedURL(entry.url);await directory(store,true);const coordinate=hash(JSON.stringify([url,entry.sha256||entry.integrity]));const target=join(store,coordinate+'.blob');
- const check=async path=>{await regular(path);const b=await readFile(path);if(!b.length||b.length>maxBytes)fail('原件大小超限');return path;};
+ const check=async path=>{signal?.throwIfAborted();const info=await regular(path);if(!info.size||info.size>maxBytes)fail('原件大小超限');return path;};
  if(await stat(target))return check(target);
 
 
@@ -2662,29 +2683,196 @@ async function verifyArchiveNames(destination,paths,signal){
   await rm(probe,{recursive:true});
  }
 }
-async function extractArchive(input,destination,{prefix='',signal,tar,maxBytes=8*1024**3}={}){
- await regular(input);if(await stat(destination))fail('解包目标已存在');let bytes=await readFile(input),entries=[];const seen=new Set();
- const add=(path,type,data,mode=0o644,target,mtime,zip)=>{path=path.replace(/\/$/u,'').replace(/^\.\//u,'');if(path==='.'||!path)return;if(!safePath(path))fail('归档成员越界');if(entries.length>=400000||seen.has(path))fail('归档成员重复或超限');seen.add(path);entries.push({path,type,data,mode,target,mtime,zip});};
- // ZIP只留原归档片段；目录与链接边界验完后逐件解压，避免官方NDK全树同时驻留内存。
- const unzipMember=({data,size,method})=>{const output=method===0?data:method===8?inflateRawSync(data,{maxOutputLength:Math.max(1,size)}):fail('ZIP压缩方式未声明');if(output.length!==size)fail('ZIP长度不符');return output;};
- if(bytes[0]===0x50&&bytes[1]===0x4b){let end=-1;for(let i=bytes.length-22;i>=Math.max(0,bytes.length-65557);i--)if(bytes.readUInt32LE(i)===0x06054b50){end=i;break;}if(end<0)fail('ZIP目录缺失');const count=bytes.readUInt16LE(end+10);let cursor=bytes.readUInt32LE(end+16),total=0;for(let n=0;n<count;n++){signal?.throwIfAborted();if(bytes.readUInt32LE(cursor)!==0x02014b50)fail('ZIP成员无效');const method=bytes.readUInt16LE(cursor+10),size=bytes.readUInt32LE(cursor+24),compressed=bytes.readUInt32LE(cursor+20),nameLength=bytes.readUInt16LE(cursor+28),extra=bytes.readUInt16LE(cursor+30),comment=bytes.readUInt16LE(cursor+32),mode=bytes.readUInt32LE(cursor+38)>>>16,offset=bytes.readUInt32LE(cursor+42),name=bytes.subarray(cursor+46,cursor+46+nameLength).toString('utf8');if(bytes.readUInt16LE(cursor+8)&1||size===0xffffffff||offset===0xffffffff)fail('ZIP加密或Zip64未声明');total+=size;if(total>maxBytes)fail('ZIP解压超限');if(bytes.readUInt32LE(offset)!==0x04034b50)fail('ZIP本地记录无效');const start=offset+30+bytes.readUInt16LE(offset+26)+bytes.readUInt16LE(offset+28),data=bytes.subarray(start,start+compressed),zip={data,size,method},type=name.endsWith('/')?'directory':(mode&0o170000)===0o120000?'symlink':'file';if(data.length!==compressed||type==='directory'&&size!==0)fail('ZIP成员长度无效');const link=type==='symlink'?unzipMember(zip):null;add(name,type,link,mode||0o644,link?.toString(),undefined,zip);cursor+=46+nameLength+extra+comment;}}
- else{if(bytes[0]===0x1f&&bytes[1]===0x8b)bytes=gunzipSync(bytes,{maxOutputLength:maxBytes});else if(bytes[0]===0xfd&&bytes[1]===0x37){if(!tar)fail('XZ需要已提供基础归档工具');fail('XZ应通过受控tar清单提取');}
-  const number=b=>{const v=b.toString().replace(/\0.*$/su,'').trim();if(!/^[0-7]*$/u.test(v))fail('TAR数字无效');return parseInt(v||'0',8);};let pax={},global={};
-  for(let cursor=0;cursor+512<=bytes.length;){signal?.throwIfAborted();const block=bytes.subarray(cursor,cursor+512);if(block.every(x=>x===0))break;let sum=0;for(let i=0;i<512;i++)sum+=(i>=148&&i<156)?32:block[i];if(sum!==number(block.subarray(148,156)))fail('TAR头摘要不符');const size=number(block.subarray(124,136)),type=String.fromCharCode(block[156]||48),str=(a,b)=>block.subarray(a,b).toString().replace(/\0.*$/su,''),data=bytes.subarray(cursor+512,cursor+512+size);if(data.length!==size||size>maxBytes)fail('TAR内容超限');cursor+=512+Math.ceil(size/512)*512;
-   if(type==='x'||type==='g'){const values={};let at=0;while(at<data.length){const space=data.indexOf(32,at),length=Number(data.subarray(at,space).toString());if(!Number.isInteger(length)||length<=space-at+1||at+length>data.length)fail('PAX长度无效');const record=data.subarray(space+1,at+length-1).toString(),eq=record.indexOf('=');if(eq<1)fail('PAX字段无效');values[record.slice(0,eq)]=record.slice(eq+1);at+=length;}if(type==='g')global={...global,...values};else pax=values;continue;}
-   if(type==='L'){pax.path=data.toString().replace(/\0.*$/su,'');continue;}if(type==='K'){pax.linkpath=data.toString().replace(/\0.*$/su,'');continue;}
-   const attrs={...global,...pax};pax={};if(Object.keys(attrs).some(x=>x.startsWith('GNU.sparse')))fail('TAR稀疏文件未声明');const name=attrs.path||[str(345,500),str(0,100)].filter(Boolean).join('/'),target=attrs.linkpath||str(157,257);if(!['0','5','2','1'].includes(type))fail('TAR特殊成员未声明');const rawTime=attrs.mtime;if(rawTime!==undefined&&!/^-?[0-9]+(?:\.[0-9]+)?$/u.test(rawTime))fail('TAR时间无效');const mtime=rawTime===undefined?number(block.subarray(136,148)):Number(rawTime);if(!Number.isFinite(mtime)||Math.abs(mtime)>8.64e12)fail('TAR时间越界');add(name,{'0':'file','5':'directory','2':'symlink','1':'hardlink'}[type],data,number(block.subarray(100,108)),target,mtime);
+// 描述符分段读取；只保留成员元数据，不把压缩原件或解压全树载入内存。
+const archiveChunk=256*1024,archiveMetadata=1024*1024;
+const archiveCRC=Uint32Array.from({length:256},(_,value)=>{for(let n=0;n<8;n++)value=value&1?0xedb88320^(value>>>1):value>>>1;return value>>>0;});
+function crcUpdate(crc,bytes){for(const byte of bytes)crc=archiveCRC[(crc^byte)&255]^(crc>>>8);return crc>>>0;}
+function archiveText(bytes){try{return new TextDecoder('utf-8',{fatal:true}).decode(bytes);}catch{fail('归档文字编码无效');}}
+async function archiveReader(input,signal,maxBytes){
+ signal?.throwIfAborted();const before=await regular(input),file=await open(input,constants.O_RDONLY|(constants.O_NOFOLLOW||0));
+ try{
+  const owner=await file.stat();if(!owner.isFile()||owner.dev!==before.dev||owner.ino!==before.ino||!owner.size||owner.size>maxBytes)fail('归档来源身份或大小无效');
+  const read=async(position,length)=>{
+   signal?.throwIfAborted();
+   if(!Number.isSafeInteger(position)||position<0||!Number.isSafeInteger(length)||length<0||length>archiveMetadata||position+length>owner.size)fail('归档读取范围无效');
+   const bytes=Buffer.alloc(length);let at=0;
+   while(at<length){signal?.throwIfAborted();const result=await file.read(bytes,at,length-at,position+at);if(!result.bytesRead)fail('归档内容截断');at+=result.bytesRead;}
+   return bytes;
+  };
+  const verify=async()=>{const last=await file.stat(),current=await regular(input);
+   if([last,current].some(info=>info.dev!==owner.dev||info.ino!==owner.ino||info.size!==owner.size||info.mtimeMs!==owner.mtimeMs||info.ctimeMs!==owner.ctimeMs))fail('读取期间归档来源变化');};
+  return {size:owner.size,read,verify,close:()=>file.close()};
+ }catch(error){await file.close();throw error;}
+}
+async function* archiveRange(reader,position,length,signal){
+ for(let at=0;at<length;){signal?.throwIfAborted();const bytes=await reader.read(position+at,Math.min(archiveChunk,length-at));at+=bytes.length;yield bytes;}
+}
+function archiveName(value){return safePath(value)&&!/^[A-Za-z]:/u.test(value);}
+function archiveMembers(entries,maxBytes){
+ const table=new Map(entries.map(entry=>[entry.path,entry])),resolvedTargets=new Map();table.set('',{path:'',type:'directory'});
+ for(const entry of entries){let parent=posix.dirname(entry.path);
+  while(parent!=='.'){
+   const existing=table.get(parent);if(existing&&existing.type!=='directory')fail('归档父目录不是目录');
+   if(!existing){if(table.size>=800000)fail('归档目录元数据超限');table.set(parent,{path:parent,type:'directory'});}parent=posix.dirname(parent);
   }
  }
- const selected=entries.filter(e=>!prefix||e.path===prefix||e.path.startsWith(prefix+'/')).map(e=>({...e,path:prefix?e.path.slice(prefix.length).replace(/^\//u,''):e.path})).filter(e=>e.path);if(!selected.length)fail('归档根缺失');const table=new Map(selected.map(e=>[e.path,e]));
- for(const entry of selected){let parent=dirname(entry.path);while(parent!=='.'){if(table.has(parent)&&table.get(parent).type!=='directory')fail('归档父目录不是目录');parent=dirname(parent);}if(['symlink','hardlink'].includes(entry.type)){const target=entry.type==='symlink'?posix.normalize(posix.join(posix.dirname(entry.path),entry.target)):prefix?entry.target.replace(new RegExp('^'+prefix+'/'),''):entry.target;if(!safePath(target)||!table.has(target))fail('归档链接越界或缺失');entry.resolved=target;}}
- await mkdir(destination,{mode:0o700});try{await verifyArchiveNames(destination,selected.map(entry=>entry.path),signal);for(const entry of selected.filter(x=>['file','directory'].includes(x.type))){signal?.throwIfAborted();const file=join(destination,entry.path);await mkdir(dirname(file),{recursive:true,mode:0o700});if(entry.type==='directory')await mkdir(file,{recursive:true,mode:0o700});else await writeFile(file,entry.zip?unzipMember(entry.zip):entry.data,{flag:'wx',mode:entry.mode&0o111?0o755:0o644});}
- for(const entry of selected.filter(x=>['symlink','hardlink'].includes(x.type))){signal?.throwIfAborted();const file=join(destination,entry.path);await mkdir(dirname(file),{recursive:true});if(entry.type==='hardlink'){const source=table.get(entry.resolved);if(source.type!=='file')fail('硬链接目标不是普通文件');await copyFile(join(destination,entry.resolved),file,constants.COPYFILE_EXCL);}else await symlink(entry.target,file);}
- // 只回写官方TAR时间；目录在所有子项落盘后恢复，防止误触发维护者生成规则。
- for(const entry of selected.filter(x=>x.mtime!==undefined&&x.type!=='symlink').sort((a,b)=>a.type==='directory'&&b.type!=='directory'?1:a.type!=='directory'&&b.type==='directory'?-1:b.path.length-a.path.length)){signal?.throwIfAborted();await utimes(join(destination,entry.path),entry.mtime,entry.mtime);}return destination;}catch(e){await permissions(destination,true);await rm(destination,{recursive:true});throw e;}
+ const links=new Set();
+ for(const entry of entries)if(entry.type==='symlink'||entry.type==='hardlink'){
+  if(typeof entry.target!=='string'||!entry.target||/[\\\x00-\x1f]/u.test(entry.target)||posix.isAbsolute(entry.target)||/^[A-Za-z]:/u.test(entry.target))fail('归档链接越界或缺失');
+ }
+ // 目标逐段解析，允许Framework的Versions/Current；实际成员仍不能写在链接父目录下。
+ const resolveLink=entry=>{
+  if(resolvedTargets.has(entry.path))return resolvedTargets.get(entry.path);
+  if(links.has(entry.path))fail('归档链接存在循环');if(links.size>=256)fail('归档链接层数超限');links.add(entry.path);
+  const target=resolveTarget(entry.target,entry.type==='symlink'?posix.dirname(entry.path):'.');
+  links.delete(entry.path);resolvedTargets.set(entry.path,target);return target;
+ };
+ const resolveTarget=(value,base)=>{
+  let path=base==='.'?'':base,target=table.get(path);
+  for(const part of value.split('/')){
+   if(target.type!=='directory')fail('归档链接父目标不是目录');
+   if(!part||part==='.')continue;
+   if(part==='..'){if(!path)fail('归档链接越界或缺失');path=posix.dirname(path);if(path==='.')path='';}
+   else path=path?path+'/'+part:part;
+   target=table.get(path);if(!target)fail('归档链接越界或缺失');
+   if(target.type==='symlink'||target.type==='hardlink'){target=resolveLink(target);path=target.path;}
+  }
+  return target;
+ };
+ let bytes=0;
+ for(const entry of entries){
+  if(entry.type==='file')bytes+=entry.size;
+  if(entry.type==='symlink'||entry.type==='hardlink'){
+   const target=resolveLink(entry);
+   if(entry.type==='hardlink'){if(target.type!=='file')fail('硬链接目标不是普通文件');entry.content=target;bytes+=target.size;}
+  }
+  if(!Number.isSafeInteger(bytes)||bytes>maxBytes)fail('归档解压超限');
+ }
+ return table;
 }
-// XZ由供给的POSIX tar处理；双遍清单、无链接父目录与候选物化后的清单一起保护边界。
-async function unpack(input,target,{prefix='',signal,foundation,run=exec}={}){const b=await readFile(input);if(!(b[0]===0xfd&&b[1]===0x37))return extractArchive(input,target,{prefix,signal});const tar=foundation?.tools.tar;if(!tar)fail('XZ缺少tar入口');const list=await run(tar,['-tvf',input],{signal,maxBuffer:32*1024**2,quietOutput:true});if(list.stdout.split('\n').filter(Boolean).some(x=>!/^[-d]/u.test(x)))fail('XZ成员含链接或特殊项');const names=(await run(tar,['-tf',input],{signal,maxBuffer:32*1024**2,quietOutput:true})).stdout.split('\n').filter(Boolean);if(names.some(x=>!safePath(x.replace(/\/$/u,'').replace(/^\.\//u,''))))fail('XZ成员越界');await mkdir(target);try{await verifyArchiveNames(target,names.map(name=>name.replace(/\/$/u,'').replace(/^\.\//u,'' )).filter(name=>name&&name!=='.'),signal);await run(tar,['-xkf',input,'--no-same-owner','-C',target],{signal,maxBuffer:2*1024**2});if(prefix){const child=join(target,prefix),temporary=target+'.root';await directory(child);await rename(child,temporary);await permissions(target,true);await rm(target,{recursive:true});await rename(temporary,target);}return target;}catch(error){if(await stat(target)){await permissions(target,true);await rm(target,{recursive:true});}throw error;}}
+async function extractArchive(input,destination,{prefix='',signal,tar,run=exec,maxBytes=8*1024**3}={}){
+ signal?.throwIfAborted();if(!Number.isSafeInteger(maxBytes)||maxBytes<1024)fail('归档尺寸上限无效');
+ await directory(dirname(destination));if(await stat(destination))fail('解包目标已存在');if(prefix&&!archiveName(prefix))fail('归档根无效');
+ let original,reader,scratch,created=false,metadataBytes=0;const entries=[],seen=new Set();
+ const temporary=async()=>{scratch??=await fixedScratch(join(dirname(destination),'.archive-read-'));return join(scratch,'decoded.tar');};
+ const add=entry=>{
+  entry.path=entry.path.replace(/\/+$/u,'').replace(/^\.\//u,'');
+  if(entry.path==='.'||!entry.path){if(entry.type==='directory')return;fail('归档成员越界');}
+  if(!archiveName(entry.path))fail('归档成员越界');
+  metadataBytes+=Buffer.byteLength(entry.path)+Buffer.byteLength(entry.target||'');
+  if(metadataBytes>32*1024**2||Buffer.byteLength(entry.path)>16384||entry.path.split('/').length>256)fail('归档成员元数据超限');
+  if(entries.length>=400000||seen.has(entry.path))fail('归档成员重复或超限');
+  seen.add(entry.path);entries.push(entry);
+ };
+ const member=async(entry,output)=>{
+  let count=0,crc=0xffffffff;const small=[];
+  const check=new Transform({transform(chunk,_encoding,done){try{
+   signal?.throwIfAborted();count+=chunk.length;if(count>entry.size)fail('归档成员解压超限');
+   if(entry.zip)crc=crcUpdate(crc,chunk);done(null,chunk);
+  }catch(error){done(error);}}});
+  const streams=[Readable.from(archiveRange(reader,entry.offset,entry.zip?entry.compressed:entry.size,signal),{objectMode:false,highWaterMark:archiveChunk})];
+  if(entry.zip&&entry.method===8)streams.push(createInflateRaw({chunkSize:archiveChunk}));
+  streams.push(check,output?createWriteStream(output,{flags:'wx',mode:entry.mode&0o111?0o755:0o644,highWaterMark:archiveChunk}):
+   new Writable({write(chunk,_encoding,done){small.push(chunk);done();}}));
+  await pipeline(...streams,{signal});
+  if(count!==entry.size)fail('归档成员长度不符');if(entry.zip&&((crc^0xffffffff)>>>0)!==entry.crc)fail('ZIP内容CRC不符');
+  if(!output)return Buffer.concat(small);
+ };
+ try{
+  original=await archiveReader(input,signal,maxBytes);reader=original;
+  const header=await reader.read(0,Math.min(6,reader.size));
+  if(header[0]===0x1f&&header[1]===0x8b){
+   const output=await temporary();let count=0;
+   await pipeline(Readable.from(archiveRange(original,0,original.size,signal),{objectMode:false,highWaterMark:archiveChunk}),
+    createGunzip({chunkSize:archiveChunk}),new Transform({transform(chunk,_encoding,done){try{signal?.throwIfAborted();count+=chunk.length;if(count>maxBytes)fail('TAR解压超限');done(null,chunk);}catch(error){done(error);}}}),
+    createWriteStream(output,{flags:'wx',mode:0o600,highWaterMark:archiveChunk}),{signal});
+   await original.verify();reader=await archiveReader(output,signal,maxBytes);
+  }else if(header.equals(Buffer.from([0xfd,0x37,0x7a,0x58,0x5a,0]))){
+   if(!tar)fail('XZ缺少tar入口');
+   // 文本列表只检查原始成员类型；名称和链接关系由下方同一个TAR解析器校验。
+   const listing=await run(tar,['-tvf',input],{signal,maxBuffer:32*1024**2,quietOutput:true});
+   if(listing.stdout.split('\n').filter(Boolean).some(line=>!/^[-dlh]/u.test(line)))fail('XZ成员含特殊项');
+   signal?.throwIfAborted();const output=await temporary(),file=await open(output,'wx',0o600);
+   try{
+    await run(tar,['-c','-f','-','--format=pax','@'+input],{signal,cwd:scratch,quietOutput:true,maxBuffer:2*1024**2,maxStdoutBytes:maxBytes,
+     stdoutSink:async chunk=>{let at=0;while(at<chunk.length){signal?.throwIfAborted();const result=await file.write(chunk,at,chunk.length-at);if(!result.bytesWritten)fail('归档暂存写入中断');at+=result.bytesWritten;}}});
+    await file.sync();
+   }finally{await file.close();}
+   await original.verify();reader=await archiveReader(output,signal,maxBytes);
+  }
+  const magic=await reader.read(0,Math.min(4,reader.size));
+  if(magic[0]===0x50&&magic[1]===0x4b){
+   if(reader.size<22)fail('ZIP目录缺失');const tail=await reader.read(Math.max(0,reader.size-65557),Math.min(reader.size,65557));let end=-1;
+   for(let at=tail.length-22;at>=0;at--)if(tail.readUInt32LE(at)===0x06054b50&&at+22+tail.readUInt16LE(at+20)===tail.length){end=at;break;}
+   if(end<0)fail('ZIP目录缺失');const count=tail.readUInt16LE(end+10),centralSize=tail.readUInt32LE(end+12),centralStart=tail.readUInt32LE(end+16),endAt=reader.size-tail.length+end;
+   if(tail.readUInt16LE(end+4)||tail.readUInt16LE(end+6)||tail.readUInt16LE(end+8)!==count||count===65535||centralStart===0xffffffff||centralSize===0xffffffff)fail('ZIP分卷或Zip64未声明');
+   if(centralStart+centralSize!==endAt||centralSize>32*1024**2)fail('ZIP目录范围无效或超限');let cursor=centralStart,total=0;const ranges=[];
+   for(let n=0;n<count;n++){
+    const item=await reader.read(cursor,46);if(item.readUInt32LE(0)!==0x02014b50)fail('ZIP成员无效');
+    const flags=item.readUInt16LE(8),method=item.readUInt16LE(10),crc=item.readUInt32LE(16),compressed=item.readUInt32LE(20),size=item.readUInt32LE(24),nameLength=item.readUInt16LE(28),extra=item.readUInt16LE(30),comment=item.readUInt16LE(32),mode=item.readUInt32LE(38)>>>16,localAt=item.readUInt32LE(42);
+    if(flags&1||size===0xffffffff||compressed===0xffffffff||localAt===0xffffffff||item.readUInt16LE(34))fail('ZIP加密或Zip64未声明');
+    if(![0,8].includes(method))fail('ZIP压缩方式未声明');
+    cursor+=46;if(cursor+nameLength+extra+comment>centralStart+centralSize)fail('ZIP目录截断');const rawName=await reader.read(cursor,nameLength),name=archiveText(rawName);cursor+=nameLength+extra+comment;
+    total+=size;if(!Number.isSafeInteger(total)||total>maxBytes)fail('ZIP解压超限');
+    const local=await reader.read(localAt,30);if(local.readUInt32LE(0)!==0x04034b50||local.readUInt16LE(6)!==flags||local.readUInt16LE(8)!==method||local.readUInt16LE(26)!==nameLength)fail('ZIP本地记录无效');
+    if(!(await reader.read(localAt+30,nameLength)).equals(rawName))fail('ZIP本地名称不一致');
+    if(!(flags&8)&&(local.readUInt32LE(14)!==crc||local.readUInt32LE(18)!==compressed||local.readUInt32LE(22)!==size))fail('ZIP本地长度或CRC不一致');
+    const offset=localAt+30+nameLength+local.readUInt16LE(28),kind=mode&0o170000,type=name.endsWith('/')?'directory':kind===0o120000?'symlink':'file';
+    if(![0,0o100000,0o040000,0o120000].includes(kind)||type==='directory'&&(size!==0||![0,0o040000].includes(kind))||kind===0o040000&&type!=='directory'||offset+compressed>centralStart||method===0&&compressed!==size)fail('ZIP成员类型或长度无效');
+    ranges.push([localAt,offset+compressed]);const entry={path:name,type,mode:mode||0o644,offset,size,compressed,method,crc,zip:true};
+    if(type==='symlink'){if(size>16384)fail('ZIP链接内容超限');entry.target=archiveText(await member(entry));}
+    add(entry);
+   }
+   if(cursor!==centralStart+centralSize)fail('ZIP目录长度不符');ranges.sort((a,b)=>a[0]-b[0]);for(let n=1;n<ranges.length;n++)if(ranges[n][0]<ranges[n-1][1])fail('ZIP成员范围重叠');
+  }else{
+   const number=bytes=>{const text=bytes.toString('ascii').replace(/\0.*$/su,'').trim();if(!/^[0-7]*$/u.test(text))fail('TAR数字无效');const value=parseInt(text||'0',8);if(!Number.isSafeInteger(value))fail('TAR数字超限');return value;};
+   const text=(bytes,start,end)=>{const part=bytes.subarray(start,end),zero=part.indexOf(0);return archiveText(zero<0?part:part.subarray(0,zero));};
+   let cursor=0,pax={},global={},total=0,headers=0,paxBytes=0,ended=false;
+   while(cursor+512<=reader.size){
+    if(++headers>400000)fail('TAR成员数量超限');
+    const block=await reader.read(cursor,512);if(block.every(value=>value===0)){ended=true;for(let at=cursor;at<reader.size;at+=archiveChunk)if(!(await reader.read(at,Math.min(archiveChunk,reader.size-at))).every(value=>value===0))fail('TAR终态后仍有数据');break;}
+    let sum=0;for(let at=0;at<512;at++)sum+=at>=148&&at<156?32:block[at];if(sum!==number(block.subarray(148,156)))fail('TAR头摘要不符');
+    const headerSize=number(block.subarray(124,136)),type=String.fromCharCode(block[156]||48),offset=cursor+512;
+    if(['x','g','L','K'].includes(type)){
+     paxBytes+=headerSize;if(headerSize>archiveMetadata||paxBytes>32*1024**2||offset+headerSize>reader.size)fail('TAR元数据超限或截断');const data=await reader.read(offset,headerSize);
+     if(type==='L'||type==='K')pax[type==='L'?'path':'linkpath']=text(data,0,data.length);
+     else{const values={};let at=0;while(at<data.length){const space=data.indexOf(32,at);if(space<0)fail('PAX长度无效');const raw=data.subarray(at,space).toString('ascii');if(!/^[1-9][0-9]*$/u.test(raw))fail('PAX长度无效');const length=Number(raw);if(!Number.isSafeInteger(length)||length<=space-at+2||at+length>data.length||data[at+length-1]!==10)fail('PAX长度无效');const record=archiveText(data.subarray(space+1,at+length-1)),equals=record.indexOf('=');if(equals<1||Object.hasOwn(values,record.slice(0,equals)))fail('PAX字段无效');values[record.slice(0,equals)]=record.slice(equals+1);at+=length;}if(type==='g')global={...global,...values};else pax={...pax,...values};if(Object.keys(global).length>1024||Object.keys(pax).length>1024)fail('PAX字段数量超限');}
+     cursor=offset+Math.ceil(headerSize/512)*512;continue;
+    }
+    const attrs={...global,...pax};pax={};if(Object.keys(attrs).some(key=>key.startsWith('GNU.sparse')))fail('TAR稀疏文件未声明');
+    if(!['0','5','2','1'].includes(type))fail('TAR特殊成员未声明');
+    let size=headerSize;if(attrs.size!==undefined){if(!/^(0|[1-9][0-9]*)$/u.test(attrs.size))fail('PAX尺寸无效');size=Number(attrs.size);}
+    if(!Number.isSafeInteger(size)||size<0||size>maxBytes||offset+size>reader.size||type!=='0'&&size!==0)fail('TAR内容超限或截断');
+    total+=size;if(total>maxBytes)fail('TAR解压超限');const rawTime=attrs.mtime;
+    if(rawTime!==undefined&&!/^-?[0-9]+(?:\.[0-9]+)?$/u.test(rawTime))fail('TAR时间无效');const mtime=rawTime===undefined?number(block.subarray(136,148)):Number(rawTime);if(!Number.isFinite(mtime)||Math.abs(mtime)>8.64e12)fail('TAR时间越界');
+    add({path:attrs.path||[text(block,345,500),text(block,0,100)].filter(Boolean).join('/'),type:{'0':'file','5':'directory','2':'symlink','1':'hardlink'}[type],target:attrs.linkpath||text(block,157,257),mode:number(block.subarray(100,108)),mtime,offset,size});
+    cursor=offset+Math.ceil(size/512)*512;
+   }
+   if(!ended||reader.size%512||Object.keys(pax).length)fail('TAR末尾截断或元数据未完成');
+  }
+  archiveMembers(entries,maxBytes);
+  const selected=entries.filter(entry=>!prefix||entry.path===prefix||entry.path.startsWith(prefix+'/')).map(entry=>({...entry,path:prefix?entry.path.slice(prefix.length).replace(/^\//u,''):entry.path,
+   target:entry.type==='hardlink'&&prefix?(entry.target.startsWith(prefix+'/')?entry.target.slice(prefix.length+1):'../'+entry.target):entry.target})).filter(entry=>entry.path);
+  if(!selected.length)fail('归档根缺失');archiveMembers(selected,maxBytes);await reader.verify();
+  await mkdir(destination,{mode:0o700});created=true;await verifyArchiveNames(destination,selected.map(entry=>entry.path),signal);
+  for(const entry of selected.filter(row=>row.type==='directory'))await mkdir(join(destination,entry.path),{recursive:true,mode:0o700});
+  for(const entry of selected.filter(row=>row.type==='file')){signal?.throwIfAborted();const file=join(destination,entry.path);await mkdir(dirname(file),{recursive:true,mode:0o700});await member(entry,file);}
+  for(const entry of selected.filter(row=>row.type==='hardlink')){signal?.throwIfAborted();const file=join(destination,entry.path);await mkdir(dirname(file),{recursive:true,mode:0o700});await copyFile(join(destination,entry.content.path),file,constants.COPYFILE_EXCL);}
+  for(const entry of selected.filter(row=>row.type==='symlink')){signal?.throwIfAborted();const file=join(destination,entry.path);await mkdir(dirname(file),{recursive:true,mode:0o700});await symlink(entry.target,file);}
+  for(const entry of selected){signal?.throwIfAborted();const file=join(destination,entry.path),info=await lstat(file);
+   if(entry.type==='symlink'){if(!info.isSymbolicLink())fail('归档链接物化类型不符');const target=await realpath(file);if(target!==destination&&!inside(destination,target))fail('归档链接物化越界');}
+   else if(entry.type==='directory'?!info.isDirectory():!info.isFile()||info.nlink!==1)fail('归档成员物化类型不符');
+  }
+  // 目录在子项之后恢复官方mtime，避免源码工具误触发维护者规则。
+  for(const entry of selected.filter(row=>row.mtime!==undefined&&row.type!=='symlink').sort((a,b)=>a.type==='directory'&&b.type!=='directory'?1:a.type!=='directory'&&b.type==='directory'?-1:b.path.length-a.path.length))await utimes(join(destination,entry.path),entry.mtime,entry.mtime);
+  await reader.verify();await original.verify();return destination;
+ }catch(error){if(created){await permissions(destination,true);await rm(destination,{recursive:true});}throw error;}
+ finally{if(reader&&reader!==original)await reader.close();if(original)await original.close();if(scratch)await rm(scratch,{recursive:true});}
+}
+// XZ与gzip仅负责产生有界TAR字节，成员物化统一经过同一闭包校验。
+async function unpack(input,target,{prefix='',signal,foundation,run=exec,maxBytes}={}){
+ return extractArchive(input,target,{prefix,signal,tar:foundation?.tools.tar,run,...(maxBytes===undefined?{}:{maxBytes})});
+}
 // 本仓准确工具配方；外部供给登记不能改变这些版本和来源。
 const posixRecipe=(()=>{
 
@@ -4107,7 +4295,7 @@ function assertWorkQuiescent(work){for(const pid of supplyGroups.get(work)||[])t
 
 
 
-// 同文件回归只准备夹具归档，验证候选职责和失败清理，不下载或运行产品编译。
+// 同文件回归验证归档与失败清理；已知XZ阻断使用原声明Git原件，不运行产品编译。
 
 // BEGIN BUILD RESOURCE TESTS
 if(resourceTestInvocation){
@@ -4118,7 +4306,7 @@ if(resourceTestInvocation){
  const {dirname,join,resolve}=await import('node:path');
  const {testRoot:tmpdir,contract}=buildApi;
  const {spawnSync}=await import('node:child_process');
- const {gzipSync,deflateRawSync}=await import('node:zlib');
+ const {gzipSync,deflateRawSync,gunzipSync,crc32:fixtureCRC}=await import('node:zlib');
 const hash=b=>createHash('sha256').update(b).digest('hex');
 async function sandbox(t){const root=await realpath(await fixedScratch(join(tmpdir(),contract.product_id+'-resources-')));t.after(()=>rm(root,{recursive:true,force:true}));return root;}
 // 下载候选与夹具明确归本轮test固定根，挂载卷也不借用build，保持同卷提交。
@@ -4129,8 +4317,8 @@ function zip(entries){
  for(const {name,body='',method=8,type='file'} of entries){
   const path=Buffer.from(name),input=Buffer.from(body),packed=method===8?deflateRawSync(input):input;
   const local=Buffer.alloc(30),directory=Buffer.alloc(46);
-  local.writeUInt32LE(0x04034b50,0);local.writeUInt16LE(method,8);local.writeUInt32LE(packed.length,18);local.writeUInt32LE(input.length,22);local.writeUInt16LE(path.length,26);
-  directory.writeUInt32LE(0x02014b50,0);directory.writeUInt16LE(method,10);directory.writeUInt32LE(packed.length,20);directory.writeUInt32LE(input.length,24);
+  local.writeUInt32LE(0x04034b50,0);local.writeUInt16LE(method,8);local.writeUInt32LE(fixtureCRC(input),14);local.writeUInt32LE(packed.length,18);local.writeUInt32LE(input.length,22);local.writeUInt16LE(path.length,26);
+  directory.writeUInt32LE(0x02014b50,0);directory.writeUInt16LE(method,10);directory.writeUInt32LE(fixtureCRC(input),16);directory.writeUInt32LE(packed.length,20);directory.writeUInt32LE(input.length,24);
   directory.writeUInt16LE(path.length,28);directory.writeUInt32LE((type==='link'?0o120777:name.endsWith('/')?0o40755:0o100644)*65536,38);directory.writeUInt32LE(offset,42);
   locals.push(local,path,packed);central.push(directory,path);offset+=local.length+path.length+packed.length;
  }
@@ -4551,21 +4739,124 @@ test('资源普通导入在Node测试环境中也不注册末尾用例或进入�
 
 
 test('XZ名称预检与解包失败均清理本轮目标，取消不调用提取',async t=>{
- const area=await sandbox(t),input=join(area,'fixture.xz');await writeFile(input,Buffer.from([0xfd,0x37]));
+ const area=await sandbox(t),input=join(area,'fixture.xz');await writeFile(input,Buffer.from([0xfd,0x37,0x7a,0x58,0x5a,0]));
+ const decoded=gunzipSync(tar([{name:'locked/file',body:'original'}]));
  for(const mode of ['normal','failed','cancel']){
   const output=join(area,mode),controller=new AbortController();let extractions=0;
-  const run=async(command,args)=>{
+  const run=async(command,args,options)=>{
    assert.equal(command,join(area,'declared-tar'));
-   if(args[0]==='-tvf')return {stdout:'- fixture\n'};
-   if(args[0]==='-tf'){if(mode==='cancel')controller.abort(Error('取消XZ'));return {stdout:'locked/file\n'};}
-   assert.equal(args[0],'-xkf');extractions++;await mkdir(join(output,'locked'));await writeFile(join(output,'locked/file'),'original');
-   if(mode==='failed')throw Error('提取失败');return {stdout:''};
+   if(args[0]==='-tvf'){if(mode==='cancel')controller.abort(Error('取消XZ'));return {stdout:'- fixture\n'};}
+   assert.deepEqual(args,['-c','-f','-','--format=pax','@'+input]);extractions++;
+   await options.stdoutSink(decoded.subarray(0,600));if(mode==='failed')throw Error('提取失败');
+   await options.stdoutSink(decoded.subarray(600));return {stdout:''};
   };
   const action=()=>unpack(input,output,{foundation:{tools:{tar:join(area,'declared-tar')}},run,signal:controller.signal});
   if(mode==='normal'){await action();assert.equal(await readFile(join(output,'locked/file'),'utf8'),'original');}
   else{await assert.rejects(action,/提取失败|取消XZ/);assert.equal((await readdir(area)).includes(mode),false);}
-  assert.equal(extractions,mode==='cancel'?0:1);assert.deepEqual(await readFile(input),Buffer.from([0xfd,0x37]));
+  assert.equal(extractions,mode==='cancel'?0:1);assert.deepEqual(await readFile(input),Buffer.from([0xfd,0x37,0x7a,0x58,0x5a,0]));
+  assert.equal((await readdir(area)).some(name=>name.startsWith('.archive-read-')),false);
  }
+});
+
+test('XZ真实锁定Git原件的三个内部链接在前置回归中完整保留',async t=>{
+ const area=await sandbox(t),tool=toolDefinitions.find(value=>value.id==='git');
+ // 只取本SDK已声明的同一官方原件；在完整工具构建之前验证已知阻断，不准备其它工具。
+ const input=await acquireArchive(tool.archive,{work:tmpdir(),store:join(area,'archives')});
+ const output=join(area,'git');await unpack(input,output,{prefix:tool.archive.root,foundation:{tools:{tar:'/usr/bin/tar'}}});
+ for(const [path,target]of [['RelNotes','Documentation/RelNotes/'+tool.version+'.adoc'],['subprojects/git-gui','../git-gui'],['subprojects/gitk','../gitk-git']]){
+  assert.equal(await readlink(join(output,path)),target);
+  assert.ok((await realpath(join(output,path))).startsWith(output+'/'));
+ }
+ assert.equal((await readdir(area)).some(name=>name.startsWith('.archive-read-')),false);
+});
+
+test('统一成员检查拒绝循环、缺目标、特殊项及前缀外链接，合法硬链接独立交付',async t=>{
+ const area=await sandbox(t),input=join(area,'members.tgz');
+ await writeFile(input,tar([{name:'package/file',body:'same',mtime:1000},{name:'package/copy',type:'1',target:'package/file',mtime:1000}]));
+ const output=join(area,'good');await extractArchive(input,output,{prefix:'package'});
+ assert.equal(await readFile(join(output,'copy'),'utf8'),'same');
+ assert.notEqual((await lstat(join(output,'file'))).ino,(await lstat(join(output,'copy'))).ino);
+ for(const [name,rows]of [
+  ['cycle',[{name:'a',type:'2',target:'b'},{name:'b',type:'2',target:'a'}]],
+  ['missing',[{name:'a',type:'2',target:'missing'}]],
+  ['absolute',[{name:'a',type:'2',target:'/outside'}]],
+  ['drive',[{name:'C:/outside',body:'x'}]],
+  ['special',[{name:'fifo',type:'6'}]],
+  ['prefix',[{name:'outside',body:'x'},{name:'package/link',type:'2',target:'../outside'}]],
+ ]){
+  const archive=join(area,name+'.tgz'),destination=join(area,name);await writeFile(archive,tar(rows));
+  await assert.rejects(extractArchive(archive,destination,{prefix:name==='prefix'?'package':''}),/循环|缺失|越界|特殊/);
+  assert.equal(existsSync(destination),false);
+ }
+ assert.equal((await readdir(area)).some(name=>name.startsWith('.archive-read-')),false);
+});
+
+test('Framework链接目标逐段经过Current目录，拒绝中间链接越界和循环',async t=>{
+ const area=await sandbox(t),rows=[
+  {name:'package/Versions/A/Headers/header',body:'framework'},
+  {name:'package/Versions/Current',type:'2',target:'A'},
+  {name:'package/Headers',type:'2',target:'Versions/Current/Headers'},
+ ];
+ for(const format of ['tar','zip']){
+  const input=join(area,format+'.blob'),output=join(area,format);
+  await writeFile(input,format==='tar'?tar(rows):zip(rows.map(row=>({name:row.name,body:row.target||row.body,type:row.type==='2'?'link':'file'}))));
+  await extractArchive(input,output,{prefix:'package'});
+  assert.equal(await readFile(join(output,'Headers/header'),'utf8'),'framework');
+  assert.equal(await readlink(join(output,'Headers')),'Versions/Current/Headers');
+ }
+ for(const [name,target]of [['escape','../../outside'],['cycle','../Headers']]){
+  const input=join(area,name+'.tgz'),output=join(area,name);
+  await writeFile(input,tar([...rows.filter(row=>!row.name.endsWith('/Current')),{name:'package/Versions/Current',type:'2',target}]));
+  await assert.rejects(extractArchive(input,output,{prefix:'package'}),/越界|缺失|循环/);assert.equal(existsSync(output),false);
+ }
+});
+
+test('ZIP损坏CRC、重叠目录、截断和中途取消均不留下目标',async t=>{
+ const area=await sandbox(t),valid=zip([{name:'package/file',body:'data',method:0}]);
+ const corrupt=Buffer.from(valid);corrupt[30+Buffer.byteLength('package/file')]^=1;
+ const overlap=Buffer.from(valid);overlap.writeUInt32LE(1,overlap.length-22+16);
+ for(const [name,bytes]of [['crc',corrupt],['overlap',overlap],['truncated',valid.subarray(0,valid.length-1)]]){
+  const input=join(area,name+'.zip'),output=join(area,name);await writeFile(input,bytes);
+  await assert.rejects(extractArchive(input,output),/CRC|范围|目录/);assert.equal(existsSync(output),false);
+ }
+ const input=join(area,'cancel.xz'),output=join(area,'cancelled');await writeFile(input,Buffer.from([0xfd,0x37,0x7a,0x58,0x5a,0]));
+ const controller=new AbortController(),decoded=gunzipSync(tar([{name:'file',body:'data'}]));
+ const run=async(_command,args,options)=>{
+  if(args[0]==='-tvf')return {stdout:'- file\n'};
+  await options.stdoutSink(decoded.subarray(0,512));controller.abort(Error('中途取消'));
+  await options.stdoutSink(decoded.subarray(512));assert.fail('取消后不能完成归档');
+ };
+ await assert.rejects(unpack(input,output,{foundation:{tools:{tar:join(area,'tar')}},run,signal:controller.signal}),/中途取消/);
+ assert.equal(existsSync(output),false);assert.equal((await readdir(area)).some(name=>name.startsWith('.archive-read-')),false);
+});
+
+test('超过2GiB的稀疏ZIP缓存复用与随机成员提取保持有界内存',async t=>{
+ const area=await sandbox(t),entry=archive(Buffer.from('synthetic-large-zip'),'https://example.invalid/large.zip'),store=join(area,'archives');await mkdir(store);
+ const input=join(store,hash(JSON.stringify([entry.url,entry.sha256]))+'.blob'),first=zip([{name:'package/empty',method:0}]),second=zip([{name:'package/value',body:'bounded',method:8}]);
+ const parts=bytes=>{const end=bytes.length-22,start=bytes.readUInt32LE(end+16);return {local:bytes.subarray(0,start),table:Buffer.from(bytes.subarray(start,end))};};
+ const a=parts(first),b=parts(second),offset=2*1024**3+4096;b.table.writeUInt32LE(offset,42);
+ const central=Buffer.concat([a.table,b.table]),centralAt=offset+b.local.length,end=Buffer.alloc(22);
+ end.writeUInt32LE(0x06054b50,0);end.writeUInt16LE(2,8);end.writeUInt16LE(2,10);end.writeUInt32LE(central.length,12);end.writeUInt32LE(centralAt,16);
+ const file=await open(input,'wx',0o600);try{await file.write(a.local,0,a.local.length,0);await file.write(b.local,0,b.local.length,offset);await file.write(central,0,central.length,centralAt);await file.write(end,0,end.length,centralAt+central.length);}finally{await file.close();}
+ assert.ok((await lstat(input)).size>2*1024**3);assert.ok((await lstat(input)).blocks*512<1024**2);
+ const baseline=process.memoryUsage().arrayBuffers;let peak=baseline;const timer=setInterval(()=>{peak=Math.max(peak,process.memoryUsage().arrayBuffers);},1);
+ try{
+  assert.equal(await acquireArchive(entry,{work:tmpdir(),store,offline:true,fetcher:()=>assert.fail('已有原件不得再下载')}),input);
+  const output=join(area,'large');await extractArchive(input,output,{prefix:'package'});
+  peak=Math.max(peak,process.memoryUsage().arrayBuffers);
+  assert.equal(await readFile(join(output,'value'),'utf8'),'bounded');assert.equal((await lstat(join(output,'empty'))).size,0);
+  assert.ok(peak-baseline<32*1024**2,'小成员提取不得按整包大小分配内存');
+ }finally{clearInterval(timer);}
+});
+
+test('资源二进制输出背压等待写入，超限及写入异常保持真实退出',async()=>{
+ let count=0;const result=await runResourceProcess(process.execPath,['-e','process.stdout.write(Buffer.alloc(256*1024,1));'],
+  {env:{PATH:''},maxStdoutBytes:512*1024,stdoutSink:async bytes=>{await new Promise(resolve=>setTimeout(resolve,2));count+=bytes.length;}});
+ assert.equal(count,256*1024);assert.equal(result.stdout,'');
+ await assert.rejects(runResourceProcess(process.execPath,['-e','process.stdout.write(Buffer.alloc(256*1024,1));'],
+  {env:{PATH:''},maxStdoutBytes:1024,stdoutSink:async()=>{}}),/归档输出超限/);
+ await assert.rejects(runResourceProcess(process.execPath,['-e','process.stdout.write(Buffer.alloc(256*1024,1));'],
+  {env:{PATH:''},maxStdoutBytes:512*1024,stdoutSink:async()=>{throw Error('合成写入失败');}}),/合成写入失败/);
 });
 
 
@@ -5184,7 +5475,7 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2){
   const platform=Object.keys(automationWorkflows)[0],workflow=automationWorkflows[platform],id=123;
   const run={id,path:`.github/workflows/${workflow}`,event:'workflow_dispatch',head_branch:'main',head_sha:'a'.repeat(40),
    repository:{full_name:automationRepository},html_url:`https://github.com/${automationRepository}/actions/runs/${id}`,
-   display_title:'TataChatSDK-1.0.0'};
+   display_title:'塔塔聊天·SDK·v1.0.0'};
   let posts=0,received=0;
   const preflight=url=>String(url).includes('/releases?')?Response.json([]):
    String(url).includes('/workflows/'+workflow+'/runs?')?Response.json({workflow_runs:[]}):null;
@@ -5217,7 +5508,7 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2){
 // 完整模块初始化后登记验证用例，工具配方只从本仓唯一声明读取。
 if(testSession&&process.argv.length===2&&resolve(process.argv[1]||'')===fileURLToPath(import.meta.url)){
  const {test}=await import('node:test'),{default:assert}=await import('node:assert/strict');
- const verificationEnvironment=()=>({GITHUB_ACTIONS:'true',GITHUB_REPOSITORY:'tuyutata/tatachatsdk',GITHUB_WORKFLOW:'tatachatsdk.sdk',
+ const verificationEnvironment=()=>({GITHUB_ACTIONS:'true',GITHUB_REPOSITORY:'tuyutata/tatachatsdk',GITHUB_WORKFLOW:'塔塔聊天·SDK',
   GITHUB_WORKFLOW_REF:'tuyutata/tatachatsdk/.github/workflows/sdk.yml@refs/heads/main',GITHUB_EVENT_NAME:'workflow_dispatch',
   GITHUB_REF:'refs/heads/main',GITHUB_JOB:'test',GITHUB_SHA:'a'.repeat(40),GITHUB_RUN_ID:'123',GITHUB_RUN_ATTEMPT:'1'});
  test('完整Dart验证先拒绝本机、错Run和错提交，不领取资源',async()=>{
@@ -5335,7 +5626,7 @@ if(process.env.NODE_TEST_CONTEXT&&process.argv.length===2&&process.argv[1]===imp
   let dispatches=0,mode='success';const requests=[];
   const run={id:731,run_number:1,run_attempt:1,path:'.github/workflows/'+workflow,event:'workflow_dispatch',head_branch:'main',
    head_sha:'a'.repeat(40),repository:{full_name:repository},status:'completed',conclusion:'success',
-   html_url:'https://github.com/'+repository+'/actions/runs/731',display_title:'TataChatSDK-1.0.0'};
+   html_url:'https://github.com/'+repository+'/actions/runs/731',display_title:'塔塔聊天·SDK·v1.0.0'};
   const fetchImpl=async(url,options)=>{
    const parsed=new URL(url),path=parsed.pathname+parsed.search;assert.equal(parsed.origin,'https://api.github.com');
    requests.push(options.method+' '+path);

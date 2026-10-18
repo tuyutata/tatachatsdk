@@ -1,5 +1,5 @@
-name: tatachatsdk.sdk
-run-name: "TataChatSDK-${{ inputs.version }}"
+name: 塔塔聊天·SDK
+run-name: "塔塔聊天·SDK·v${{ inputs.version }}"
 'on':
   workflow_dispatch:
     inputs:
@@ -16,6 +16,7 @@ permissions:
   contents: read
 jobs:
   test:
+    name: "塔塔聊天·SDK·v${{ inputs.version }}"
     if: github.ref == 'refs/heads/main'
     runs-on: xcode-27
     timeout-minutes: 120
@@ -52,6 +53,7 @@ jobs:
         shell: bash
         run: node scripts/build.mjs ci-test
   native:
+    name: "塔塔聊天·${{ matrix.target == 'android' && 'Android' || matrix.target == 'ios' && 'iOS' || 'macOS' }}·v${{ inputs.version }}"
     needs: test
     if: github.ref == 'refs/heads/main'
     strategy:
@@ -84,7 +86,7 @@ jobs:
         run: node scripts/build.mjs ci-native "${{ matrix.target }}"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: "native-${{ matrix.target }}"
+          name: "塔塔聊天·${{ matrix.target == 'android' && 'Android' || matrix.target == 'ios' && 'iOS' || 'macOS' }}·v${{ inputs.version }}"
           path: "${{ runner.temp }}/tatachatsdk-native-${{ matrix.target }}"
           if-no-files-found: error
           retention-days: 7
@@ -97,6 +99,7 @@ jobs:
           path: "${{ runner.temp }}/tatachatsdk-cargo-${{ matrix.target }}"
           key: "tatachatsdk-cargo-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.target }}-${{ hashFiles('native/Cargo.lock', 'scripts/build.mjs') }}-${{ github.run_id }}-${{ github.run_attempt }}"
   release:
+    name: "塔塔聊天·SDK·v${{ inputs.version }}"
     needs: native
     if: github.ref == 'refs/heads/main'
     runs-on: xcode-27
@@ -115,7 +118,7 @@ jobs:
           node-version: 25.2.1
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          pattern: native-*
+          pattern: "塔塔聊天·*·v${{ inputs.version }}"
           path: "${{ runner.temp }}/native-artifacts"
           merge-multiple: false
       - name: 汇总三平台并创建唯一正式 SDK Release
@@ -124,6 +127,7 @@ jobs:
         shell: bash
         run: node scripts/build.mjs ci-release
   cargo-retention:
+    name: "塔塔聊天·${{ matrix.target == 'android' && 'Android' || matrix.target == 'ios' && 'iOS' || 'macOS' }}·v${{ inputs.version }}"
     needs: [native, release]
     if: always() && github.ref == 'refs/heads/main'
     strategy:
@@ -150,6 +154,7 @@ jobs:
         shell: bash
         run: node scripts/build.mjs ci-cache-prune "${{ matrix.target }}" "$CARGO_CACHE_KEY"
   run-retention:
+    name: "塔塔聊天·SDK·v${{ inputs.version }}"
     needs: [test, native, release, cargo-retention]
     if: always() && github.ref == 'refs/heads/main'
     runs-on: xcode-27
