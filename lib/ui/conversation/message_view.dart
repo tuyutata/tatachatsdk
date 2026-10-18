@@ -6,9 +6,9 @@ import 'package:flutter_blurhash/flutter_blurhash.dart';
 import 'package:flutter_chat_core/flutter_chat_core.dart';
 import 'package:flutter_chat_ui/flutter_chat_ui.dart';
 
-import '../../runtime/chat_runtime.dart';
 import '../../core/chat_content.dart';
 import '../../core/chat_message.dart';
+import '../../runtime/chat_runtime.dart';
 import '../../runtime/direct_flow.dart';
 import '../../runtime/media_limit_policy.dart';
 import '../../storage/records.dart';

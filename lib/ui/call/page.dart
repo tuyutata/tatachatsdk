@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
 import '../../call/coordinator.dart';
+import '../../call/flutter_peer.dart';
 import '../../call/peer.dart';
 import '../metrics.dart';
 

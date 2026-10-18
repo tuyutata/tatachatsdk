@@ -642,39 +642,57 @@ export async function build(platform,work,receipt,base) {
 
 // 每次调用拥有自己的取消和进程集合，导入API并发也不能共享执行状态。
 const executions=new AsyncLocalStorage();
+// 只向本次spawn取得的进程组发信号；ESRCH表示已退出，其它错误保持未知且只输出固定系统类别。
+function buildProcessSignal(pid,signal,send=process.kill){
+ if(!Number.isSafeInteger(pid)||pid<=1)return {alive:false};
+ try{send(-pid,signal);return {alive:true};}
+ catch(error){
+  if(error.code==='ESRCH')return {alive:false};
+  const code=['EPERM','EACCES','EINVAL','ENOSYS','EIO'].includes(error.code)?error.code:'UNKNOWN';
+  const number=Number.isSafeInteger(error.errno)&&Math.abs(error.errno)<=2147483647?';errno='+error.errno:'';
+  return {alive:true,error:'产品工具进程组'+(signal===0?'探测':'信号'+signal)+'失败（code='+code+number+'）'};
+ }
+}
 export async function runBuildProcess(file,args,env,cwd=root,{capture=false,input,accepted=[0],timeout=7200000,signal=executions.getStore()?.signal,passHost=false,streamError=false}={}) {
  signal?.throwIfAborted();
  return new Promise((ok,reject)=>{
   const child=spawn(file,args,{cwd,env:workEnvironment(env),detached:true,stdio:['pipe','pipe','pipe',...(passHost?[3]:[])]});
   trackWorkProcess(child.pid);
-  let stdout=[],stderr=[],bytes=0,reason,settled=false;
-  const stop=()=>{try{process.kill(-child.pid,'SIGTERM');}catch(error){if(error.code!=='ESRCH')reason='无法取消产品工具进程组';}};
+  let stdout=[],stderr=[],bytes=0,reason,settled=false,stopping=false;const cleanup=new Set();
+  const group=signal=>{const result=buildProcessSignal(child.pid,signal);if(result.error)cleanup.add(result.error);return result.alive;};
   let killer;
-  const terminate=()=>{stop();clearTimeout(killer);killer=setTimeout(()=>{try{process.kill(-child.pid,'SIGKILL');}catch{}},1500);};
-  const forced=setTimeout(()=>{reason='产品工具超时';terminate();},timeout);forced.unref();
-  const abort=()=>{reason='产品任务已取消';terminate();};
+  const terminate=()=>{if(stopping)return;stopping=true;group('SIGTERM');killer=setTimeout(()=>group('SIGKILL'),1500);};
+  const forced=setTimeout(()=>{reason??='产品工具超时';terminate();},timeout);forced.unref();
+  const abort=()=>{reason??='产品任务已取消';terminate();};
   signal?.addEventListener('abort',abort,{once:true});if(signal?.aborted)abort();
-  try{executions.getStore()?.track?.(child.pid,true);}catch(error){reason=error.message;terminate();}
-  const consume=(chunk,out)=>{bytes+=chunk.length;if(bytes>16*1024*1024){reason='产品工具输出超限';terminate();return;}out.push(chunk);if(!capture)process.stderr.write(chunk);};
+  try{executions.getStore()?.track?.(child.pid,true);}catch{reason??='产品工具进程登记失败';terminate();}
+  const consume=(chunk,out)=>{bytes+=chunk.length;if(bytes>16*1024*1024){reason??='产品工具输出超限';terminate();return;}out.push(chunk);if(!capture)process.stderr.write(chunk);};
   child.stdout.on('data',chunk=>consume(chunk,stdout));child.stderr.on('data',chunk=>{if(capture&&streamError)process.stderr.write(chunk);else consume(chunk,stderr);});
-  child.stdin.on('error',()=>{reason='产品工具输入失败';stop();});
-  child.once('error',()=>{reason='产品工具无法启动';});
+  child.stdin.on('error',()=>{reason??='产品工具输入失败';terminate();});
+  child.once('error',()=>{reason??='产品工具无法启动';});
   child.once('close',async(code,termination)=>{
    clearTimeout(forced);clearTimeout(killer);
-   // 主进程close不代表后代退出；未退出的同组工具必须停止并确认，之后才能清理材料。
-   const alive=()=>{if(!child.pid)return false;try{process.kill(-child.pid,0);return true;}catch(error){return error.code!=='ESRCH';}};
-   if(alive()){reason??='产品工具退出后仍有后代';stop();for(let n=0;n<15&&alive();n++)await new Promise(r=>setTimeout(r,100));if(alive())try{process.kill(-child.pid,'SIGKILL');}catch{};for(let n=0;n<15&&alive();n++)await new Promise(r=>setTimeout(r,100));}
-   if(alive()){reason='产品工具后代退出未确认，保留工作目录';const state=executions.getStore();if(state)state.unconfirmed=true;}
+   // 主进程退出码与收尾分开保留；可收回的同组后台工具须等退出，未知或信号失败不能报成功。
+   const exitFailure=!accepted.includes(code)?'产品工具执行失败（退出码'+(Number.isInteger(code)?code:'未知')+'）':null;
+   const signalFailure=termination?'产品工具被信号终止':null;
+   if(group(0)){
+    group('SIGTERM');for(let n=0;n<15&&group(0);n++)await new Promise(r=>setTimeout(r,100));
+    if(group(0))group('SIGKILL');for(let n=0;n<15&&group(0);n++)await new Promise(r=>setTimeout(r,100));
+   }
+   const pending=group(0);
+   if(pending){cleanup.add('产品工具后代退出未确认，保留工作目录');const state=executions.getStore();if(state)state.unconfirmed=true;}
    signal?.removeEventListener('abort',abort);clearTimeout(killer);
-   if(signal?.aborted)reason='产品任务已取消';
-   if(!alive())try{executions.getStore()?.track?.(child.pid,false);}catch(error){reason=error.message;}
+   if(signal?.aborted)reason??='产品任务已取消';
+   if(!pending)try{executions.getStore()?.track?.(child.pid,false);}catch{cleanup.add('产品工具进程收尾登记失败');}
    if(settled)return;settled=true;
-   if(reason||termination||!accepted.includes(code))reject(Error(reason||'产品工具执行失败'));
+   const messages=[reason,exitFailure,signalFailure,...cleanup].filter(Boolean);
+   if(messages.length){const error=Error(messages.join('；'));error.exitCode=code;error.signal=termination;error.cleanupErrors=[...cleanup];reject(error);}
    else ok({stdout:Buffer.concat(stdout).toString('utf8'),stderr:Buffer.concat(stderr).toString('utf8'),code});
   });
   child.stdin.end(input);
  });
 }
+
 const run=async(file,args,env,cwd=root,capture=false)=>(await runBuildProcess(file,args,env,cwd,{capture})).stdout;
 
 export function outputDigest(path) {
@@ -5053,6 +5071,35 @@ test('失败、取消、并发和伪造终态不能复用工作根或留下成�
   }finally{removeFixture(work,{recursive:true});}
  }
  const work=sandbox();try{writeFixture(join(work,'.product-build.lock'),'owned');await assert.rejects(execute(platform,work,{}));assert.equal(readFileSync(join(work,'.product-build.lock'),'utf8'),'owned');}finally{rmSync(join(work,'.product-build.lock'),{force:true});removeFixture(work,{recursive:true});}
+});
+
+test('产品工具信号只作用本组，ESRCH已退出、权限及未知错误失败关闭',()=>{
+ const calls=[];assert.equal(buildProcessSignal(123,'SIGTERM',(pid,signal)=>calls.push([pid,signal])).alive,true);
+ assert.deepEqual(calls,[[-123,'SIGTERM']]);
+ assert.equal(buildProcessSignal(undefined,'SIGTERM',()=>assert.fail('无pid不得发信号')).alive,false);
+ assert.equal(buildProcessSignal(123,0,()=>{throw Object.assign(Error('不应交付原文'),{code:'ESRCH'});}).alive,false);
+ for(const [code,expected]of [['EPERM','EPERM'],['EACCES','EACCES'],['fixture-private-text','UNKNOWN']]){
+  const result=buildProcessSignal(123,'SIGTERM',()=>{throw Object.assign(Error('fixture-private-text'),{code,errno:-1});});
+  assert.equal(result.alive,true);assert.match(result.error,new RegExp('code='+expected+';errno=-1'));
+  assert.doesNotMatch(result.error,/fixture-private-text/);
+ }
+});
+test('产品工具保留非零退出码，正常后台后代退出后才交付，超时仍失败',async()=>{
+ const work=sandbox();
+ try{
+  await assert.rejects(runBuildProcess(process.execPath,['-e','process.exit(7)'],process.env,work,{capture:true}),error=>{
+   assert.equal(error.exitCode,7);assert.match(error.message,/退出码7/);return true;
+  });
+  for(const status of [0,7]){
+   const pidFile=join(work,'child-'+status);
+   const script="const fs=require('node:fs'),{spawn}=require('node:child_process');const child=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore'});fs.writeFileSync(process.argv[1],String(child.pid));child.unref();process.exit(Number(process.argv[2]));";
+   const pending=runBuildProcess(process.execPath,['-e',script,pidFile,String(status)],process.env,work,{capture:true,timeout:10000});
+   if(status===0)assert.equal((await pending).code,0);
+   else await assert.rejects(pending,error=>{assert.equal(error.exitCode,7);assert.match(error.message,/退出码7/);return true;});
+   const pid=Number(readFileSync(pidFile,'utf8'));assert.throws(()=>process.kill(pid,0),error=>error.code==='ESRCH');
+  }
+  await assert.rejects(runBuildProcess(process.execPath,['-e','setInterval(()=>{},1000)'],process.env,work,{capture:true,timeout:100}),/产品工具超时/);
+ }finally{removeFixture(work,{recursive:true});}
 });
 
 test('产品取消等待工具进程组退出，不提前交付结果',async()=>{
