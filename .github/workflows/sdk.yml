@@ -65,6 +65,8 @@ jobs:
           if [ ! -f "$android_home/ndk/$SDK_NDK/source.properties" ]; then
             "$android_home/cmdline-tools/latest/bin/sdkmanager" "ndk;$SDK_NDK"
           fi
+          # 显式交付本产品声明的NDK，覆盖运行机预设的其它版本路径。
+          printf 'ANDROID_NDK_HOME=%s\nANDROID_NDK_ROOT=%s\n' "$android_home/ndk/$SDK_NDK" "$android_home/ndk/$SDK_NDK" >> "$GITHUB_ENV"
       - name: 核对候选版本
         env:
           GH_TOKEN: ${{ github.token }}

@@ -8,7 +8,7 @@ TataChatSDK独立拥有聊天客户端逻辑、原生引擎、公开接口、原
 
 公开命令：node scripts/build.mjs test执行Rust测试、宿主库编译、Dart严格分析及全部Flutter真实测试；默认命令编译三端并交付完整SDK目录；归档、正式版本和网络请求由GitHub工作流的官方命令执行；native android/ios/macos只用于独立核验内部目标；protocol直接调用显式交付的官方protoc和Dart插件。编译命令输出JSON只包含本轮work和output目录，失败退出非零。不接受控制台任务宿主、资源回执、供给路径或旧固定现场协议。
 
-工具版本唯一声明在config.mjs的tools：Node 25.2.1、Rust 1.97.1、Flutter 3.47.2、NDK 28.2.13676358、protoc 35.0、protoc_plugin 25.0.0。使用电脑现有正式工具及官方工具命令；CI按声明调用setup-node、rustup、官方Flutter Git仓库和sdkmanager。Flutter首次启动先用普通版本命令完成官方初始化，再读取机器格式版本JSON，冷缓存与热缓存遵守相同版本核对。缺依赖按native/Cargo.lock、pubspec.lock正常下载，禁止升级锁定版本或依赖控制台工具库存。协议生成通过PROTOC与PROTOC_GEN_DART明确交付官方可执行文件，不执行全局激活，不自动改写源码生成物。
+工具版本唯一声明在config.mjs的tools：Node 25.2.1、Rust 1.97.1、Flutter 3.47.2、NDK 28.2.13676358、protoc 35.0、protoc_plugin 25.0.0。使用电脑现有正式工具及官方工具命令；CI按声明调用setup-node、rustup、官方Flutter Git仓库和sdkmanager，并明确交付声明的NDK绝对路径，避免运行机预设环境指向另一版本。Flutter首次启动先用普通版本命令完成官方初始化，再读取机器格式版本JSON，冷缓存与热缓存遵守相同版本核对。缺依赖按native/Cargo.lock、pubspec.lock正常下载，禁止升级锁定版本或依赖控制台工具库存。协议生成通过PROTOC与PROTOC_GEN_DART明确交付官方可执行文件，不执行全局激活，不自动改写源码生成物。
 
 编译使用target/build/sdk-*，测试使用target/test/sdk-*，各轮独立；失败和测试结束后清理本轮目录，成功保留准确产物供消费方使用后清理。取消先终止本轮进程组，未确认退出时保留本轮现场与缓存锁，不清理活动进程的文件。源码根按脚本位置解析，GitHub使用checkout默认工作目录。target/cache/rust复用Cargo增量数据，target/cache/pub保存Pub下载，target/cache/flutter保存本产品锁定Flutter工具；缓存占用、不可写或目录异常时使用本轮独立Cargo和Pub目录，不等待其它任务。GitHub官方cache恢复和保存均限时并允许失败，缺缓存正常下载和构建；真实工具或构建失败仍使任务失败。
 
