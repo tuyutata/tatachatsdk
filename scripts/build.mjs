@@ -50,6 +50,8 @@ function buildEnvironment(work,cache){
 function flutterExecutable(){const base=process.env.FLUTTER_ROOT||join(root,'target/cache/flutter');return join(base,'bin/flutter');}
 async function flutterCheck(env){
  const executable=flutterExecutable();if(!existsSync(executable))throw Error('缺少Flutter '+tools.flutter+'；请交付官方SDK并设置FLUTTER_ROOT');
+ // 首次启动先完成官方下载与工具初始化，避免下载进度污染机器格式JSON。
+ await run(executable,['--version'],{env});
  const version=JSON.parse(await run(executable,['--version','--machine'],{env,capture:true}));
  if(version.frameworkVersion!==tools.flutter)throw Error('Flutter版本与本产品声明不一致');return executable;
 }
