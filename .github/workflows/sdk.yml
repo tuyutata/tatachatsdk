@@ -1,177 +1,185 @@
+# SDK是唯一平台；三端只是同一SDK包的内部编译目标。
 name: 塔塔聊天·SDK
-run-name: "塔塔聊天·SDK·v${{ inputs.version }}"
+run-name: 塔塔聊天·SDK·v${{ inputs.version }}
 'on':
   workflow_dispatch:
     inputs:
       version:
-        description: 本轮候选成功版本，由产品派发入口计算
+        description: 从最新成功Run计算的候选版本
         required: true
         type: string
-env:
-  SDK_VERSION: "${{ inputs.version }}"
 concurrency:
-  group: "${{ github.repository }}-sdk"
+  group: ${{ github.repository }}-sdk
   cancel-in-progress: false
 permissions:
-  contents: read
+  contents: write
+  actions: read
+env:
+  SDK_VERSION: ${{ inputs.version }}
+  SEGMENT_DOWNLOAD_TIMEOUT_MINS: '1'
 jobs:
-  test:
-    name: "塔塔聊天·SDK·v${{ inputs.version }}"
+  sdk:
+    name: 塔塔聊天·SDK·v${{ inputs.version }}
     if: github.ref == 'refs/heads/main'
-    runs-on: xcode-27
-    timeout-minutes: 120
-    permissions:
-      contents: read
-      actions: read
-    steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
-        with:
-          ref: "${{ github.sha }}"
-          persist-credentials: false
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
-        with:
-          node-version: 25.2.1
-      - name: 提前核对GitHub Runner正式工具
-        shell: bash
-        run: |
-          set -euo pipefail
-          test "$(node --version)" = "v25.2.1"
-          command -v gh
-          command -v tar
-          /usr/bin/xcrun --find llvm-nm >/dev/null
-          /usr/bin/xcodebuild -version >/dev/null
-          test -x /usr/bin/plutil
-      - name: 核对候选版本和Run名称
-        env:
-          GH_TOKEN: "${{ github.token }}"
-        shell: bash
-        run: node scripts/build.mjs ci-version-check
-      - name: 先执行本仓代码回归
-        shell: bash
-        run: node --test scripts/build.mjs
-      - name: 严格分析Dart并执行全部真实回归
-        shell: bash
-        run: node scripts/build.mjs ci-test
-  native:
-    name: "塔塔聊天·${{ matrix.target == 'android' && 'Android' || matrix.target == 'ios' && 'iOS' || 'macOS' }}·v${{ inputs.version }}"
-    needs: test
-    if: github.ref == 'refs/heads/main'
-    strategy:
-      fail-fast: false
-      matrix:
-        target: [android, ios, macos]
     runs-on: xcode-27
     timeout-minutes: 240
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
-          ref: "${{ github.sha }}"
-          fetch-depth: 0
+          ref: ${{ github.sha }}
           persist-credentials: false
+      - id: tools
+        name: 读取本产品工具声明
+        run: |
+          node --input-type=module -e 'import {tools} from "./scripts/config.mjs";for(const [name,value] of Object.entries(tools))console.log(name+"="+value)' >> "$GITHUB_OUTPUT"
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with:
-          node-version: 25.2.1
-      - name: 恢复本平台最新Cargo增量数据
-        id: cargo_cache_restore
+          node-version: ${{ steps.tools.outputs.node }}
+      - name: 恢复官方增量缓存
+        uses: actions/cache/restore@0400d5f644dc74513175e3cd8d07132dd4860809
         continue-on-error: true
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+        timeout-minutes: 2
         with:
-          path: "${{ runner.temp }}/tatachatsdk-cargo-${{ matrix.target }}"
-          key: "tatachatsdk-cargo-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.target }}-${{ hashFiles('native/Cargo.lock', 'scripts/build.mjs') }}-${{ github.run_id }}-${{ github.run_attempt }}"
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target/cache/rust
+            target/cache/pub
+            target/cache/flutter
+          key: sdk-${{ runner.os }}-${{ runner.arch }}-${{ steps.tools.outputs.rust }}-${{ steps.tools.outputs.flutter }}-${{ steps.tools.outputs.ndk }}-${{ hashFiles('native/Cargo.lock', 'pubspec.lock') }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            tatachatsdk-cargo-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.target }}-${{ hashFiles('native/Cargo.lock', 'scripts/build.mjs') }}-
-      - name: 编译并验收本平台原生件
-        id: native_build
-        shell: bash
-        run: node scripts/build.mjs ci-native "${{ matrix.target }}"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+            sdk-${{ runner.os }}-${{ runner.arch }}-${{ steps.tools.outputs.rust }}-${{ steps.tools.outputs.flutter }}-${{ steps.tools.outputs.ndk }}-${{ hashFiles('native/Cargo.lock', 'pubspec.lock') }}-
+          fail-on-cache-miss: false
+      - name: 准备官方工具
+        env:
+          SDK_RUST: ${{ steps.tools.outputs.rust }}
+          SDK_FLUTTER: ${{ steps.tools.outputs.flutter }}
+          SDK_NDK: ${{ steps.tools.outputs.ndk }}
+        run: |
+          rustup toolchain install "$SDK_RUST" --profile minimal
+          mkdir -p target/cache
+          if [ ! -x target/cache/flutter/bin/flutter ]; then
+            git clone --depth 1 --branch "$SDK_FLUTTER" https://github.com/flutter/flutter.git target/cache/flutter
+          fi
+          android_home="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
+          if [ ! -f "$android_home/ndk/$SDK_NDK/source.properties" ]; then
+            "$android_home/cmdline-tools/latest/bin/sdkmanager" "ndk;$SDK_NDK"
+          fi
+      - name: 核对候选版本
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/actions/workflows/sdk.yml/runs?branch=main&event=workflow_dispatch&per_page=100" > "$RUNNER_TEMP/sdk-runs.json"
+          node --input-type=module - "$RUNNER_TEMP/sdk-runs.json" <<'NODE'
+          import {readFileSync} from 'node:fs';
+          import {nextVersion,sdkName} from './scripts/config.mjs';
+          const rows=JSON.parse(readFileSync(process.argv[2],'utf8')).flatMap(page=>page.workflow_runs);
+          if(nextVersion(rows)!==process.env.SDK_VERSION)throw Error('候选版本已变化');
+          sdkName(process.env.SDK_VERSION);
+          NODE
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+      - name: AI代码回归
+        run: node --test test/build.test.mjs
+      - name: Rust与Dart真实测试
+        run: node scripts/build.mjs test
+      - name: 编译并汇总完整SDK
+        id: build
+        run: |
+          result="$(node scripts/build.mjs)"
+          work="$(printf '%s' "$result" | jq -r .work)"
+          project="$(printf '%s' "$result" | jq -r .output)"
+          [[ "${work%/*}" = "$GITHUB_WORKSPACE/target/build" && "${work##*/}" =~ ^sdk-[A-Za-z0-9]+$ && "$project" = "$work/project" ]]
+          test "$(cd "$work" && pwd -P)" = "$work"
+          printf 'work=%s\n' "$work" >> "$GITHUB_OUTPUT"
+          name="塔塔聊天·SDK·v$SDK_VERSION"
+          artifact="$RUNNER_TEMP/sdk-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          mkdir "$artifact"
+          ditto -c -k --sequesterRsrc --keepParent "$project" "$artifact/$name.zip"
+          digest="$(shasum -a 256 "$artifact/$name.zip" | cut -d ' ' -f 1)"
+          jq -n --arg version "$SDK_VERSION" --arg sha "$GITHUB_SHA" --argjson run "$GITHUB_RUN_ID" --argjson attempt "$GITHUB_RUN_ATTEMPT" --arg file "$name.zip" --arg digest "$digest" \
+            '{product_id:"tatachatsdk",platform:"sdk",software_version:$version,git_commit_sha:$sha,producer_run_id:$run,producer_run_attempt:$attempt,assets:[{name:$file,sha256:$digest}]}' > "$artifact/$name.json"
+          (cd "$artifact" && shasum -a 256 "$name.zip" "$name.json" > "$name.sha256")
+          printf 'path=%s\n' "$artifact" >> "$GITHUB_OUTPUT"
+          printf 'SDK_NAME=%s\n' "$name" >> "$GITHUB_ENV"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: "塔塔聊天·${{ matrix.target == 'android' && 'Android' || matrix.target == 'ios' && 'iOS' || 'macOS' }}·v${{ inputs.version }}"
-          path: "${{ runner.temp }}/tatachatsdk-native-${{ matrix.target }}"
+          name: 塔塔聊天·SDK·v${{ inputs.version }}
+          path: ${{ steps.build.outputs.path }}
           if-no-files-found: error
-          retention-days: 7
-      - name: 保存本平台Cargo增量数据
-        id: cargo_cache_save
-        if: steps.native_build.outputs.cargo_cache_ready == 'true'
+          compression-level: 0
+      - name: 保存官方增量缓存
+        if: ${{ always() && steps.tools.outcome == 'success' }}
+        uses: actions/cache/save@0400d5f644dc74513175e3cd8d07132dd4860809
         continue-on-error: true
-        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
+        timeout-minutes: 2
         with:
-          path: "${{ runner.temp }}/tatachatsdk-cargo-${{ matrix.target }}"
-          key: "tatachatsdk-cargo-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.target }}-${{ hashFiles('native/Cargo.lock', 'scripts/build.mjs') }}-${{ github.run_id }}-${{ github.run_attempt }}"
-  release:
-    name: "塔塔聊天·SDK·v${{ inputs.version }}"
-    needs: native
-    if: github.ref == 'refs/heads/main'
-    runs-on: xcode-27
-    timeout-minutes: 120
-    permissions:
-      contents: write
-      actions: read
-    steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
-        with:
-          ref: "${{ github.sha }}"
-          fetch-depth: 0
-          persist-credentials: false
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
-        with:
-          node-version: 25.2.1
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          pattern: "塔塔聊天·*·v${{ inputs.version }}"
-          path: "${{ runner.temp }}/native-artifacts"
-          merge-multiple: false
-      - name: 汇总三平台并创建唯一正式 SDK Release
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target/cache/rust
+            target/cache/pub
+            target/cache/flutter
+          key: sdk-${{ runner.os }}-${{ runner.arch }}-${{ steps.tools.outputs.rust }}-${{ steps.tools.outputs.flutter }}-${{ steps.tools.outputs.ndk }}-${{ hashFiles('native/Cargo.lock', 'pubspec.lock') }}-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: 生成并核对正式Release与Tag
         env:
-          GH_TOKEN: "${{ github.token }}"
-        shell: bash
-        run: node scripts/build.mjs ci-release
-  cargo-retention:
-    name: "塔塔聊天·${{ matrix.target == 'android' && 'Android' || matrix.target == 'ios' && 'iOS' || 'macOS' }}·v${{ inputs.version }}"
-    needs: [native, release]
-    if: always() && github.ref == 'refs/heads/main'
-    strategy:
-      fail-fast: false
-      matrix:
-        target: [android, ios, macos]
-    runs-on: xcode-27
-    permissions:
-      contents: read
-      actions: write
-    env:
-      GH_TOKEN: "${{ github.token }}"
-    steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
-        with:
-          ref: "${{ github.sha }}"
-          persist-credentials: false
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
-        with:
-          node-version: 25.2.1
-      - name: 只保留本平台最新一份Cargo增量数据
+          GH_TOKEN: ${{ github.token }}
+          SDK_ARTIFACT_DIRECTORY: ${{ steps.build.outputs.path }}
+        run: |
+          set -euo pipefail
+          encoded="$(jq -rn --arg name "$SDK_NAME" '$name|@uri')"
+          gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases?per_page=100" > "$RUNNER_TEMP/sdk-releases.json"
+          previous="$(jq '[.[][]|select(.tag_name==env.SDK_NAME)]' "$RUNNER_TEMP/sdk-releases.json")"
+          test "$(printf '%s' "$previous" | jq length)" -le 1
+          if [ "$(printf '%s' "$previous" | jq length)" -eq 1 ]; then
+            proof="$(printf '%s' "$previous" | jq '.[0].body|fromjson')"
+            old_run="$(printf '%s' "$proof" | jq -r .producer_run_id)"
+            old_attempt="$(printf '%s' "$proof" | jq -r .producer_run_attempt)"
+            old_sha="$(printf '%s' "$proof" | jq -r .git_commit_sha)"
+            printf '%s' "$proof" | jq -e '.product_id=="tatachatsdk" and .platform=="sdk" and .software_version==env.SDK_VERSION' >/dev/null
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$old_run/attempts/$old_attempt" | jq -e --arg sha "$old_sha" '.status=="completed" and .conclusion!="success" and .head_sha==$sha and .path==".github/workflows/sdk.yml"' >/dev/null
+            gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$encoded" | jq -e --arg sha "$old_sha" '.object.type=="commit" and .object.sha==$sha' >/dev/null
+            gh release delete "$SDK_NAME" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag
+          fi
+          # GraphQL变量由gh参数传入，查询字符串必须保持原文。
+          # shellcheck disable=SC2016
+          ref="$(gh api graphql -f query='query($owner:String!,$repo:String!,$tag:String!){repository(owner:$owner,name:$repo){ref(qualifiedName:$tag){target{oid}}}}' -f owner="$GITHUB_REPOSITORY_OWNER" -f repo="${GITHUB_REPOSITORY#*/}" -f tag="refs/tags/$SDK_NAME" --jq '.data.repository.ref.target.oid // ""')"
+          test -z "$ref"
+          tag_created=false
+          rollback() {
+            release_status=$?
+            id="$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[]|select(.tag_name==env.SDK_NAME and .target_commitish==env.GITHUB_SHA)|select((.body|fromjson?|.producer_run_id)==(env.GITHUB_RUN_ID|tonumber))|.id')"
+            if [ -n "$id" ]; then gh release delete "$SDK_NAME" --repo "$GITHUB_REPOSITORY" --yes || printf '本次Release撤销未完成\n' >&2; fi
+            if [ "$tag_created" = true ]; then
+              if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$encoded" --jq .object.sha | grep -Fxq "$GITHUB_SHA"; then
+                gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/$encoded" || printf '本次Tag撤销未完成\n' >&2
+              fi
+            fi
+            exit "$release_status"
+          }
+          trap rollback ERR
+          gh api -X POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$SDK_NAME" -f sha="$GITHUB_SHA" > "$RUNNER_TEMP/sdk-tag.json"
+          tag_created=true
+          jq -e '.object.sha==env.GITHUB_SHA' "$RUNNER_TEMP/sdk-tag.json" >/dev/null
+          gh release create "$SDK_NAME" "$SDK_ARTIFACT_DIRECTORY/"* --repo "$GITHUB_REPOSITORY" --verify-tag --target "$GITHUB_SHA" --title "$SDK_NAME" --notes-file "$SDK_ARTIFACT_DIRECTORY/$SDK_NAME.json" --draft
+          back="$RUNNER_TEMP/sdk-readback-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          mkdir "$back"
+          gh release download "$SDK_NAME" --repo "$GITHUB_REPOSITORY" --dir "$back"
+          for file in "$SDK_ARTIFACT_DIRECTORY/"*; do cmp "$file" "$back/$(basename "$file")"; done
+          gh release edit "$SDK_NAME" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease=false --latest
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$encoded" | jq -e '.draft==false and .prerelease==false and .published_at!=null and .name==env.SDK_NAME and .tag_name==env.SDK_NAME and .target_commitish==env.GITHUB_SHA and (.assets|length)==3' >/dev/null
+          gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$encoded" | jq -e '.object.type=="commit" and .object.sha==env.GITHUB_SHA' >/dev/null
+          trap - ERR
+          # 新正式版本完整确认后才清理同一SDK命名空间的旧版本；失败明确保留重试。
+          gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[]|.tag_name|select(startswith("塔塔聊天·SDK·v"))' > "$RUNNER_TEMP/sdk-old-tags.txt"
+          while IFS= read -r old; do
+            if [ "$old" != "$SDK_NAME" ]; then gh release delete "$old" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || printf '旧版本清理未完成：%s\n' "$old" >&2; fi
+          done < "$RUNNER_TEMP/sdk-old-tags.txt"
+      - name: 清理本轮SDK编译现场
+        continue-on-error: true
+        if: ${{ always() && steps.build.outputs.work != '' }}
         env:
-          CARGO_CACHE_KEY: "tatachatsdk-cargo-v1-macOS-ARM64-${{ matrix.target }}-${{ hashFiles('native/Cargo.lock', 'scripts/build.mjs') }}-${{ github.run_id }}-${{ github.run_attempt }}"
-        shell: bash
-        run: node scripts/build.mjs ci-cache-prune "${{ matrix.target }}" "$CARGO_CACHE_KEY"
-  run-retention:
-    name: "塔塔聊天·SDK·v${{ inputs.version }}"
-    needs: [test, native, release, cargo-retention]
-    if: always() && github.ref == 'refs/heads/main'
-    runs-on: xcode-27
-    permissions:
-      contents: write
-      actions: write
-    steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
-        with:
-          ref: "${{ github.sha }}"
-          persist-credentials: false
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
-        with:
-          node-version: 25.2.1
-      - name: 仅保留本工作流最新成功与失败记录
-        env:
-          GH_TOKEN: "${{ github.token }}"
-          SDK_FINAL_OUTCOME: "${{ needs.test.result == 'success' && needs.native.result == 'success' && needs.release.result == 'success' && needs.cargo-retention.result == 'success' && 'success' || 'failure' }}"
-        shell: bash
-        run: node scripts/build.mjs ci-run-prune "$SDK_FINAL_OUTCOME"
+          SDK_WORK_DIRECTORY: ${{ steps.build.outputs.work }}
+        run: |
+          [[ "${SDK_WORK_DIRECTORY%/*}" = "$GITHUB_WORKSPACE/target/build" && "${SDK_WORK_DIRECTORY##*/}" =~ ^sdk-[A-Za-z0-9]+$ ]]
+          test "$(cd "$SDK_WORK_DIRECTORY" && pwd -P)" = "$SDK_WORK_DIRECTORY"
+          rm -rf "$SDK_WORK_DIRECTORY"

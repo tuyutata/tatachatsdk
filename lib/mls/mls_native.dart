@@ -428,31 +428,6 @@ DynamicLibrary _loadChatSdkLibrary() {
         '测试MLS动态库必须显式属于本轮验证任务',
       );
     }
-    final marker = File(path.join(work, '.active.json'));
-    if (FileSystemEntity.typeSync(marker.path, followLinks: false) !=
-        FileSystemEntityType.file) {
-      throw MlsNativeException(
-        MlsNativeErrorCode.libraryUnavailable,
-        '测试MLS动态库缺少本轮任务守卫',
-      );
-    }
-    final owner = jsonDecode(marker.readAsStringSync());
-    final lease = Platform.environment['PRODUCT_WORK_LEASE'];
-    if (owner is! Map<String, dynamic> ||
-        owner['schema'] != 1 ||
-        owner['product_id'] is! String ||
-        !RegExp(r'^[a-z][a-z0-9_]*$').hasMatch(owner['product_id'] as String) ||
-        lease == null || lease.isEmpty || lease.length > 128 ||
-        owner['nonce'] != lease ||
-        owner['pid'] is! int ||
-        (owner['pid'] as int) < 2 ||
-        owner['work'] != work ||
-        owner['state'] != 'running') {
-      throw MlsNativeException(
-        MlsNativeErrorCode.libraryUnavailable,
-        '测试MLS动态库任务身份不一致',
-      );
-    }
     return DynamicLibrary.open(library);
   }
   final library = Platform.isMacOS
