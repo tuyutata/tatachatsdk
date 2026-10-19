@@ -18,7 +18,7 @@ TataChatSDK独立拥有聊天客户端逻辑、原生引擎、公开接口、原
 
 真实公共布局接口createFlutterSourceView、assertFlutterSourceView和analysisOptionsBytes继续由SDK持有，供现有公民、途遇消费者调用。Android扁平源码仅在本轮工程映射到Flutter要求的src/main路径，分析配置直接生成正常YAML，不解析内嵌Shell或复制旧资源框架。
 
-GitHub只有sdk.yml一个工作流、一个SDK执行Job：读取SDK公开声明核对版本→test/build.test.mjs代码回归→Rust/Dart真实测试→三端编译汇总→ditto与shasum生成归档清单→单一Artifact→gh原生命令生成正式Tag和Release、下载附件逐件cmp核对。编译脚本不包含GitHub API、Release/Tag、历史版本清理和内嵌测试。固定Workflow为塔塔聊天·SDK，所有逐次Job、Run、Artifact、Tag、Release均为塔塔聊天·SDK·vX.Y.Z。压缩包、JSON清单和SHA256文件使用相同前缀并保留扩展名。
+GitHub只有sdk.yml一个工作流、一个SDK执行Job：读取SDK公开声明核对版本→test/build.test.mjs代码回归→Rust/Dart真实测试→三端编译汇总→ditto与shasum生成归档清单→单一Artifact→gh原生命令生成正式Tag和Release、下载附件逐件cmp核对。编译脚本不包含GitHub API、Release/Tag、历史版本清理和内嵌测试。固定Workflow为塔塔聊天·SDK，所有逐次Job、Run、Artifact、Tag、Release均为塔塔聊天·SDK·vX.Y.Z。压缩包、JSON清单和SHA256文件使用相同前缀并保留扩展名；GitHub会规范化下载文件名，Release附件以官方label保留完整中文显示名，回读按唯一标签定位实际下载名并逐字节核对。
 
 版本从最新成功Run读取并仅增加补丁号；失败不消耗候选版本，不以Release创建时间或运行次数推算。没有成功Run时以pubspec.yaml.version为首次候选；存在无法识别的成功Run时拒绝猜测。SDK同一时间只允许一个活动任务，重连仅核对原Run。新正式版本附件全部上传、回读并核对Run/SHA/摘要后才成功；失败候选只能在核对原失败Run后清理重试，禁止覆盖成功版本。
 

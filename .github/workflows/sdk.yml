@@ -162,11 +162,19 @@ jobs:
           gh api -X POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$SDK_NAME" -f sha="$GITHUB_SHA" > "$RUNNER_TEMP/sdk-tag.json"
           tag_created=true
           jq -e '.object.sha==env.GITHUB_SHA' "$RUNNER_TEMP/sdk-tag.json" >/dev/null
-          gh release create "$SDK_NAME" "$SDK_ARTIFACT_DIRECTORY/"* --repo "$GITHUB_REPOSITORY" --verify-tag --target "$GITHUB_SHA" --title "$SDK_NAME" --notes-file "$SDK_ARTIFACT_DIRECTORY/$SDK_NAME.json" --draft
+          # GitHub会规范化下载文件名；官方label保留准确的产品、平台和版本显示名。
+          files=()
+          for file in "$SDK_ARTIFACT_DIRECTORY/"*; do files+=("$file#$(basename "$file")"); done
+          gh release create "$SDK_NAME" "${files[@]}" --repo "$GITHUB_REPOSITORY" --verify-tag --target "$GITHUB_SHA" --title "$SDK_NAME" --notes-file "$SDK_ARTIFACT_DIRECTORY/$SDK_NAME.json" --draft
           back="$RUNNER_TEMP/sdk-readback-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           mkdir "$back"
-          gh release download "$SDK_NAME" --repo "$GITHUB_REPOSITORY" --dir "$back"
-          for file in "$SDK_ARTIFACT_DIRECTORY/"*; do cmp "$file" "$back/$(basename "$file")"; done
+          gh release view "$SDK_NAME" --repo "$GITHUB_REPOSITORY" --json assets > "$RUNNER_TEMP/sdk-assets.json"
+          for file in "$SDK_ARTIFACT_DIRECTORY/"*; do
+            label="$(basename "$file")"
+            remote="$(jq -er --arg label "$label" '[.assets[]|select(.label==$label and .state=="uploaded")]|if length==1 then .[0].name else error("附件标签不唯一") end' "$RUNNER_TEMP/sdk-assets.json")"
+            gh release download "$SDK_NAME" --repo "$GITHUB_REPOSITORY" --pattern "$remote" --output "$back/$label"
+            cmp "$file" "$back/$label"
+          done
           gh release edit "$SDK_NAME" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease=false --latest
           gh api "repos/$GITHUB_REPOSITORY/releases/tags/$encoded" | jq -e '.draft==false and .prerelease==false and .published_at!=null and .name==env.SDK_NAME and .tag_name==env.SDK_NAME and .target_commitish==env.GITHUB_SHA and (.assets|length)==3' >/dev/null
           gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$encoded" | jq -e '.object.type=="commit" and .object.sha==env.GITHUB_SHA' >/dev/null
