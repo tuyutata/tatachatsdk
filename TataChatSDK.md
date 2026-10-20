@@ -4,7 +4,7 @@ TataChatSDK独立拥有聊天客户端逻辑、原生引擎、公开接口、原
 
 ## 编译与塔塔自动化
 
-编译入口为scripts/build.mjs；工具及纯版本声明归scripts/config.mjs，独立构建测试归test/build.test.mjs；唯一控制台接入为控制台仓库tata/tatachatsdk.mjs。控制台通用模块不实现本SDK流程。SDK是唯一公共平台，Android、iOS、macOS只是内部编译目标；它们不产生独立版本或独立平台Artifact。
+编译入口为scripts/build.mjs；工具及纯版本声明归scripts/config.mjs，独立构建测试归test/build.test.mjs；公开流程声明及实现归本仓scripts/config.mjs，控制台只调用声明和显示公开状态。SDK是唯一公共平台，Android、iOS、macOS只是内部编译目标；它们不产生独立版本或独立平台Artifact。
 
 公开命令：node scripts/build.mjs test执行Rust测试、宿主库编译、Dart严格分析及全部Flutter真实测试；默认命令编译三端并交付完整SDK目录；归档、正式版本和网络请求由GitHub工作流的官方命令执行；native android/ios/macos只用于独立核验内部目标；protocol直接调用显式交付的官方protoc和Dart插件。编译命令输出JSON只包含本轮work和output目录，失败退出非零。不接受控制台任务宿主、资源回执、供给路径或旧固定现场协议。
 
@@ -22,7 +22,7 @@ GitHub只有sdk.yml一个工作流、一个SDK执行Job：读取SDK公开声明�
 
 版本从最新成功Run读取并仅增加补丁号；失败不消耗候选版本，不以Release创建时间或运行次数推算。没有成功Run时以pubspec.yaml.version为首次候选；存在无法识别的成功Run时拒绝猜测。SDK同一时间只允许一个活动任务，重连仅核对原Run。新正式版本附件全部上传、回读并核对Run/SHA/摘要后才成功；失败候选只能在核对原失败Run后清理重试，禁止覆盖成功版本。
 
-终态Run仅保留最新成功与最新失败，活动Run保留，由tata接入在远端完成后实际删除旧Run（包含日志与Artifact）。新成功正式版本确认完整后，SDK自己的CI凭据清理本产品旧Release和Tag；失败必须明确报告并在后续成功流程重试，不把界面过滤当作删除。应用商店提交、开发升级、部署等属于后续发布，必须使用最新自动化成功的正式产物并另行授权。
+终态Run仅保留最新成功与最新失败，活动Run保留；本仓scripts/config.mjs的automate在准确Run真实完成后调用cleanupRuns，实际删除旧Run并回读确认（包含所属日志与Artifact）。新成功正式版本确认完整后，SDK自己的CI凭据清理本产品旧Release和Tag；失败必须明确报告并在后续成功流程重试，不把界面过滤当作删除。应用商店提交、开发升级、部署等属于后续发布，必须使用最新自动化成功的正式产物并另行授权。
 
 旧工具安装框架、磁盘映像、依赖供给回执、源码冻结副本、通用Build解释器、脚本文本断言及固定现场租约已删除，不保留旧接口别名或兼容执行分支。
 
@@ -345,3 +345,5 @@ ChatConversationHost.prepareAttachment为可选Future<void> Function(String user
 ## 外部调用入口
 
 本仓现有 scripts/config.mjs 的 describeAction({flow,platform}) 声明流程入口。自动化启动逻辑、版本输入与平台选择归本仓；调用方交付已授权令牌和标准 read/dispatch 传输能力，接收准确 Run 编号。既有独立自动化接口继续由本仓实现。未提供的安装或发布入口明确报产品侧未声明，不错接到编译，也不产生成功回执。
+
+产品入口自行完成派发、实时Run/Job状态输出和终态清理，全部完成后才返回runID；公开JSON行事件使用started/run/jobs/output，任何显示写入失败均不终止产品收尾。独立调用可交付report回调或读取同一公开事件流，产品不导入控制台模块。release与cleanup声明使用同一本仓实现；单独cleanup不派发新Run。清理按准确Workflow、main和workflow_dispatch分页读取，复用已有retainedRuns；复用已授权Actions写令牌，失败明确报告，不新增Workflow或重复SDK构建。控制台既有代码、UI和权限保持。
