@@ -341,3 +341,7 @@ ChatConversationHost.prepareAttachment为可选Future<void> Function(String user
 第2步运行时附件边界：原ChatRuntimeHost保持，产品可选择实现同文件ChatAttachmentAuthorizationHost.prepareAttachment(account, allowRefresh, expectedDeviceId)。SDK只等待布尔许可并复核原账户/绑定围栏，不解释会员。主动sendMedia/sendGroupAttachment在大小/加密前以及长加密后复核；主动downloadAttachment可刷新。自动上传/补发、入站及页面自动补取只用缓存，不主动刷新；缓存缺失/过期保留原待发密文和控制消息。直聊普通消息继续，群聊沿原顺序；没有新缓存、计时器或状态表。有效缓存取得后可继续原重试，原受众/MLS/文件清理/服务端权限保持。
 
 运行时新附件ID仅含ASCII字母、数字、下划线及连字符，并保持1～128字符，沿用原MLS/HTTP严格校验。生成器保留毫秒值和128位安全随机数；会话归属仍由原绑定围栏、受众和服务端检查确定。
+
+## 外部调用入口
+
+本仓现有 scripts/config.mjs 的 describeAction({flow,platform}) 声明流程入口。自动化启动逻辑、版本输入与平台选择归本仓；调用方交付已授权令牌和标准 read/dispatch 传输能力，接收准确 Run 编号。既有独立自动化接口继续由本仓实现。未提供的安装或发布入口明确报产品侧未声明，不错接到编译，也不产生成功回执。

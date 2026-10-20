@@ -34,3 +34,14 @@ export function retainedRuns(rows){
  }
  return keep;
 }
+
+// 本仓流程的公开入口声明；调用方只交付标准传输能力，不拥有产品规则或任务宿主。
+export async function describeAction({flow,platform}){
+ if(flow!=='release'||platform!=='sdk')throw Error('本产品尚未声明该流程入口：'+flow+'·'+platform);
+ return {repository,launch:async({read,dispatch})=>{
+  const rows=[];
+  for(let page=1;;page++){const data=await read('actions/workflows/sdk.yml/runs?branch=main&event=workflow_dispatch&per_page=100&page='+page);rows.push(...data.workflow_runs);if(data.workflow_runs.length<100)break;}
+  const receipt=await dispatch({workflow:'sdk.yml',ref:'main',inputs:{version:nextVersion(rows)}});
+  return {runID:receipt.workflow_run_id};
+ }};
+}
