@@ -1,13 +1,123 @@
 #!/usr/bin/env node
-// 仅负责SDK编译、必要的本机测试和完整SDK目录；GitHub与正式版本归工作流。
+// 本仓测试、编译及自动化入口；Workflow交付正式版本，原Run终态后实际清理历史。
 import {spawn,execFileSync} from 'node:child_process';
 import {mkdirSync,mkdtempSync,existsSync,readFileSync,writeFileSync,copyFileSync,cpSync,rmSync,realpathSync,lstatSync,readdirSync,rmdirSync} from 'node:fs';
 import {join,dirname,resolve,basename,sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {homedir} from 'node:os';
 
+export function sdkName(version){
+ if(typeof version!=='string'||version.length>64||!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u.test(version))throw Error('SDK版本无效');
+ return '塔塔聊天·SDK·v'+version;
+}
+export function nextVersion(runs){
+ const latest=[...runs].filter(run=>run.status==='completed'&&run.conclusion==='success')
+  .sort((a,b)=>Date.parse(b.updated_at)-Date.parse(a.updated_at)||b.id-a.id)[0];
+ if(!latest){const version=/^version: (\S+)$/mu.exec(readFileSync(new URL('../pubspec.yaml',import.meta.url),'utf8'))?.[1];sdkName(version);return version;}
+ const prefix='塔塔聊天·SDK·v',version=latest.display_title?.startsWith(prefix)?latest.display_title.slice(prefix.length):'';
+ sdkName(version);const parts=version.split('.');parts[2]=String(BigInt(parts[2])+1n);const next=parts.join('.');sdkName(next);return next;
+}
+export function retainedRuns(rows){
+ const keep=new Set(),states=new Set();
+ for(const run of [...rows].sort((a,b)=>Date.parse(b.updated_at)-Date.parse(a.updated_at)||b.id-a.id)){
+  if(run.status!=='completed'){keep.add(run.id);continue;}
+  const state=run.conclusion==='success'?'success':'failed';if(!states.has(state)){states.add(state);keep.add(run.id);}
+ }
+ return keep;
+}
+
+// 产品自己拥有派发、观察和终态清理；公开输出只传递GitHub状态和固定说明。
+function reportEvent(value){
+ if(!process.stdout.listenerCount('error'))process.stdout.on('error',()=>{});
+ try{process.stdout.write(JSON.stringify(value)+'\n',()=>{});}catch{}
+}
+function emit(report,value){try{report(value);}catch{}}
+function line(report,text){emit(report,{event:'output',stream:'stdout',data:Buffer.from(text+'\n').toString('base64')});}
+async function request(token,path,{method='GET',body,fetchImpl=fetch}={}){
+ const response=await fetchImpl('https://api.github.com/repos/'+repository+'/'+path,{method,redirect:'error',
+  headers:{Authorization:'Bearer '+token,Accept:'application/vnd.github+json','Content-Type':'application/json','X-GitHub-Api-Version':'2026-03-10','User-Agent':'TataChatSDK'},
+  ...(body===undefined?{}:{body:JSON.stringify(body)})});
+ if(method==='DELETE'&&response.status===404)return null;
+ if(!response.ok)throw Error('GitHub HTTP '+response.status);
+ return response.status===204?null:response.json();
+}
+async function workflowRuns(read){
+ const rows=[];
+ for(let page=1;;page++){
+  const data=await read('actions/workflows/sdk.yml/runs?branch=main&event=workflow_dispatch&per_page=100&page='+page);
+  rows.push(...data.workflow_runs);if(data.workflow_runs.length<100)return rows;
+ }
+}
+// 原Run结束后实际删除旧同类记录；Release/Tag先按本仓已有生产回执确认归属。
+export async function cleanupRuns({token,fetchImpl=fetch,read=path=>request(token,path,{fetchImpl}),remove=id=>request(token,'actions/runs/'+id,{method:'DELETE',fetchImpl}),completedRun,report=reportEvent}={}){
+ const rows=await workflowRuns(read);
+ if(completedRun){const index=rows.findIndex(row=>row.id===completedRun.id);if(index<0)rows.push(completedRun);else rows[index]=completedRun;}
+ const keep=retainedRuns(rows),stale=rows.filter(row=>row.status==='completed'&&!keep.has(row.id)),deleted=[],errors=[];
+ const absent=async path=>{try{await read(path);return false;}catch(error){if(error.message==='GitHub HTTP 404')return true;throw error;}};
+ // 删除旧成功之前，新成功必须已有完整SDK Artifact及正式Release/Tag；失败清理独立进行。
+ let releases=[];
+ try{for(let page=1;;page++){const values=await read('releases?per_page=100&page='+page);releases.push(...values);if(values.length<100)break;}}
+ catch(error){errors.push('Release列表读取失败：'+error.message);}
+ const owned=releases.flatMap(release=>{let proof;try{proof=JSON.parse(release.body);}catch{return [];}
+  if(proof.product_id!==configuration.product_id||proof.platform!=='sdk'||!Number.isSafeInteger(proof.producer_run_id)||proof.producer_run_id<=0)return [];
+  if(release.tag_name!==sdkName(proof.software_version)||release.target_commitish!==proof.git_commit_sha)return [];
+  return [{release,proof}];});
+ let successReady=true;
+ if(stale.some(row=>row.conclusion==='success')){
+  try{
+   const success=rows.filter(row=>row.status==='completed'&&row.conclusion==='success'&&keep.has(row.id))[0];
+   const release=owned.find(value=>value.proof.producer_run_id===success.id)?.release;
+   if(!release||release.draft||release.prerelease||release.assets?.length!==3)throw Error('新正式Release或附件不完整');
+   const artifacts=await read('actions/runs/'+success.id+'/artifacts?per_page=100');
+   if(artifacts.artifacts?.filter(value=>value.name===success.display_title&&!value.expired&&value.size_in_bytes>0).length!==1)throw Error('新完整SDK Artifact缺失');
+   const tag=await read('git/ref/tags/'+encodeURIComponent(release.tag_name));
+   if(tag.object?.type!=='commit'||tag.object.sha!==success.head_sha)throw Error('新正式Tag未确认');
+  }catch(error){successReady=false;errors.push('旧成功清理未执行：'+error.message);}
+ }
+ // 先归还旧发布资产再删Run；某项失败仍清理其它旧失败，不用重跑业务来重试删除。
+ for(const {release,proof}of owned){
+  if(keep.has(proof.producer_run_id))continue;
+  const row=rows.find(value=>value.id===proof.producer_run_id);
+  if(row&&row.status!=='completed'||(!row||row.conclusion==='success')&&!successReady)continue;
+  try{const current=await read('actions/runs/'+proof.producer_run_id);if(current.status!=='completed')continue;}catch(error){if(error.message!=='GitHub HTTP 404'){errors.push('旧版本Run读取失败：'+error.message);continue;}}
+  try{
+   const tagPath='git/ref/tags/'+encodeURIComponent(release.tag_name);
+   if(!await absent(tagPath)){const currentTag=await read(tagPath);if(currentTag.object?.type!=='commit'||currentTag.object.sha!==proof.git_commit_sha)throw Error('旧Tag归属已变化');}
+   await request(token,'releases/'+release.id,{method:'DELETE',fetchImpl});
+   const tag='git/refs/tags/'+encodeURIComponent(release.tag_name);
+   if(!await absent('git/ref/tags/'+encodeURIComponent(release.tag_name)))await request(token,tag,{method:'DELETE',fetchImpl});
+   if(!await absent('releases/'+release.id)||!await absent('git/ref/tags/'+encodeURIComponent(release.tag_name)))throw Error('旧Release或Tag删除尚未确认');
+  }catch(error){errors.push('旧发布资产删除失败：'+error.message);}
+ }
+ for(const row of stale){
+  if(row.conclusion==='success'&&!successReady)continue;
+  try{const current=await read('actions/runs/'+row.id);if(current.status!=='completed')continue;await remove(row.id);if(!await absent('actions/runs/'+row.id))throw Error('旧Run删除尚未确认');deleted.push(row.id);}
+  catch(error){if(error.message!=='GitHub HTTP 404')errors.push('旧Run删除失败：'+error.message);}
+ }
+ const remaining=await workflowRuns(read),expected=retainedRuns(remaining);
+ if(remaining.some(row=>row.status==='completed'&&!expected.has(row.id)))errors.push('SDK旧Run删除尚未确认');
+ if(errors.length)throw Error(errors.join('；'));
+ line(report,'SDK记录清理完成：最新成功、最新失败各最多一条；旧Run、日志和对应Artifact实际删除 '+deleted.length+' 条');
+ return {completed:true,deleted,kept:[...expected]};
+}
+export async function automate({token,fetchImpl=fetch,read=path=>request(token,path,{fetchImpl}),dispatch=spec=>request(token,'actions/workflows/'+spec.workflow+'/dispatches',{method:'POST',body:{ref:spec.ref,inputs:spec.inputs},fetchImpl}),remove,report=reportEvent,interval=3000}={}){
+ const rows=await workflowRuns(read),receipt=await dispatch({workflow:'sdk.yml',ref:'main',inputs:{version:nextVersion(rows)}}),runID=receipt.workflow_run_id;
+ emit(report,{event:'started',repository,runID});
+ let run;
+ for(;;){
+  run=await read('actions/runs/'+runID);emit(report,{event:'run',run});
+  try{emit(report,{event:'jobs',jobs:await read('actions/runs/'+runID+'/jobs?per_page=100&page=1')});}
+  catch{line(report,'GitHub Job读取失败；继续读取原Run的真实状态');}
+  if(run.status==='completed')break;
+  await new Promise(resolve=>setTimeout(resolve,interval));
+ }
+ try{await cleanupRuns({token,fetchImpl,read,remove,completedRun:run,report});}
+ catch(error){throw Error('SDK记录清理失败：'+error.message);}
+ return {runID};
+}
+
 export const root=resolve(fileURLToPath(new URL('../',import.meta.url)));
-import {tools,sdkName} from './config.mjs';
+import {manifest as configuration,tools,repository} from './config.mjs';
 const manifest=join(root,'native/Cargo.toml');
 export function testRoot(){const base=join(root,'target/test');mkdirSync(base,{recursive:true});return base;}
 function taskDirectory(kind){const base=join(root,'target',kind);mkdirSync(base,{recursive:true});if(realpathSync(base)!==base)throw Error('本轮目录经过链接');return mkdtempSync(join(base,'sdk-'));}
@@ -182,10 +292,12 @@ if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)&&!
  try{
   const [command,...args]=process.argv.slice(2);
   if(process.versions.node!==tools.node)throw Error('Node版本与本产品声明不一致');
-  if(command==='test')await testSDK();
+  if(command==='automate')await automate({token:process.env.GH_TOKEN||process.env.GITHUB_TOKEN});
+  else if(command==='cleanup')console.log(JSON.stringify(await cleanupRuns({token:process.env.GH_TOKEN||process.env.GITHUB_TOKEN})));
+  else if(command==='test')await testSDK();
   else if(command==='protocol')console.log(JSON.stringify(await protocol()));
   else if(command==='native'&&args.length===1)console.log(JSON.stringify(await buildSDK({target:args[0]})));
   else if(!command){const result=await buildSDK();console.log(JSON.stringify(result));}
-  else throw Error('用法：node scripts/build.mjs [test|native android/ios/macos|protocol]');
+  else throw Error('用法：node scripts/build.mjs [test|native android/ios/macos|protocol|automate|cleanup]');
  }catch(error){console.error(error.message);process.exitCode=1;}
 }

@@ -344,6 +344,8 @@ ChatConversationHost.prepareAttachment为可选Future<void> Function(String user
 
 ## 外部调用入口
 
-本仓现有 scripts/config.mjs 的 describeAction({flow,platform}) 声明流程入口。自动化启动逻辑、版本输入与平台选择归本仓；调用方交付已授权令牌和标准 read/dispatch 传输能力，接收准确 Run 编号。既有独立自动化接口继续由本仓实现。未提供的安装或发布入口明确报产品侧未声明，不错接到编译，也不产生成功回执。
+本仓scripts/config.mjs的describeAction只声明release/cleanup与SDK平台并引用scripts/build.mjs的执行函数。build.mjs拥有版本计算、派发、原Run跟踪及终态清理；独立执行和控制台调用使用同一实现。调用方仅交付已授权令牌与标准read/dispatch传输能力；cleanup返回一次性完成回执，不派发或虚构Run。
 
 产品入口自行完成派发、实时Run/Job状态输出和终态清理，全部完成后才返回runID；公开JSON行事件使用started/run/jobs/output，任何显示写入失败均不终止产品收尾。独立调用可交付report回调或读取同一公开事件流，产品不导入控制台模块。release与cleanup声明使用同一本仓实现；单独cleanup不派发新Run。清理按准确Workflow、main和workflow_dispatch分页读取，复用已有retainedRuns；复用已授权Actions写令牌，失败明确报告，不新增Workflow或重复SDK构建。控制台既有代码、UI和权限保持。
+
+配置文件仅保留配置数据及release/cleanup入口声明，执行函数唯一归既有scripts/build.mjs。自动化等待原Run真实结束后实际删除旧同类Run及其日志、Artifact，旧发布资产按既有producer_run_id回执归属删除，最新成功完整交付确认后才清理旧成功；活动任务保护，失败清理独立进行。清理失败明确报错，可单独调用同一cleanup入口，不重跑构建；Workflow只负责本次正式Release/Tag交付及回滚，旧历史没有第二套清理。
