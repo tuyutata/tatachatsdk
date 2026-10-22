@@ -41,8 +41,21 @@ public final class TataChatSdkPlugin: NSObject, FlutterPlugin,
         return
       }
       guard call.method == "prepareDataStorage" else { result(FlutterMethodNotImplemented); return }
-      do { result(try Self.prepareDataStorage()) }
-      catch { result(FlutterError(code: "data_storage_unavailable", message: "SDK系统保护存储不可用", details: nil)) }
+      var stage = "support_directory"
+      do { result(try Self.prepareDataStorage(stage: &stage)) }
+      catch {
+        // 正式包仅记录固定阶段和系统错误码，不输出路径、userInfo或错误正文。
+        let failure = error as NSError
+        let domains = [NSCocoaErrorDomain, NSPOSIXErrorDomain, NSOSStatusErrorDomain]
+        let domain = domains.contains(failure.domain) ? failure.domain : "other"
+        NSLog("TataChatSDK storage stage=%@ domain=%@ code=%ld", stage, domain, failure.code)
+        if let cause = failure.userInfo[NSUnderlyingErrorKey] as? NSError {
+          let causeDomain = domains.contains(cause.domain) ? cause.domain : "other"
+          NSLog("TataChatSDK storage underlying_domain=%@ code=%ld", causeDomain, cause.code)
+        }
+        result(FlutterError(code: "data_storage_unavailable", message: "SDK系统保护存储不可用",
+          details: ["stage": stage, "domain": domain, "code": failure.code]))
+      }
     }
   }
 
@@ -112,25 +125,30 @@ public final class TataChatSdkPlugin: NSObject, FlutterPlugin,
   }
 
   /// SDK 唯一数据目录；首次解锁后可后台使用，不引入应用包装密钥。
-  private static func prepareDataStorage() throws -> String {
+  private static func prepareDataStorage(stage: inout String) throws -> String {
     let manager = FileManager.default
     guard let support = manager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
       throw CocoaError(.fileNoSuchFile)
     }
     // 只删除旧 SDK 明确拥有的数据；新目录不迁移旧结构。
+    stage = "legacy_database_cleanup"
     for name in ["tatachat_sdk_chat.isar", "tatachat_sdk_chat.isar.lock"] {
       let old = support.resolvingSymlinksInPath().appendingPathComponent(name)
       try eraseOwnedData(old)
     }
+    stage = "documents_directory"
     guard let documents = manager.urls(for: .documentDirectory, in: .userDomainMask).first else {
       throw CocoaError(.fileNoSuchFile)
     }
+    stage = "legacy_chat_cleanup"
     try eraseOwnedData(documents.resolvingSymlinksInPath().appendingPathComponent("chat", isDirectory: true))
     let root = support.resolvingSymlinksInPath().appendingPathComponent("tatachat_sdk_data", isDirectory: true)
+    stage = "data_directory_create"
     if !manager.fileExists(atPath: root.path) {
       try manager.createDirectory(at: root, withIntermediateDirectories: false,
         attributes: [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication, .posixPermissions: 0o700])
     }
+    stage = "data_directory_protect"
     try protectOwnedData(root)
     return root.path
   }
