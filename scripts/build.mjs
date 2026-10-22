@@ -154,7 +154,7 @@ async function run(command,args,{cwd=root,env={},capture=false,signal=controller
  });
 }
 function buildEnvironment(work,cache){
- return {RUSTUP_TOOLCHAIN:tools.rust,CARGO_TARGET_DIR:cache.cargo,CARGO_INCREMENTAL:'1',TMPDIR:join(work,'tmp')+sep,
+ return {RUSTUP_TOOLCHAIN:tools.rust,CARGO_TARGET_DIR:process.env.CARGO_TARGET_DIR||cache.cargo,CARGO_INCREMENTAL:'1',TMPDIR:join(work,'tmp')+sep,
   PUB_CACHE:process.env.PUB_CACHE||cache.pub,FLUTTER_SUPPRESS_ANALYTICS:'true'};
 }
 function flutterExecutable(){const base=process.env.FLUTTER_ROOT||join(root,'target/cache/flutter');return join(base,'bin/flutter');}
@@ -210,7 +210,7 @@ export async function verifyNative(file,target,runTool=run){
   const identity=await runTool('/usr/bin/xcrun',['otool','-D',file],{capture:true});
   if(!identity.split('\n').map(value=>value.trim()).includes(target==='macos'?'@rpath/libtatachat_sdk.dylib':'@rpath/TataChatSDK.framework/TataChatSDK'))throw Error('SDK动态库装载名称不符');}
 }
-async function nativeTarget(target,work,env,version){
+async function nativeTarget(target,work,env,version,device=false){
  const output=join(work,'native',target);mkdirSync(output,{recursive:true});
  const cargoArgs=['build','--release','--locked','--manifest-path',manifest];
  if(target==='android'){
@@ -226,7 +226,8 @@ async function nativeTarget(target,work,env,version){
   const file=join(output,'libtatachat_sdk.dylib');copyFileSync(join(env.CARGO_TARGET_DIR,triple,'release/libtatachat_sdk.dylib'),file);await verifyNative(file,'macos');
  }else if(target==='ios'){
   const frameworks=[];
-  for(const [triple,sdk,key]of [['aarch64-apple-ios','iphoneos','CARGO_TARGET_AARCH64_APPLE_IOS_RUSTFLAGS'],['aarch64-apple-ios-sim','iphonesimulator','CARGO_TARGET_AARCH64_APPLE_IOS_SIM_RUSTFLAGS']]){
+  // 当前真机安装只构建真机切片；正式SDK仍交付原有完整XCFramework。
+  for(const [triple,sdk,key]of [['aarch64-apple-ios','iphoneos','CARGO_TARGET_AARCH64_APPLE_IOS_RUSTFLAGS'],['aarch64-apple-ios-sim','iphonesimulator','CARGO_TARGET_AARCH64_APPLE_IOS_SIM_RUSTFLAGS']].filter((_,index)=>!device||index===0)){
    await ensureTarget(triple,env);const sdkPath=await run('/usr/bin/xcrun',['--sdk',sdk,'--show-sdk-path'],{capture:true});
    await run('cargo',[...cargoArgs,'--target',triple],{env:{...env,IPHONEOS_DEPLOYMENT_TARGET:'16.0',[key]:`-C strip=none -C link-arg=-isysroot -C link-arg=${sdkPath} -C link-arg=-Wl,-install_name,@rpath/TataChatSDK.framework/TataChatSDK`}});
    const framework=join(output,triple,'TataChatSDK.framework');mkdirSync(join(framework,'Headers'),{recursive:true});mkdirSync(join(framework,'Modules'));
@@ -264,10 +265,10 @@ export function setPackageVersion(project,version){
   ['android/build.gradle.kts',/^version = "[^"]*"$/mu,'version = "'+version+'"'],
  ]){const path=join(project,file),before=readFileSync(path,'utf8');if(!pattern.test(before))throw Error('SDK版本声明缺失：'+file);writeFileSync(path,before.replace(pattern,text));}
 }
-export async function buildSDK({target,version=process.env.SDK_VERSION||/^version: (\S+)$/mu.exec(readFileSync(join(root,'pubspec.yaml'),'utf8'))?.[1]}={}){
+export async function buildSDK({target,version=process.env.SDK_VERSION||/^version: (\S+)$/mu.exec(readFileSync(join(root,'pubspec.yaml'),'utf8'))?.[1],device=false}={}){
  sdkName(version);const work=taskDirectory('build'),cache=claimCache(work);mkdirSync(join(work,'tmp'));let completed=false,safe=true;
  try{
-  const env=buildEnvironment(work,cache);for(const value of target?[target]:['android','ios','macos'])await nativeTarget(value,work,env,version);
+  const env=buildEnvironment(work,cache);for(const value of target?[target]:['android','ios','macos'])await nativeTarget(value,work,env,version,device);
   if(target){completed=true;return {work,output:join(work,'native',target)};}
   const project=sourceView(work);
   rmSync(join(project,'ios/TataChatSDK.xcframework'),{recursive:true,force:true});
@@ -296,7 +297,7 @@ if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)&&!
   else if(command==='cleanup')console.log(JSON.stringify(await cleanupRuns({token:process.env.GH_TOKEN||process.env.GITHUB_TOKEN})));
   else if(command==='test')await testSDK();
   else if(command==='protocol')console.log(JSON.stringify(await protocol()));
-  else if(command==='native'&&args.length===1)console.log(JSON.stringify(await buildSDK({target:args[0]})));
+  else if(command==='native')console.log(JSON.stringify(await buildSDK({target:args[0],device:args.includes('--device')})));
   else if(!command){const result=await buildSDK();console.log(JSON.stringify(result));}
   else throw Error('用法：node scripts/build.mjs [test|native android/ios/macos|protocol|automate|cleanup]');
  }catch(error){console.error(error.message);process.exitCode=1;}
