@@ -13,11 +13,11 @@ final class ChatSystemProtectedStorage {
     }
     final directory = Directory(path);
     if (await FileSystemEntity.type(path, followLinks: false) !=
-            FileSystemEntityType.directory ||
-        await directory.resolveSymbolicLinks() != path) {
+        FileSystemEntityType.directory) {
       throw StateError('SDK 系统保护目录不可用');
     }
-    return directory;
+    // 原生与Dart可能采用不同系统别名；后续统一消费Dart解析后的目录。
+    return Directory(await directory.resolveSymbolicLinks());
   }
 
   static Future<void> verify(Directory directory) async {

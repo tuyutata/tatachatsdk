@@ -22,7 +22,6 @@ GitHub只有sdk.yml一个工作流、一个SDK执行Job：读取SDK公开声明�
 
 版本从最新成功Run读取并仅增加补丁号；失败不消耗候选版本，不以Release创建时间或运行次数推算。没有成功Run时以pubspec.yaml.version为首次候选；存在无法识别的成功Run时拒绝猜测。SDK同一时间只允许一个活动任务，重连仅核对原Run。新正式版本附件全部上传、回读并核对Run/SHA/摘要后才成功；失败候选只能在核对原失败Run后清理重试，禁止覆盖成功版本。
 
-终态Run仅保留最新成功与最新失败，活动Run保留；本仓scripts/config.mjs的automate在准确Run真实完成后调用cleanupRuns，实际删除旧Run并回读确认（包含所属日志与Artifact）。新成功正式版本确认完整后，SDK自己的CI凭据清理本产品旧Release和Tag；失败必须明确报告并在后续成功流程重试，不把界面过滤当作删除。应用商店提交、开发升级、部署等属于后续发布，必须使用最新自动化成功的正式产物并另行授权。
 
 旧工具安装框架、磁盘映像、依赖供给回执、源码冻结副本、通用Build解释器、脚本文本断言及固定现场租约已删除，不保留旧接口别名或兼容执行分支。
 
@@ -345,7 +344,6 @@ ChatConversationHost.prepareAttachment为可选Future<void> Function(String user
 ## 外部调用入口
 
 
-产品入口自行完成派发、实时Run/Job状态输出和终态清理，全部完成后才返回runID；公开JSON行事件使用started/run/jobs/output，任何显示写入失败均不终止产品收尾。独立调用可交付report回调或读取同一公开事件流，产品不导入控制台模块。release与cleanup声明使用同一本仓实现；单独cleanup不派发新Run。清理按准确Workflow、main和workflow_dispatch分页读取，复用已有retainedRuns；复用已授权Actions写令牌，失败明确报告，不新增Workflow或重复SDK构建。控制台既有代码、UI和权限保持。
 
 配置文件仅保留配置数据及release/cleanup入口声明，执行函数唯一归既有scripts/build.mjs。自动化等待原Run真实结束后实际删除旧同类Run及其日志、Artifact，旧发布资产按既有producer_run_id回执归属删除，最新成功完整交付确认后才清理旧成功；活动任务保护，失败清理独立进行。清理失败明确报错，可单独调用同一cleanup入口，不重跑构建；Workflow只负责本次正式Release/Tag交付及回滚，旧历史没有第二套清理。
 
