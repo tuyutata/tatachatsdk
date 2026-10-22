@@ -166,7 +166,8 @@ public final class TataChatSdkPlugin: NSObject, FlutterPlugin,
   private static func protectOwnedData(_ url: URL) throws {
     let manager = FileManager.default
     let resource = try url.resourceValues(forKeys: [.isSymbolicLinkKey, .isDirectoryKey, .isRegularFileKey])
-    guard resource.isSymbolicLink != true, url.resolvingSymlinksInPath().path == url.path,
+    // 系统枚举可能返回/private/var别名；用真实类型拒绝链接，不比较路径拼写。
+    guard resource.isSymbolicLink != true,
           resource.isDirectory == true || resource.isRegularFile == true else {
       throw CocoaError(.fileReadInvalidFileName)
     }

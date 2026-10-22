@@ -1,5 +1,5 @@
-#!/usr/bin/env node
-// 本仓测试、编译及自动化入口；Workflow交付正式版本，原Run终态后实际清理历史。
+// 按官方要求或推荐实现；必需的工具依赖有就复用，没有就下载；使用最简单的实现方式；本脚本只允许放编译构建代码和注释，禁止增加无关内容，禁止增加复杂的校验阻断。
+// config.mjs：只负责配置声明；build.mjs：只负责编译构建实现和必要注释；*.yml：负责全部GitHub流程，包括版本、作业编排、发布及历史清理。
 import {spawn,execFileSync} from 'node:child_process';
 import {mkdirSync,mkdtempSync,existsSync,readFileSync,writeFileSync,copyFileSync,cpSync,rmSync,realpathSync,lstatSync,readdirSync,rmdirSync} from 'node:fs';
 import {join,dirname,resolve,basename,sep} from 'node:path';
