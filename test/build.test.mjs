@@ -38,6 +38,3 @@ test('交付目录的三处版本一致，正式源码不被改写',t=>{
  assert.match(readFileSync(join(project,'android/build.gradle.kts'),'utf8'),/^version = "1\.2\.100"$/mu);
  assert.ok(readFileSync(join(root,'pubspec.yaml')).equals(before));
 });
-
-// HTTP夹具实际消费产品删除入口；原Run、日志、Artifact及发布资产共用同一合成服务。
-

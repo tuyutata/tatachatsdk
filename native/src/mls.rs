@@ -1504,7 +1504,33 @@ fn require_regular_file(path: &Path) -> Result<(), String> {
     }
     Ok(())
 }
-/// 独占文件锁覆盖读取、协议变更和提交整个事务。
+#[cfg(unix)]
+unsafe extern "C" {
+    fn flock(fd: std::os::raw::c_int, operation: std::os::raw::c_int) -> std::os::raw::c_int;
+}
+
+/// Android的Rust标准库尚不支持File::lock；所有Unix目标共用系统flock。
+/// 锁跟随描述符直到事务退出，只有系统调用被中断才重试，其他错误向上失败。
+fn lock_file(file: &fs::File) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::fd::AsRawFd;
+        // Darwin和Android/Linux的系统头文件均定义LOCK_EX=2。
+        loop {
+            if unsafe { flock(file.as_raw_fd(), 2) } == 0 {
+                return Ok(());
+            }
+            let error = std::io::Error::last_os_error();
+            if error.kind() != std::io::ErrorKind::Interrupted {
+                return Err(error);
+            }
+        }
+    }
+    #[cfg(not(unix))]
+    file.lock()
+}
+
+/// 独占文件锁覆盖读取、协议变更和提交整个事务，不能以空锁或进程内互斥替代。
 fn lock_store(dir: &Path) -> Result<fs::File, String> {
     if !dir.is_absolute()
         || fs::canonicalize(dir).map_err(|_| state_error(ERROR_STORAGE_READ, "目录不可用"))? != dir
@@ -1532,8 +1558,7 @@ fn lock_store(dir: &Path) -> Result<fs::File, String> {
     let file = options
         .open(path)
         .map_err(|_| state_error(ERROR_STORAGE_READ, "存储锁不可用"))?;
-    file.lock()
-        .map_err(|_| state_error(ERROR_STORAGE_READ, "存储锁失败"))?;
+    lock_file(&file).map_err(|_| state_error(ERROR_STORAGE_READ, "存储锁失败"))?;
     Ok(file)
 }
 /// 先核验保护再写秘密；rename提交后同步父目录，不恢复旧ratchet快照。
@@ -2747,6 +2772,72 @@ mod tests {
         )
         .unwrap();
         assert_eq!(pending["results"].as_array().unwrap().len(), 10);
+    }
+    #[cfg(unix)]
+    #[test]
+    fn storage_lock_excludes_other_descriptors_and_releases_on_drop() {
+        use std::os::fd::AsRawFd;
+        let a = Fixture::new("lock-owner");
+        let first = lock_store(&a.dir).unwrap();
+        let second = fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(a.dir.join("state.lock"))
+            .unwrap();
+        // 系统LOCK_EX|LOCK_NB=2|4；Android也必须走真实flock，不能用std的Unsupported分支。
+        assert_eq!(unsafe { flock(second.as_raw_fd(), 2 | 4) }, -1);
+        assert_eq!(
+            std::io::Error::last_os_error().kind(),
+            std::io::ErrorKind::WouldBlock
+        );
+        drop(first);
+        assert_eq!(unsafe { flock(second.as_raw_fd(), 2 | 4) }, 0);
+        drop(second);
+        drop(lock_store(&a.dir).unwrap());
+    }
+    #[test]
+    fn storage_lock_waits_for_owner_then_allows_authentication() {
+        use std::sync::mpsc;
+        use std::time::Duration;
+        let a = Fixture::new("lock-owner");
+        let held = lock_store(&a.dir).unwrap();
+        let dir = a.dir.clone();
+        let (entered, observed) = mpsc::channel();
+        let (finished, done) = mpsc::channel();
+        let worker = std::thread::spawn(move || {
+            entered.send(()).unwrap();
+            let _locked = lock_store(&dir).unwrap();
+            finished.send(()).unwrap();
+        });
+        observed.recv_timeout(Duration::from_secs(2)).unwrap();
+        assert!(matches!(
+            done.recv_timeout(Duration::from_millis(100)),
+            Err(mpsc::RecvTimeoutError::Timeout)
+        ));
+        drop(held);
+        done.recv_timeout(Duration::from_secs(2)).unwrap();
+        worker.join().unwrap();
+        let before = fs::read(storage_path(&a.dir)).unwrap();
+        let proof = invoke(identity_json, authentication_request(&a)).unwrap();
+        assert_eq!(proof["device_id"], a.device);
+        assert_eq!(fs::read(storage_path(&a.dir)).unwrap(), before);
+    }
+    #[test]
+    fn storage_lock_is_released_after_rejected_operation_without_replacing_identity() {
+        let a = Fixture::new("lock-owner");
+        let before = fs::read(storage_path(&a.dir)).unwrap();
+        let wrong = json!({"state_store_dir":a.dir,"user_id":"wrong-owner","action":"read"});
+        assert!(invoke(identity_json, wrong)
+            .unwrap_err()
+            .starts_with("CHAT_MLS_STATE_OWNER_MISMATCH"));
+        drop(lock_store(&a.dir).unwrap());
+        let read = invoke(
+            identity_json,
+            json!({"state_store_dir":a.dir,"user_id":a.user,"action":"read"}),
+        )
+        .unwrap();
+        assert_eq!(read["device_id"], a.device);
+        assert_eq!(fs::read(storage_path(&a.dir)).unwrap(), before);
     }
     #[test]
     fn pending_ciphertext_and_receipts_use_same_owned_snapshot() {

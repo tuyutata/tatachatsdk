@@ -125,7 +125,7 @@ SDK原生生成每个user_id每台设备的一份Ed25519 MLS签名身份。devic
 
 iOS使用ApplicationSupport/tatachat_sdk_mls/<UTF-8用户标识hex>，目录0700、文件0600、排除备份，秘密写入前设置并回读completeUntilFirstUserAuthentication。该保护在重启后首次解锁才允许访问，此后可支持锁屏后台处理；它属于系统文件保护，不宣称OpenMLS私钥硬件不可导出。保护语义以[Apple官方文档](https://developer.apple.com/documentation/foundation/urlfileprotection/completeuntilfirstuserauthentication)为准。Android使用应用凭据加密存储的noBackupFilesDir/tatachat_sdk_mls同一用户编码目录，必须确认用户已解锁，拒绝设备保护区域和符号链接，不创建KeyStore包装钥。各端普通MLS使用均不要求逐次生物识别。
 
-state.bin为唯一现行快照：同一文件保存身份、OpenMLS MemoryStorage、早到密文及协议操作结果。state.lock独占锁覆盖读取、协议变更和提交；state.writing写入、文件同步、同目录rename及父目录同步构成提交。读取只采用已提交state.bin和系统保护，缺失或损坏时明确失败；普通读取不生成身份。
+state.bin为唯一现行快照：同一文件保存身份、OpenMLS MemoryStorage、早到密文及协议操作结果。state.lock独占锁覆盖读取、协议变更和提交；Android、iOS和macOS共用系统flock，文件描述符持有至事务退出并随关闭释放，只有Interrupted重试，其他错误失败关闭；不调用Android尚不支持的Rust File::lock，不以进程内互斥替代跨进程锁。验证须包含Android目标真实执行、不同描述符排他、释放后继续、失败后重试且身份与协议快照不变。既有目录仅有state.lock而无state.bin时仍明确失败，不自动初始化替代身份。state.writing写入、文件同步、同目录rename及父目录同步构成提交。读取只采用已提交state.bin和系统保护，缺失或损坏时明确失败；普通读取不生成身份。
 
 状态变更必须使用既有message_id，按动作种类与message_id保存精确请求和结果；同标识输入改变必须拒绝。发送状态和密文、原时间、原成员集合同时提交，重试返回原结果。接收状态与处理明文先提交，业务数据库成功后确认原生结果，再返回服务端ACK；确认后删除处理明文。stale只有精确请求存在已确认收据才允许ACK，验密失败不能伪装成重复。现有业务行的message_id存在不能代替原生精确请求复核。
 

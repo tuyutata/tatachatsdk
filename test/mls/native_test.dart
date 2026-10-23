@@ -129,6 +129,39 @@ void main() {
     await expectLater(sign(), throwsA(isA<MlsNativeException>()));
     expect(await snapshot.exists(), isFalse);
   });
+  test('真实FFI拒绝错误属主后释放锁，主动重试继续使用原MLS身份和快照', () async {
+    final temporary = await Directory.systemTemp.createTemp(
+      'tatachat_lock_retry_',
+    );
+    final root = Directory(await temporary.resolveSymbolicLinks());
+    addTearDown(() => root.delete(recursive: true));
+    final store = MlsStateStore(root, ownerUserId: 'original-user');
+    final identity = await store.initializeIdentity();
+    final snapshot = File('${root.path}/state.bin');
+    final before = await snapshot.readAsBytes();
+    final wrong = MlsStateStore(root, ownerUserId: 'other-user');
+    await expectLater(wrong.readIdentity(), throwsA(isA<MlsNativeException>()));
+    expect((await store.readIdentity()).deviceId, identity.deviceId);
+    final proof = await store.signAuthentication(
+      accountId: '0x${List.filled(32, '11').join()}',
+      bindingRevision: 1,
+      request: _authenticationRequest(),
+    );
+    expect(proof.deviceId, identity.deviceId);
+    expect(await snapshot.readAsBytes(), before);
+  });
+  test('只有锁文件的既有目录不能冒充已初始化身份或自动生成替代身份', () async {
+    final temporary = await Directory.systemTemp.createTemp(
+      'tatachat_lock_empty_',
+    );
+    final root = Directory(await temporary.resolveSymbolicLinks());
+    addTearDown(() => root.delete(recursive: true));
+    await File('${root.path}/state.lock').writeAsBytes([]);
+    final store = MlsStateStore(root, ownerUserId: 'existing-user');
+    await expectLater(store.readIdentity(), throwsA(isA<MlsNativeException>()));
+    await expectLater(store.readIdentity(), throwsA(isA<MlsNativeException>()));
+    expect(await File('${root.path}/state.bin').exists(), isFalse);
+  });
   test('同CID三设备移除只影响指定叶子，伪造KeyPackage登记身份拒绝', () async {
     final temporary = await Directory.systemTemp.createTemp('mls_leaf_');
     final root = Directory(await temporary.resolveSymbolicLinks());
