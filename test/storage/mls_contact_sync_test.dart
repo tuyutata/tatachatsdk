@@ -156,12 +156,10 @@ void main() {
           if (change) {
             host.account = const ChatRuntimeAccount(
               hostIndex: 1,
-              bindingScope:
-                  '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+              bindingScope: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
               userId: 'other-user',
               bindingRevision: 1,
-              accountId:
-                  '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+              accountId: '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
               displayName: 'other',
             );
           }
@@ -192,6 +190,46 @@ void main() {
       expect(requests, before);
     });
   }
+  test('旧空目录通讯录不联网不自动补身份，明确初始化后复用同一设备完成同步', () async {
+    final temporary = await Directory.systemTemp.createTemp(
+      'mls_contact_empty_',
+    );
+    final root = Directory(
+      await (await Directory(
+        '${temporary.path}/mls',
+      ).create()).resolveSymbolicLinks(),
+    );
+    addTearDown(() => temporary.delete(recursive: true));
+    final host = _ContactHost();
+    final runtime = ChatSdk(
+      host: host,
+      documentsDirectoryProvider: () async => temporary,
+      stateStoreFactory: (user) async => MlsStateStore(root, ownerUserId: user),
+    );
+    addTearDown(runtime.close);
+    var exchanges = 0;
+    final relay = _Relay();
+    ChatDevice? identity;
+    Future<List<List<int>>> sync() => runtime.synchronizeContacts(
+      exchange: (request) async {
+        exchanges++;
+        return relay.call(identity!.deviceId, request);
+      },
+      snapshots: () async => [utf8.encode('synthetic snapshot')],
+      apply: (_) async {},
+    );
+    await expectLater(sync(), throwsA(isA<MlsNativeException>()));
+    expect(exchanges, 0);
+    expect(await File('${root.path}/state.bin').exists(), isFalse);
+    identity = await runtime.initializeLocalMlsIdentity(
+      expectedUserId: host.account.userId,
+      expectedAccountId: host.account.accountId,
+      expectedBindingRevision: host.account.bindingRevision,
+    );
+    expect(await sync(), [utf8.encode('synthetic snapshot')]);
+    expect((await runtime.readLocalMlsIdentity()).deviceId, identity.deviceId);
+    expect(exchanges, greaterThan(0));
+  });
   test('公开通讯录入口拒绝错误所有者，不联网且不补建身份', () async {
     final temp = await Directory.systemTemp.createTemp('contact_wrong_owner_');
     final root = Directory(await temp.resolveSymbolicLinks());

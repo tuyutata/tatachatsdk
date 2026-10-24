@@ -40,10 +40,7 @@ void main() {
     );
     expect(identity.publicKey, matches(RegExp(r'^0x[0-9a-f]{64}$')));
     expect((await store.readIdentity()).deviceId, identity.deviceId);
-    await expectLater(
-      store.initializeIdentity(),
-      throwsA(isA<MlsNativeException>()),
-    );
+    expect((await store.initializeIdentity()).deviceId, identity.deviceId);
     final wrongOwner = MlsStateStore(store.directory, ownerUserId: 'other');
     await expectLater(
       wrongOwner.readIdentity(),
@@ -160,6 +157,41 @@ void main() {
     final store = MlsStateStore(root, ownerUserId: 'existing-user');
     await expectLater(store.readIdentity(), throwsA(isA<MlsNativeException>()));
     await expectLater(store.readIdentity(), throwsA(isA<MlsNativeException>()));
+    expect(await File('${root.path}/state.bin').exists(), isFalse);
+  });
+  test('首次准备、旧空锁确认、已交付缺失和重试均由原生阶段判定', () async {
+    final temp = await Directory.systemTemp.createTemp('tatachat_phase_');
+    final root = Directory(await temp.resolveSymbolicLinks());
+    addTearDown(() => root.delete(recursive: true));
+    final store = MlsStateStore(root, ownerUserId: 'phase-user');
+    await expectLater(
+      store.prepareIdentity(),
+      throwsA(
+        isA<MlsNativeException>().having(
+          (e) => e.code,
+          'code',
+          MlsNativeErrorCode.initializationRequired,
+        ),
+      ),
+    );
+    expect(await File('${root.path}/state.bin').exists(), isFalse);
+    final first = await store.initializeIdentity();
+    final before = await File('${root.path}/state.bin').readAsBytes();
+    await File('${root.path}/state.lock')
+        .writeAsString('initializing\n', flush: true);
+    expect((await store.prepareIdentity()).deviceId, first.deviceId);
+    expect(await File('${root.path}/state.bin').readAsBytes(), before);
+    await File('${root.path}/state.bin').delete();
+    await expectLater(
+      store.initializeIdentity(),
+      throwsA(
+        isA<MlsNativeException>().having(
+          (e) => e.code,
+          'code',
+          MlsNativeErrorCode.stateMissing,
+        ),
+      ),
+    );
     expect(await File('${root.path}/state.bin').exists(), isFalse);
   });
   test('同CID三设备移除只影响指定叶子，伪造KeyPackage登记身份拒绝', () async {

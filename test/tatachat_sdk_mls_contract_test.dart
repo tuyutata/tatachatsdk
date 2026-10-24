@@ -207,6 +207,52 @@ void main() {
     );
   });
 
+  for (final changed in [false, true]) {
+    test('显式MLS初始化固定用户和账户，迟到绑定变化=$changed不得交付身份', () async {
+      final temporary = await Directory.systemTemp.createTemp('mls_explicit_');
+      final root = Directory(await temporary.resolveSymbolicLinks());
+      addTearDown(() => root.delete(recursive: true));
+      final host = _AuthenticationHost(_account());
+      final actions = <Object?>[];
+      final runtime = ChatRuntimeCore(
+        host: host,
+        store: ChatStore(),
+        documentsDirectoryProvider: () async => root,
+        stateStoreFactory: (user) async {
+          if (changed) host.account = _account(user: 'other-user');
+          return MlsStateStore(
+            root,
+            ownerUserId: user,
+            debugCallJson: (input) {
+              actions.add(input['action']);
+              return {
+                'user_id': user,
+                'device_id': '22' * 32,
+                'public_key': '0x${'22' * 32}',
+              };
+            },
+          );
+        },
+      );
+      addTearDown(runtime.close);
+      final result = runtime.initializeLocalMlsIdentity(
+        expectedUserId: 'user-a',
+        expectedAccountId: _hex(0x11),
+        expectedBindingRevision: 1,
+      );
+      if (changed) {
+        await expectLater(result, throwsA(isA<MlsNativeException>()));
+        expect(actions, isEmpty);
+      } else {
+        expect((await result).userId, 'user-a');
+        expect(actions, ['initialize']);
+        await runtime.readLocalMlsIdentity();
+        expect(actions, ['initialize', 'prepare']);
+      }
+      expect(host.forbiddenCalls, 0);
+    });
+  }
+
   test('运行时只读取宿主当前账户和已有MLS身份，不触发钱包、供钥或网络', () async {
     final root = await Directory.systemTemp.createTemp(
       'tatachat_auth_runtime_',

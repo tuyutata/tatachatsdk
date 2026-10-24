@@ -4793,9 +4793,7 @@ class ChatRuntimeCore {
     ChatServiceTransport? transport;
     var keepStateStore = false;
     try {
-      final identity = stateStore.newlyCreated
-          ? await stateStore.initializeIdentity()
-          : await stateStore.readIdentity();
+      final identity = await stateStore.prepareIdentity();
       final deviceId = identity.deviceId;
       final finalCrypto =
           _cryptoFactory?.call(identity, stateStore) ??
@@ -5269,16 +5267,59 @@ class ChatRuntimeCore {
   }
 
   /// 公开离线身份入口不请求聊天网络或权益；宿主当前user_id是所有者事实。
-  Future<ChatDevice> readLocalMlsIdentity() async {
+  Future<ChatDevice> readLocalMlsIdentity() => _localMlsIdentity();
+
+  /// 只有宿主明确确认初始化后调用；固定本次账户和绑定，不代办钱包授权或网络登记。
+  Future<ChatDevice> initializeLocalMlsIdentity({
+    required String expectedUserId,
+    required String expectedAccountId,
+    required int expectedBindingRevision,
+  }) => _localMlsIdentity(
+    expectedUserId: expectedUserId,
+    expectedAccountId: expectedAccountId,
+    expectedBindingRevision: expectedBindingRevision,
+  );
+
+  Future<ChatDevice> _localMlsIdentity({
+    String? expectedUserId,
+    String? expectedAccountId,
+    int? expectedBindingRevision,
+  }) async {
     _ensureActive();
     final account = await _readAccount();
+    final generation = _accountGenerations[account.accountId] ?? 0;
+    Future<void> requireCurrent() async {
+      if (expectedUserId != null &&
+          (account.userId != expectedUserId ||
+              account.accountId != expectedAccountId ||
+              account.bindingRevision != expectedBindingRevision)) {
+        throw const MlsNativeException(
+          MlsNativeErrorCode.stateOwnerMismatch,
+          'MLS初始化的预期身份不一致',
+        );
+      }
+      try {
+        // 复用运行态唯一账户/绑定/域/宿主/代次守卫，不另立初始化权限事实。
+        await _requireCurrentAccount(account, generation);
+      } on StateError {
+        throw const MlsNativeException(
+          MlsNativeErrorCode.stateOwnerMismatch,
+          'MLS初始化期间身份已切换',
+        );
+      }
+    }
+
+    await requireCurrent();
     return _runUserFileMutation(
       userId: account.userId,
       operation: () async {
         final store = await _stateStore(account.userId);
-        return store.newlyCreated
-            ? store.initializeIdentity()
-            : store.readIdentity();
+        await requireCurrent();
+        final identity = expectedUserId == null
+            ? await store.prepareIdentity()
+            : await store.initializeIdentity();
+        await requireCurrent();
+        return identity;
       },
     );
   }

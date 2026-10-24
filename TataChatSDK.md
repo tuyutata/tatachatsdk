@@ -125,7 +125,7 @@ SDK原生生成每个user_id每台设备的一份Ed25519 MLS签名身份。devic
 
 iOS使用ApplicationSupport/tatachat_sdk_mls/<UTF-8用户标识hex>，目录0700、文件0600、排除备份，秘密写入前设置并回读completeUntilFirstUserAuthentication。该保护在重启后首次解锁才允许访问，此后可支持锁屏后台处理；它属于系统文件保护，不宣称OpenMLS私钥硬件不可导出。保护语义以[Apple官方文档](https://developer.apple.com/documentation/foundation/urlfileprotection/completeuntilfirstuserauthentication)为准。Android使用应用凭据加密存储的noBackupFilesDir/tatachat_sdk_mls同一用户编码目录，必须确认用户已解锁，拒绝设备保护区域和符号链接，不创建KeyStore包装钥。各端普通MLS使用均不要求逐次生物识别。
 
-state.bin为唯一现行快照：同一文件保存身份、OpenMLS MemoryStorage、早到密文及协议操作结果。state.lock独占锁覆盖读取、协议变更和提交；Android、iOS和macOS共用系统flock，文件描述符持有至事务退出并随关闭释放，只有Interrupted重试，其他错误失败关闭；不调用Android尚不支持的Rust File::lock，不以进程内互斥替代跨进程锁。验证须包含Android目标真实执行、不同描述符排他、释放后继续、失败后重试且身份与协议快照不变。既有目录仅有state.lock而无state.bin时仍明确失败，不自动初始化替代身份。state.writing写入、文件同步、同目录rename及父目录同步构成提交。读取只采用已提交state.bin和系统保护，缺失或损坏时明确失败；普通读取不生成身份。
+state.bin为唯一现行快照：同一文件保存身份、OpenMLS MemoryStorage、早到密文及协议操作结果。state.lock独占锁覆盖读取、协议变更和提交；Android、iOS和macOS共用系统flock，文件描述符持有至事务退出并随关闭释放，只有Interrupted重试，其他错误失败关闭；不调用Android尚不支持的Rust File::lock，不以进程内互斥替代跨进程锁。验证须包含Android目标真实执行、不同描述符排他、释放后继续、失败后重试且身份与协议快照不变。未知旧目录只有空state.lock而无state.bin时要求明确确认；可验证的未交付初始化阶段允许续行，committed缺文件则拒绝换钥。state.writing写入、文件同步、同目录rename及父目录同步构成提交。读取只采用已提交state.bin和系统保护，缺失或损坏时明确失败；read和sign_authentication动作不生成身份。
 
 状态变更必须使用既有message_id，按动作种类与message_id保存精确请求和结果；同标识输入改变必须拒绝。发送状态和密文、原时间、原成员集合同时提交，重试返回原结果。接收状态与处理明文先提交，业务数据库成功后确认原生结果，再返回服务端ACK；确认后删除处理明文。stale只有精确请求存在已确认收据才允许ACK，验密失败不能伪装成重复。现有业务行的message_id存在不能代替原生精确请求复核。
 
@@ -145,7 +145,7 @@ CitizenServe按当前MLS会话派生CID和设备，闭集动作publish/state/res
 
 唯一宿主入口为ChatRuntimeCore.createMlsAuthenticationProof(MlsAuthenticationRequest)。请求只包含service_origin、challenge、expires_at_millis、method、request_target及正文body_hex；Dart模型接收并复制不可变bodyBytes，JSON编码由SDK产生。调用方不能提供用户、设备、密钥、签名标签或任意待签字节。当前user_id、account_id与binding_revision来自宿主账户，device_id与public_key来自已存在的MLS状态。公民宿主的user_id继续是CID，SDK仍使用中性字段。
 
-底层MlsStateStore.signAuthentication复用tatachat_sdk_mls_identity_json的sign_authentication动作；initialize、read、sign_authentication各自严格限制字段，未知字段和动作直接拒绝。认证只加载已有身份，即使目录刚创建也不初始化。丢失快照、缺签名身份、损坏、保护不符或错误所有者均失败，错误不携带账户、挑战、正文或秘密。原生还检查签名身份算法并使用登记公钥本机验签，私有材料损坏但仍可解析时也不交付证明。认证不持久化证明，不修改MLS快照、处理结果、群epoch或ratchet，不需要生物识别。
+底层MlsStateStore.signAuthentication复用tatachat_sdk_mls_identity_json的sign_authentication动作；prepare、initialize、read、sign_authentication各自严格限制字段，未知字段和动作直接拒绝。认证只加载已有身份，即使目录刚创建也不初始化。丢失快照、缺签名身份、损坏、保护不符或错误所有者均失败，错误不携带账户、挑战、正文或秘密。原生还检查签名身份算法并使用登记公钥本机验签，私有材料损坏但仍可解析时也不交付证明。认证不持久化证明，不修改MLS快照、处理结果、群epoch或ratchet，不需要生物识别。
 
 认证使用RFC9420的SignWithLabel结构，固定应用标签TataChatAuthentication，实际外层为SignContent { label&lt;V&gt; = "MLS 1.0 TataChatAuthentication", content&lt;V&gt; }，由已锁定OpenMLS的SignContent与TLS编码器生成。这是应用认证扩展，MLS协议本身不提供HTTP会话登录；CitizenServe源码使用相同认证编码并校验当前登记授权；验证统一延后。[RFC9420签名定义](https://www.rfc-editor.org/rfc/rfc9420.html#section-5.1.2)是外层编码依据。钱包业务签名合同不在本步修改范围。
 
@@ -348,3 +348,20 @@ ChatConversationHost.prepareAttachment为可选Future<void> Function(String user
 配置文件仅保留配置数据及release/cleanup入口声明，执行函数唯一归既有scripts/build.mjs。自动化等待原Run真实结束后实际删除旧同类Run及其日志、Artifact，旧发布资产按既有producer_run_id回执归属删除，最新成功完整交付确认后才清理旧成功；活动任务保护，失败清理独立进行。清理失败明确报错，可单独调用同一cleanup入口，不重跑构建；Workflow只负责本次正式Release/Tag交付及回滚，旧历史没有第二套清理。
 
 本产品scripts/config.mjs的describeAction仅返回repository、workflow、ref、inputs，或既有本地进程命令声明；不导入构建实现、不派发GitHub请求、不处理令牌、版本或历史。控制台使用统一数据接口直接派发并只读观察准确Run；产品GitHub业务归所属既有YAML。本次自动化Run名称使用运行编号，正式构建及产物保持版本名称。已有工具和依赖复用，缺少时才按原声明准备。
+
+
+## MLS目录与初始化阶段
+
+平台插件先核验SDK目录及系统保护，Dart只将合法系统容器别名规范到同一实际目录；末级链接、非目录与不可读分别用固定错误分类拒绝。身份普通准备与聊天初始化共用prepareIdentity，不能只按本次mkdir结果判断已有身份。state.lock在同一flock内记录initializing或committed：生成前同步initializing，完整state.bin原子提交、归属验证及committed同步完成后才交付身份。提交后回执丢失读取原快照；committed缺文件永不自动换钥；未知旧空锁只返回initialization_required，由宿主明确确认后调用固定当前账户/用户/绑定的initializeLocalMlsIdentity。该调用不登记网络设备、不触发钱包签名。状态损坏和未知目录内容失败关闭。读证明不生成身份，签名载荷和原生C ABI保持。阶段失败及临时写中断、并发确认、错误归属、路径别名与链接均用合成状态回归。
+
+显式初始化与普通准备都固定账户、用户、绑定版本、绑定域、宿主索引和账户代次；关闭/封禁后不交付旧结果。SDK既有合同测试验证确认初始化前的账户变化不产生原生动作；通讯录真实FFI回归验证旧空目录不联网、不补身份，明确初始化后复用同一身份完成同步。平台路径测试使用原MethodChannel及合成系统临时目录，对系统别名规范化与末级链接拒绝分别断言。
+
+初始化阶段同时绑定所属用户的固定摘要，只存于SDK保护目录；它不进入诊断、页面或日志。尚未交付阶段也不能被另一用户续行；摘要或阶段损坏且无快照时拒绝自动生成身份。
+
+测试中的MLS目录与运行态目录必须像生产一样分离；不能在MLS目录放入运行态互斥或偏好文件后放宽原生目录内容校验。普通认证夹具继续拒绝initialize，显式初始化测试使用单独的合成公开身份响应。
+
+阶段只写单链接的普通state.lock描述符；硬链接拒绝且不改原字节，防止新增阶段写入影响SDK目录外文件。目录不可读不直接推定设备锁屏，页面显示固定稍后重试提示。
+
+硬链接回归在允许构造的宿主实际验证SDK拒绝；Android shell若被内核明确PermissionDenied阻止构造，则断言系统拒绝、单链接及原身份/字节不变，不将该结果宣称为已触发SDK硬链接分支。其他准备失败仍使测试失败，不跳过。
+
+本地身份准备与确认初始化复用运行态既有_requireCurrentAccount守卫，确保绑定域、宿主和撤销代次只有一条判定路径。路径规范化阶段的缺目录与非目录分别归类，不泄露系统异常正文。

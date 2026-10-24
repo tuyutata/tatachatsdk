@@ -48,8 +48,38 @@ class MlsStateStore {
         result['created'] is! bool) {
       throw StateError('MLS保护存储不可用');
     }
+    final raw = Directory(result['path'] as String);
+    // 插件逐项核验SDK子目录；只规范系统容器别名，末级链接仍拒绝。
+    if (!raw.isAbsolute) {
+      throw const MlsNativeException(
+        MlsNativeErrorCode.directoryInvalid,
+        'MLS目录必须为绝对路径',
+      );
+    }
+    final Directory canonical;
+    try {
+      final type = await FileSystemEntity.type(raw.path, followLinks: false);
+      if (type == FileSystemEntityType.notFound) {
+        throw const MlsNativeException(
+          MlsNativeErrorCode.directoryUnavailable,
+          'MLS目录尚未准备',
+        );
+      }
+      if (type != FileSystemEntityType.directory) {
+        throw const MlsNativeException(
+          MlsNativeErrorCode.directoryInvalid,
+          'MLS目录类型无效',
+        );
+      }
+      canonical = Directory(await raw.resolveSymbolicLinks());
+    } on FileSystemException {
+      throw const MlsNativeException(
+        MlsNativeErrorCode.directoryUnavailable,
+        'MLS目录暂不可读',
+      );
+    }
     final store = MlsStateStore(
-      Directory(result['path'] as String),
+      canonical,
       ownerUserId: userId,
       newlyCreated: result['created'] as bool,
     );
@@ -76,23 +106,52 @@ class MlsStateStore {
   }
 
   Future<void> ensureReady() async {
-    if (!directory.isAbsolute ||
-        await FileSystemEntity.type(path, followLinks: false) !=
-            FileSystemEntityType.directory ||
-        await directory.resolveSymbolicLinks() != path) {
-      throw StateError('MLS存储目录未准备或存在符号链接');
+    if (!directory.isAbsolute) {
+      throw const MlsNativeException(
+        MlsNativeErrorCode.directoryInvalid,
+        'MLS目录必须为绝对路径',
+      );
+    }
+    try {
+      final type = await FileSystemEntity.type(path, followLinks: false);
+      if (type == FileSystemEntityType.notFound) {
+        throw const MlsNativeException(
+          MlsNativeErrorCode.directoryUnavailable,
+          'MLS目录尚未准备',
+        );
+      }
+      if (type != FileSystemEntityType.directory ||
+          await directory.resolveSymbolicLinks() != path) {
+        throw const MlsNativeException(
+          MlsNativeErrorCode.directoryInvalid,
+          'MLS目录存在链接或类型无效',
+        );
+      }
+    } on FileSystemException {
+      throw const MlsNativeException(
+        MlsNativeErrorCode.directoryUnavailable,
+        'MLS目录暂不可读',
+      );
     }
   }
 
-  /// 身份读取与初始化分离；已有目录缺状态时明确失败，不自动换钥。
+  /// 普通读取与确认初始化分离；未知缺状态须确认，已提交身份缺失禁止换钥。
   Future<ChatDevice> initializeIdentity() => _identity('initialize');
   Future<ChatDevice> readIdentity() => _identity('read');
-  Future<ChatDevice> _identity(String action) async {
+
+  /// 创建目录只提供首次提示；是否可续行由原生锁内持久阶段判定。
+  Future<ChatDevice> prepareIdentity() =>
+      _identity('prepare', {'initialize_if_new': newlyCreated});
+  Future<ChatDevice> _identity(
+    String action, [
+    Map<String, Object?> extra = const {},
+  ]) async {
     await ensureReady();
     final response = _call(true, {
       'state_store_dir': path,
       'user_id': ownerUserId,
       'action': action,
+      ...extra,
     });
     if (response['user_id'] != ownerUserId) throw StateError('MLS身份所有者不一致');
     final identity = ChatDevice(

@@ -33,6 +33,8 @@ use serde_json::json;
 
 const GMB_MLS_CIPHERSUITE: Ciphersuite = Ciphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519;
 const ERROR_STORAGE_READ: &str = "CHAT_MLS_STORAGE_READ_FAILED";
+const ERROR_INITIALIZATION_REQUIRED: &str = "CHAT_MLS_INITIALIZATION_REQUIRED";
+const ERROR_STATE_MISSING: &str = "CHAT_MLS_STATE_MISSING";
 const ERROR_STATE_INVALID: &str = "CHAT_MLS_STATE_INVALID";
 const ERROR_SIGNER_MISSING: &str = "CHAT_MLS_SIGNER_MISSING";
 const MAX_PENDING_RESULTS: usize = 256;
@@ -69,6 +71,11 @@ struct TwoPartySmokeRequest {
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 enum IdentityRequest {
+    Prepare {
+        state_store_dir: String,
+        user_id: String,
+        initialize_if_new: bool,
+    },
     Initialize {
         state_store_dir: String,
         user_id: String,
@@ -206,7 +213,12 @@ pub unsafe extern "C" fn tatachat_sdk_mls_identity_json(
 fn identity_json(input: *const c_char) -> Result<String, String> {
     let request: IdentityRequest = parse_request(input)?;
     let (state_store_dir, user_id) = match &request {
-        IdentityRequest::Initialize {
+        IdentityRequest::Prepare {
+            state_store_dir,
+            user_id,
+            ..
+        }
+        | IdentityRequest::Initialize {
             state_store_dir,
             user_id,
         }
@@ -222,39 +234,66 @@ fn identity_json(input: *const c_char) -> Result<String, String> {
     };
     require_identity_component(user_id)?;
     let dir = Path::new(state_store_dir);
-    let _lock = lock_store(dir)?;
-    let provider = match &request {
-        IdentityRequest::Initialize { .. } => {
-            if storage_path(dir).exists() {
-                return Err(state_error(ERROR_STATE_INVALID, "身份已存在，必须读取"));
-            }
-            let storage = MemoryStorage::default();
-            let signer = SignatureKeyPair::new(GMB_MLS_CIPHERSUITE.signature_algorithm())
-                .map_err(|_| state_error(ERROR_STATE_INVALID, "MLS签名身份生成失败"))?;
-            signer
-                .store(&storage)
-                .map_err(|_| state_error(ERROR_STATE_INVALID, "MLS签名身份保存失败"))?;
-            let public = hex::encode(signer.to_public_vec());
-            let provider = MlsProvider {
-                crypto: RustCrypto::default(),
-                storage,
-                device: DeviceRecord {
-                    user_id: user_id.clone(),
-                    device_id: public.clone(),
-                    public_key: format!("0x{public}"),
-                },
-                results: RefCell::new(HashMap::new()),
-                pending_inbound: RefCell::new(Vec::new()),
-                attachments: RefCell::new(HashMap::new()),
-            };
-            save_provider(dir, &provider)?;
-            provider
+    let lock = lock_store(dir)?;
+    let phase = read_identity_phase(&lock, user_id)?;
+    let has_snapshot = match fs::symlink_metadata(storage_path(dir)) {
+        Ok(_) => true,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
+        Err(_) => return Err(state_error(ERROR_STORAGE_READ, "MLS状态元数据不可读")),
+    };
+    let provider = if has_snapshot {
+        // 完整快照优先；提交后回执丢失或阶段写入中断也只能返回同一身份。
+        load_provider(dir)?
+    } else {
+        if phase == 2 {
+            return Err(state_error(ERROR_STATE_MISSING, "已提交的MLS身份文件缺失"));
         }
-        IdentityRequest::Read { .. } | IdentityRequest::SignAuthentication { .. } => {
-            load_provider(dir)?
+        if phase == 3 {
+            return Err(state_error(ERROR_STATE_INVALID, "MLS初始化阶段损坏"));
         }
+        let permitted = match &request {
+            IdentityRequest::Initialize { .. } => true,
+            IdentityRequest::Prepare {
+                initialize_if_new, ..
+            } => *initialize_if_new || phase == 1,
+            _ => false,
+        };
+        if !permitted {
+            return Err(state_error(
+                ERROR_INITIALIZATION_REQUIRED,
+                "本机MLS身份缺失，需要明确确认初始化",
+            ));
+        }
+        validate_initialization_directory(dir, phase == 1)?;
+        // 在任何密钥生成前持久提交阶段；只有未交付过身份的阶段允许自动续行。
+        write_identity_phase(&lock, dir, b"initializing\n", user_id)?;
+        let storage = MemoryStorage::default();
+        let signer = SignatureKeyPair::new(GMB_MLS_CIPHERSUITE.signature_algorithm())
+            .map_err(|_| state_error(ERROR_STATE_INVALID, "MLS签名身份生成失败"))?;
+        signer
+            .store(&storage)
+            .map_err(|_| state_error(ERROR_STATE_INVALID, "MLS签名身份保存失败"))?;
+        let public = hex::encode(signer.to_public_vec());
+        let provider = MlsProvider {
+            crypto: RustCrypto::default(),
+            storage,
+            device: DeviceRecord {
+                user_id: user_id.clone(),
+                device_id: public.clone(),
+                public_key: format!("0x{public}"),
+            },
+            results: RefCell::new(HashMap::new()),
+            pending_inbound: RefCell::new(Vec::new()),
+            attachments: RefCell::new(HashMap::new()),
+        };
+        save_provider(dir, &provider)?;
+        provider
     };
     let (_, signer) = read_device_signer(&provider, user_id, &provider.device.device_id)?;
+    // 先验证归属，再提交已交付阶段；完整身份和阶段都同步成功后才返回公开身份/证明。
+    if phase != 2 {
+        write_identity_phase(&lock, dir, b"committed\n", user_id)?;
+    }
     if let IdentityRequest::SignAuthentication {
         account_id,
         binding_revision,
@@ -269,6 +308,70 @@ fn identity_json(input: *const c_char) -> Result<String, String> {
     }
     serde_json::to_string(&provider.device)
         .map_err(|_| state_error(ERROR_STATE_INVALID, "公开身份序列化失败"))
+}
+
+/// state.lock同时持锁和记录阶段，不另建秘密或快照文件。未知旧空锁不代表首次初始化。
+fn identity_phase_bytes(user: &str, phase: &[u8]) -> Result<Vec<u8>, String> {
+    let owner = RustCrypto::default()
+        .hash(HashType::Sha2_256, user.as_bytes())
+        .map_err(|_| state_error(ERROR_STATE_INVALID, "初始化归属校验失败"))?;
+    let mut bytes = phase.to_vec();
+    bytes.extend_from_slice(hex::encode(owner).as_bytes());
+    Ok(bytes)
+}
+fn read_identity_phase(mut file: &fs::File, user: &str) -> Result<u8, String> {
+    use std::io::{Read, Seek, SeekFrom};
+    file.seek(SeekFrom::Start(0))
+        .map_err(|_| state_error(ERROR_STORAGE_READ, "初始化阶段不可读"))?;
+    let mut bytes = Vec::new();
+    file.take(128)
+        .read_to_end(&mut bytes)
+        .map_err(|_| state_error(ERROR_STORAGE_READ, "初始化阶段不可读"))?;
+    if bytes.is_empty() {
+        return Ok(0);
+    }
+    for (phase, value) in [
+        (b"initializing\n".as_slice(), 1),
+        (b"committed\n".as_slice(), 2),
+    ] {
+        if bytes == identity_phase_bytes(user, phase)? {
+            return Ok(value);
+        }
+        if bytes.starts_with(phase) && bytes.len() == phase.len() + 64 {
+            return Err(state_error(
+                "CHAT_MLS_STATE_OWNER_MISMATCH",
+                "初始化阶段属于其他用户",
+            ));
+        }
+    }
+    Ok(3)
+}
+fn write_identity_phase(
+    mut file: &fs::File,
+    dir: &Path,
+    phase: &[u8],
+    user: &str,
+) -> Result<(), String> {
+    use std::io::{Seek, SeekFrom, Write};
+    let bytes = identity_phase_bytes(user, phase)?;
+    file.seek(SeekFrom::Start(0))
+        .and_then(|_| file.write_all(&bytes))
+        .and_then(|_| file.set_len(bytes.len() as u64))
+        .and_then(|_| file.sync_all())
+        .and_then(|_| fs::File::open(dir)?.sync_all())
+        .map_err(|_| state_error(ERROR_STORAGE_READ, "初始化阶段提交失败"))
+}
+fn validate_initialization_directory(dir: &Path, pending: bool) -> Result<(), String> {
+    for entry in
+        fs::read_dir(dir).map_err(|_| state_error(ERROR_STORAGE_READ, "初始化目录不可读"))?
+    {
+        let entry = entry.map_err(|_| state_error(ERROR_STORAGE_READ, "初始化目录不可读"))?;
+        if entry.file_name() != "state.lock" && !(pending && entry.file_name() == "state.writing") {
+            return Err(state_error(ERROR_STATE_INVALID, "目录含有未确认的MLS状态"));
+        }
+        require_regular_file(&entry.path())?;
+    }
+    Ok(())
 }
 
 fn authentication_error() -> String {
@@ -1558,6 +1661,19 @@ fn lock_store(dir: &Path) -> Result<fs::File, String> {
     let file = options
         .open(path)
         .map_err(|_| state_error(ERROR_STORAGE_READ, "存储锁不可用"))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        // 阶段写入不能借硬链接修改SDK目录以外的同一文件。
+        if file
+            .metadata()
+            .map_err(|_| state_error(ERROR_STORAGE_READ, "存储锁元数据不可读"))?
+            .nlink()
+            != 1
+        {
+            return Err(state_error(ERROR_STORAGE_READ, "存储锁存在硬链接"));
+        }
+    }
     lock_file(&file).map_err(|_| state_error(ERROR_STORAGE_READ, "存储锁失败"))?;
     Ok(file)
 }
@@ -2436,11 +2552,14 @@ mod tests {
         )
         .unwrap_err()
         .starts_with("CHAT_MLS_STATE_OWNER_MISMATCH"));
-        assert!(invoke(
-            identity_json,
-            json!({"state_store_dir":a.dir,"user_id":a.user,"action":"initialize"})
-        )
-        .is_err());
+        assert_eq!(
+            first,
+            invoke(
+                identity_json,
+                json!({"state_store_dir":a.dir,"user_id":a.user,"action":"initialize"})
+            )
+            .unwrap()
+        );
         fs::remove_file(storage_path(&a.dir)).unwrap();
         assert!(invoke(
             identity_json,
@@ -2449,6 +2568,124 @@ mod tests {
         .is_err());
         assert!(!storage_path(&a.dir).exists());
     }
+    #[test]
+    fn initialization_phase_recovers_only_unpublished_state() {
+        let a = Fixture::new("phase-user");
+        let original = fs::read(storage_path(&a.dir)).unwrap();
+        let request = json!({"state_store_dir":a.dir,"user_id":a.user,"action":"prepare","initialize_if_new":false});
+        // 快照已提交但阶段/回执未完成，必须交付原身份而非重新生成。
+        fs::write(
+            a.dir.join("state.lock"),
+            identity_phase_bytes(&a.user, b"initializing\n").unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            invoke(identity_json, request.clone()).unwrap()["device_id"],
+            a.device
+        );
+        assert_eq!(fs::read(storage_path(&a.dir)).unwrap(), original);
+        fs::remove_file(storage_path(&a.dir)).unwrap();
+        assert!(invoke(identity_json, request.clone())
+            .unwrap_err()
+            .starts_with(ERROR_STATE_MISSING));
+        assert!(invoke(
+            identity_json,
+            json!({"state_store_dir":a.dir,"user_id":a.user,"action":"initialize"})
+        )
+        .unwrap_err()
+        .starts_with(ERROR_STATE_MISSING));
+        assert!(!storage_path(&a.dir).exists());
+        // 仅合成尚未交付阶段可自动续行，未提交临时字节不会被当成有效快照。
+        fs::write(
+            a.dir.join("state.lock"),
+            identity_phase_bytes(&a.user, b"initializing\n").unwrap(),
+        )
+        .unwrap();
+        fs::write(a.dir.join("state.writing"), b"synthetic interrupted write").unwrap();
+        let created = invoke(identity_json, request.clone()).unwrap();
+        assert_eq!(created, invoke(identity_json, request).unwrap());
+        assert_eq!(
+            fs::read(a.dir.join("state.lock")).unwrap(),
+            identity_phase_bytes(&a.user, b"committed\n").unwrap()
+        );
+    }
+
+    #[test]
+    fn lock_phase_never_writes_through_a_hard_link() {
+        let a = Fixture::new("hard-link-user");
+        let path = a.dir.join("state.lock");
+        let before = fs::read(&path).unwrap();
+        match fs::hard_link(&path, a.dir.join("alias.lock")) {
+            Ok(()) => {
+                assert!(invoke(
+                    identity_json,
+                    json!({"state_store_dir":a.dir,"user_id":a.user,"action":"read"})
+                )
+                .is_err());
+            }
+            // Android shell私有测试目录由系统禁止创建硬链接；明确断言内核拒绝，不能谎称走到SDK拒绝分支。
+            Err(error)
+                if cfg!(target_os = "android")
+                    && error.kind() == std::io::ErrorKind::PermissionDenied =>
+            {
+                use std::os::unix::fs::MetadataExt;
+                assert_eq!(fs::metadata(&path).unwrap().nlink(), 1);
+                assert_eq!(
+                    invoke(
+                        identity_json,
+                        json!({"state_store_dir":a.dir,"user_id":a.user,"action":"read"})
+                    )
+                    .unwrap()["device_id"],
+                    a.device
+                );
+            }
+            Err(error) => panic!("合成硬链接准备失败: {error}"),
+        }
+        assert_eq!(fs::read(&path).unwrap(), before);
+    }
+
+    #[test]
+    fn unpublished_initialization_phase_is_owner_scoped() {
+        let a = Fixture::new("pending-owner");
+        fs::remove_file(storage_path(&a.dir)).unwrap();
+        fs::write(
+            a.dir.join("state.lock"),
+            identity_phase_bytes(&a.user, b"initializing\n").unwrap(),
+        )
+        .unwrap();
+        assert!(invoke(
+            identity_json,
+            json!({"state_store_dir":a.dir,"user_id":"other-owner","action":"initialize"})
+        )
+        .unwrap_err()
+        .starts_with("CHAT_MLS_STATE_OWNER_MISMATCH"));
+        assert!(!storage_path(&a.dir).exists());
+    }
+
+    #[test]
+    fn old_empty_directory_requires_explicit_initialization_and_deduplicates() {
+        let a = Fixture::new("empty-user");
+        fs::remove_file(storage_path(&a.dir)).unwrap();
+        fs::write(a.dir.join("state.lock"), b"").unwrap();
+        let request = json!({"state_store_dir":a.dir,"user_id":a.user,"action":"prepare","initialize_if_new":false});
+        assert!(invoke(identity_json, request)
+            .unwrap_err()
+            .starts_with(ERROR_INITIALIZATION_REQUIRED));
+        assert!(!storage_path(&a.dir).exists());
+        let dir = a.dir.clone();
+        let user = a.user.clone();
+        let run = move || {
+            invoke(
+                identity_json,
+                json!({"state_store_dir":dir,"user_id":user,"action":"initialize"}),
+            )
+            .unwrap()
+        };
+        let first = std::thread::spawn(run.clone());
+        let second = std::thread::spawn(run);
+        assert_eq!(first.join().unwrap(), second.join().unwrap());
+    }
+
     #[test]
     fn requests_require_persistent_state_and_reject_unknown_fields() {
         assert!(invoke(
