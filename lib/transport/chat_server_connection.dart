@@ -91,6 +91,8 @@ Future<ChatSocket> _connectIoSocket(
             'realtime_connect_cancelled',
           );
         }
+        // 协议级Ping由平台回复，不发送会唤醒服务端的业务保活帧。
+        socket.pingInterval = const Duration(seconds: 25);
         return _IoChatSocket(socket, client);
       });
   try {
@@ -202,10 +204,7 @@ final class ChatServerConnection implements ChatServiceTransport {
   ChatAccess? _access;
   Completer<void>? _connecting;
   Completer<void>? _ready;
-  Timer? _pingTimer;
-  Timer? _pongDeadline;
   Timer? _expiryTimer;
-  int? _pendingPing;
   Future<void> Function(ChatServiceEvent event)? _onEvent;
   Future<void> Function()? _onDisconnected;
   bool _disposed = false;
@@ -338,7 +337,6 @@ final class ChatServerConnection implements ChatServiceTransport {
       await readyFuture;
       _ensureCurrent(generation);
       _readySuccess = true;
-      _startPing();
       lastRealtimeDiagnosticCode = null;
       if (!completer.isCompleted) completer.complete();
     } catch (error, stackTrace) {
@@ -397,13 +395,7 @@ final class ChatServerConnection implements ChatServiceTransport {
         _disconnectSafely('realtime_frame_direction_invalid');
         return;
       case frame_protocol.ChatFrame_Body.pong:
-        if (_pendingPing == frame.pong.sentAtMillis.toInt()) {
-          _pendingPing = null;
-          _pongDeadline?.cancel();
-          _pongDeadline = null;
-        } else {
-          _disconnectSafely('realtime_pong_unmatched');
-        }
+        _disconnectSafely('realtime_pong_unmatched');
         return;
       case frame_protocol.ChatFrame_Body.messageAvailable:
         final callback = _onEvent;
@@ -456,31 +448,6 @@ final class ChatServerConnection implements ChatServiceTransport {
       return;
     }
     _dispatchNext();
-  }
-
-  void _startPing() {
-    _pingTimer?.cancel();
-    _pingTimer = Timer.periodic(const Duration(seconds: 25), (_) {
-      if (_socket == null || _pendingPing != null) return;
-      final sentAt = DateTime.now().millisecondsSinceEpoch;
-      _pendingPing = sentAt;
-      try {
-        _send(
-          frame_protocol.ChatFrame()
-            ..ping = (frame_protocol.Ping()
-              ..sentAtMillis = fixnum.Int64(sentAt)),
-        );
-      } catch (_) {
-        _disconnectSafely('realtime_send_failed');
-        return;
-      }
-      _pongDeadline?.cancel();
-      _pongDeadline = Timer(const Duration(seconds: 12), () {
-        if (_pendingPing == sentAt) {
-          _disconnectSafely('realtime_pong_timeout');
-        }
-      });
-    });
   }
 
   void _scheduleExpiry(int expiresAtMillis, int nowMillis) {
@@ -996,13 +963,8 @@ final class ChatServerConnection implements ChatServiceTransport {
     _readySuccess = false;
     _access = null;
     lastRealtimeDiagnosticCode = code;
-    _pingTimer?.cancel();
-    _pongDeadline?.cancel();
     _expiryTimer?.cancel();
-    _pingTimer = null;
-    _pongDeadline = null;
     _expiryTimer = null;
-    _pendingPing = null;
     final subscription = _subscription;
     final socket = _socket;
     final handshakeClient = _handshakeClient;

@@ -35,6 +35,47 @@ ChatAccess _access() => ChatAccess(
 );
 
 void main() {
+  test('空闲26秒不发送业务Ping，连接仍可执行原邮箱命令', () async {
+    final socket = _FakeSocket();
+    final transport = ChatServerConnection(
+      identity: const ChatDevice(userId: 'user-a', deviceId: 'device-a'),
+      accessProvider: () async => _access(),
+      socketConnector: (_, _) async {
+        scheduleMicrotask(() => socket.receive(ChatFrame()..ready = Ready()));
+        return socket;
+      },
+    );
+    await transport.connect();
+    await Future<void>.delayed(const Duration(seconds: 26));
+    expect(socket.sent, isEmpty);
+    expect(socket.closed, isFalse);
+    final mailbox = transport.fetchMailbox();
+    await Future<void>.delayed(Duration.zero);
+    expect(socket.sent.single.whichBody(), ChatFrame_Body.syncMessages);
+    socket.receive(ChatFrame()..messageBatch = MessageBatch());
+    expect(await mailbox, isEmpty);
+    await transport.dispose();
+    expect(socket.closed, isTrue);
+  });
+
+  test('未请求的应用层Pong继续关闭连接', () async {
+    final socket = _FakeSocket();
+    final transport = ChatServerConnection(
+      identity: const ChatDevice(userId: 'user-a', deviceId: 'device-a'),
+      accessProvider: () async => _access(),
+      socketConnector: (_, _) async {
+        scheduleMicrotask(() => socket.receive(ChatFrame()..ready = Ready()));
+        return socket;
+      },
+    );
+    await transport.connect();
+    socket.receive(ChatFrame()..pong = Pong(sentAtMillis: Int64.ONE));
+    await Future<void>.delayed(Duration.zero);
+    expect(socket.closed, isTrue);
+    expect(transport.lastRealtimeDiagnosticCode, 'realtime_pong_unmatched');
+    await transport.dispose();
+  });
+
   test('邮箱保留完整Protobuf外层，ACK按100条分批且精确匹配回执', () async {
     final socket = _FakeSocket();
     final transport = ChatServerConnection(
