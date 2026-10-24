@@ -33,7 +33,6 @@ use serde_json::json;
 
 const GMB_MLS_CIPHERSUITE: Ciphersuite = Ciphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519;
 const ERROR_STORAGE_READ: &str = "CHAT_MLS_STORAGE_READ_FAILED";
-const ERROR_INITIALIZATION_REQUIRED: &str = "CHAT_MLS_INITIALIZATION_REQUIRED";
 const ERROR_STATE_MISSING: &str = "CHAT_MLS_STATE_MISSING";
 const ERROR_STATE_INVALID: &str = "CHAT_MLS_STATE_INVALID";
 const ERROR_SIGNER_MISSING: &str = "CHAT_MLS_SIGNER_MISSING";
@@ -72,11 +71,6 @@ struct TwoPartySmokeRequest {
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 enum IdentityRequest {
     Prepare {
-        state_store_dir: String,
-        user_id: String,
-        initialize_if_new: bool,
-    },
-    Initialize {
         state_store_dir: String,
         user_id: String,
     },
@@ -194,7 +188,7 @@ pub unsafe extern "C" fn tatachat_sdk_mls_create_key_package_json(
     }
 }
 
-/// 显式初始化、读取公开身份或签受限认证证明；读取/认证永不生成密钥。
+/// 自动准备、读取公开身份或签受限认证证明；读取/认证永不生成密钥。
 /// # Safety
 /// 输入必须是UTF-8 C字符串，返回字符串由SDK释放。
 #[no_mangle]
@@ -214,11 +208,6 @@ fn identity_json(input: *const c_char) -> Result<String, String> {
     let request: IdentityRequest = parse_request(input)?;
     let (state_store_dir, user_id) = match &request {
         IdentityRequest::Prepare {
-            state_store_dir,
-            user_id,
-            ..
-        }
-        | IdentityRequest::Initialize {
             state_store_dir,
             user_id,
         }
@@ -251,18 +240,9 @@ fn identity_json(input: *const c_char) -> Result<String, String> {
         if phase == 3 {
             return Err(state_error(ERROR_STATE_INVALID, "MLS初始化阶段损坏"));
         }
-        let permitted = match &request {
-            IdentityRequest::Initialize { .. } => true,
-            IdentityRequest::Prepare {
-                initialize_if_new, ..
-            } => *initialize_if_new || phase == 1,
-            _ => false,
-        };
-        if !permitted {
-            return Err(state_error(
-                ERROR_INITIALIZATION_REQUIRED,
-                "本机MLS身份缺失，需要明确确认初始化",
-            ));
+        // 合法空目录和未交付阶段由同一prepare自动完成；目录创建时间不是权限事实。
+        if !matches!(&request, IdentityRequest::Prepare { .. }) {
+            return Err(state_error(ERROR_STATE_MISSING, "本机MLS身份尚未准备"));
         }
         validate_initialization_directory(dir, phase == 1)?;
         // 在任何密钥生成前持久提交阶段；只有未交付过身份的阶段允许自动续行。
@@ -2454,24 +2434,28 @@ mod tests {
         device: String,
     }
     impl Fixture {
-        fn new(user: &str) -> Self {
+        fn empty(user: &str) -> Self {
             let dir = std::env::temp_dir().join(format!(
                 "tatachat_mls_{}_{}",
                 std::process::id(),
                 SERIAL.fetch_add(1, Ordering::Relaxed)
             ));
             fs::create_dir(&dir).unwrap();
-            let dir = fs::canonicalize(dir).unwrap();
+            Self {
+                dir: fs::canonicalize(dir).unwrap(),
+                user: user.into(),
+                device: String::new(),
+            }
+        }
+        fn new(user: &str) -> Self {
+            let mut fixture = Self::empty(user);
             let identity = invoke(
                 identity_json,
-                json!({"state_store_dir":dir,"user_id":user,"action":"initialize"}),
+                json!({"state_store_dir":fixture.dir,"user_id":user,"action":"prepare"}),
             )
             .unwrap();
-            Self {
-                dir,
-                user: user.into(),
-                device: identity["device_id"].as_str().unwrap().into(),
-            }
+            fixture.device = identity["device_id"].as_str().unwrap().into();
+            fixture
         }
         fn request(&self, id: &str) -> serde_json::Value {
             json!({"state_store_dir":self.dir,"user_id":self.user,"device_id":self.device,"message_id":id})
@@ -2556,7 +2540,7 @@ mod tests {
             first,
             invoke(
                 identity_json,
-                json!({"state_store_dir":a.dir,"user_id":a.user,"action":"initialize"})
+                json!({"state_store_dir":a.dir,"user_id":a.user,"action":"prepare"})
             )
             .unwrap()
         );
@@ -2572,7 +2556,7 @@ mod tests {
     fn initialization_phase_recovers_only_unpublished_state() {
         let a = Fixture::new("phase-user");
         let original = fs::read(storage_path(&a.dir)).unwrap();
-        let request = json!({"state_store_dir":a.dir,"user_id":a.user,"action":"prepare","initialize_if_new":false});
+        let request = json!({"state_store_dir":a.dir,"user_id":a.user,"action":"prepare"});
         // 快照已提交但阶段/回执未完成，必须交付原身份而非重新生成。
         fs::write(
             a.dir.join("state.lock"),
@@ -2590,7 +2574,7 @@ mod tests {
             .starts_with(ERROR_STATE_MISSING));
         assert!(invoke(
             identity_json,
-            json!({"state_store_dir":a.dir,"user_id":a.user,"action":"initialize"})
+            json!({"state_store_dir":a.dir,"user_id":a.user,"action":"prepare"})
         )
         .unwrap_err()
         .starts_with(ERROR_STATE_MISSING));
@@ -2655,7 +2639,7 @@ mod tests {
         .unwrap();
         assert!(invoke(
             identity_json,
-            json!({"state_store_dir":a.dir,"user_id":"other-owner","action":"initialize"})
+            json!({"state_store_dir":a.dir,"user_id":"other-owner","action":"prepare"})
         )
         .unwrap_err()
         .starts_with("CHAT_MLS_STATE_OWNER_MISMATCH"));
@@ -2663,27 +2647,58 @@ mod tests {
     }
 
     #[test]
-    fn old_empty_directory_requires_explicit_initialization_and_deduplicates() {
-        let a = Fixture::new("empty-user");
-        fs::remove_file(storage_path(&a.dir)).unwrap();
-        fs::write(a.dir.join("state.lock"), b"").unwrap();
-        let request = json!({"state_store_dir":a.dir,"user_id":a.user,"action":"prepare","initialize_if_new":false});
+    fn empty_directory_after_creation_gap_prepares_once() {
+        // 模拟平台已建目录、进程尚未进入原生准备即退出；已有空锁也同样处理。
+        for empty_lock in [false, true] {
+            let a = Fixture::empty("empty-user");
+            if empty_lock {
+                fs::write(a.dir.join("state.lock"), b"").unwrap();
+            }
+            let read = json!({"state_store_dir":a.dir,"user_id":a.user,"action":"read"});
+            assert!(invoke(identity_json, read.clone())
+                .unwrap_err()
+                .starts_with(ERROR_STATE_MISSING));
+            assert!(!storage_path(&a.dir).exists());
+            let dir = a.dir.clone();
+            let user = a.user.clone();
+            let run = move || {
+                invoke(
+                    identity_json,
+                    json!({"state_store_dir":dir,"user_id":user,"action":"prepare"}),
+                )
+                .unwrap()
+            };
+            let first = std::thread::spawn(run.clone());
+            let second = std::thread::spawn(run);
+            let identity = first.join().unwrap();
+            assert_eq!(identity, second.join().unwrap());
+            let bytes = fs::read(storage_path(&a.dir)).unwrap();
+            assert_eq!(identity, invoke(identity_json, read).unwrap());
+            assert_eq!(fs::read(storage_path(&a.dir)).unwrap(), bytes);
+        }
+    }
+
+    #[test]
+    fn preparation_rejects_foreign_contents_and_damaged_phase() {
+        let a = Fixture::empty("unpublished-user");
+        let request = json!({"state_store_dir":a.dir,"user_id":a.user,"action":"prepare"});
+        let foreign = a.dir.join("foreign");
+        fs::write(&foreign, b"synthetic unowned state").unwrap();
+        assert!(invoke(identity_json, request.clone())
+            .unwrap_err()
+            .starts_with(ERROR_STATE_INVALID));
+        assert_eq!(fs::read(&foreign).unwrap(), b"synthetic unowned state");
+        assert!(!storage_path(&a.dir).exists());
+        fs::remove_file(foreign).unwrap();
+        fs::write(a.dir.join("state.lock"), b"initializing\n").unwrap();
         assert!(invoke(identity_json, request)
             .unwrap_err()
-            .starts_with(ERROR_INITIALIZATION_REQUIRED));
+            .starts_with(ERROR_STATE_INVALID));
+        assert_eq!(
+            fs::read(a.dir.join("state.lock")).unwrap(),
+            b"initializing\n"
+        );
         assert!(!storage_path(&a.dir).exists());
-        let dir = a.dir.clone();
-        let user = a.user.clone();
-        let run = move || {
-            invoke(
-                identity_json,
-                json!({"state_store_dir":dir,"user_id":user,"action":"initialize"}),
-            )
-            .unwrap()
-        };
-        let first = std::thread::spawn(run.clone());
-        let second = std::thread::spawn(run);
-        assert_eq!(first.join().unwrap(), second.join().unwrap());
     }
 
     #[test]

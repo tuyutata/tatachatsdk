@@ -25,7 +25,7 @@ void main() {
       Directory(await root.resolveSymbolicLinks()),
       ownerUserId: 'user-a',
     );
-    final identity = await store.initializeIdentity();
+    final identity = await store.prepareIdentity();
     final crypto = NativeMlsCrypto(identity: identity, stateStore: store);
     final package = await crypto.createKeyPackage(identity, lastResort: true);
     final again = await crypto.createKeyPackage(
@@ -40,7 +40,7 @@ void main() {
     );
     expect(identity.publicKey, matches(RegExp(r'^0x[0-9a-f]{64}$')));
     expect((await store.readIdentity()).deviceId, identity.deviceId);
-    expect((await store.initializeIdentity()).deviceId, identity.deviceId);
+    expect((await store.prepareIdentity()).deviceId, identity.deviceId);
     final wrongOwner = MlsStateStore(store.directory, ownerUserId: 'other');
     await expectLater(
       wrongOwner.readIdentity(),
@@ -53,7 +53,7 @@ void main() {
     addTearDown(() => root.delete(recursive: true));
     final directory = Directory(await root.resolveSymbolicLinks());
     final store = MlsStateStore(directory, ownerUserId: 'user-a');
-    final identity = await store.initializeIdentity();
+    final identity = await store.prepareIdentity();
     final request = _authenticationRequest();
     final account = '0x${List.filled(32, '11').join()}';
     final snapshot = File('${directory.path}/state.bin');
@@ -111,7 +111,7 @@ void main() {
     addTearDown(() => root.delete(recursive: true));
     final directory = Directory(await root.resolveSymbolicLinks());
     final store = MlsStateStore(directory, ownerUserId: 'user-a');
-    await store.initializeIdentity();
+    await store.prepareIdentity();
     final snapshot = File('${directory.path}/state.bin');
     final request = _authenticationRequest();
     Future<MlsAuthenticationProof> sign() => store.signAuthentication(
@@ -121,9 +121,17 @@ void main() {
     );
     await snapshot.writeAsString('synthetic corrupt state');
     await expectLater(sign(), throwsA(isA<MlsNativeException>()));
+    await expectLater(
+      store.prepareIdentity(),
+      throwsA(isA<MlsNativeException>()),
+    );
     expect(await snapshot.readAsString(), 'synthetic corrupt state');
     await snapshot.delete();
     await expectLater(sign(), throwsA(isA<MlsNativeException>()));
+    await expectLater(
+      store.prepareIdentity(),
+      throwsA(isA<MlsNativeException>()),
+    );
     expect(await snapshot.exists(), isFalse);
   });
   test('真实FFI拒绝错误属主后释放锁，主动重试继续使用原MLS身份和快照', () async {
@@ -133,7 +141,7 @@ void main() {
     final root = Directory(await temporary.resolveSymbolicLinks());
     addTearDown(() => root.delete(recursive: true));
     final store = MlsStateStore(root, ownerUserId: 'original-user');
-    final identity = await store.initializeIdentity();
+    final identity = await store.prepareIdentity();
     final snapshot = File('${root.path}/state.bin');
     final before = await snapshot.readAsBytes();
     final wrong = MlsStateStore(root, ownerUserId: 'other-user');
@@ -147,7 +155,7 @@ void main() {
     expect(proof.deviceId, identity.deviceId);
     expect(await snapshot.readAsBytes(), before);
   });
-  test('只有锁文件的既有目录不能冒充已初始化身份或自动生成替代身份', () async {
+  test('空锁目录严格读取不生成身份，随后自动准备正常完成', () async {
     final temporary = await Directory.systemTemp.createTemp(
       'tatachat_lock_empty_',
     );
@@ -158,24 +166,15 @@ void main() {
     await expectLater(store.readIdentity(), throwsA(isA<MlsNativeException>()));
     await expectLater(store.readIdentity(), throwsA(isA<MlsNativeException>()));
     expect(await File('${root.path}/state.bin').exists(), isFalse);
+    final identity = await store.prepareIdentity();
+    expect((await store.readIdentity()).deviceId, identity.deviceId);
   });
-  test('首次准备、旧空锁确认、已交付缺失和重试均由原生阶段判定', () async {
+  test('既有空目录自动准备、回执中断复用、已交付缺失不换钥', () async {
     final temp = await Directory.systemTemp.createTemp('tatachat_phase_');
     final root = Directory(await temp.resolveSymbolicLinks());
     addTearDown(() => root.delete(recursive: true));
     final store = MlsStateStore(root, ownerUserId: 'phase-user');
-    await expectLater(
-      store.prepareIdentity(),
-      throwsA(
-        isA<MlsNativeException>().having(
-          (e) => e.code,
-          'code',
-          MlsNativeErrorCode.initializationRequired,
-        ),
-      ),
-    );
-    expect(await File('${root.path}/state.bin').exists(), isFalse);
-    final first = await store.initializeIdentity();
+    final first = await store.prepareIdentity();
     final before = await File('${root.path}/state.bin').readAsBytes();
     await File('${root.path}/state.lock')
         .writeAsString('initializing\n', flush: true);
@@ -183,7 +182,7 @@ void main() {
     expect(await File('${root.path}/state.bin').readAsBytes(), before);
     await File('${root.path}/state.bin').delete();
     await expectLater(
-      store.initializeIdentity(),
+      store.prepareIdentity(),
       throwsA(
         isA<MlsNativeException>().having(
           (e) => e.code,
@@ -202,7 +201,7 @@ void main() {
     for (var index = 0; index < 3; index++) {
       final directory = await Directory('${root.path}/$index').create();
       final store = MlsStateStore(directory, ownerUserId: 'CID-A');
-      final identity = await store.initializeIdentity();
+      final identity = await store.prepareIdentity();
       devices.add(identity);
       cryptos.add(NativeMlsCrypto(identity: identity, stateStore: store));
     }

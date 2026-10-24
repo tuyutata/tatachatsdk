@@ -19,7 +19,7 @@ void main() {
         Directory(await directory.resolveSymbolicLinks()),
         ownerUserId: user,
       );
-      await store.initializeIdentity();
+      await store.prepareIdentity();
       return store;
     }
 

@@ -5266,62 +5266,37 @@ class ChatRuntimeCore {
     return MlsStateStore.prepare(userId);
   }
 
-  /// 公开离线身份入口不请求聊天网络或权益；宿主当前user_id是所有者事实。
-  Future<ChatDevice> readLocalMlsIdentity() => _localMlsIdentity();
-
-  /// 只有宿主明确确认初始化后调用；固定本次账户和绑定，不代办钱包授权或网络登记。
-  Future<ChatDevice> initializeLocalMlsIdentity({
-    required String expectedUserId,
-    required String expectedAccountId,
-    required int expectedBindingRevision,
-  }) => _localMlsIdentity(
-    expectedUserId: expectedUserId,
-    expectedAccountId: expectedAccountId,
-    expectedBindingRevision: expectedBindingRevision,
-  );
-
-  Future<ChatDevice> _localMlsIdentity({
-    String? expectedUserId,
-    String? expectedAccountId,
-    int? expectedBindingRevision,
-  }) async {
+  /// 离线自动准备同一MLS身份；不请求聊天网络、权益、钱包授权或设备登记。
+  Future<ChatDevice> readLocalMlsIdentity() async {
     _ensureActive();
     final account = await _readAccount();
     final generation = _accountGenerations[account.accountId] ?? 0;
     Future<void> requireCurrent() async {
-      if (expectedUserId != null &&
-          (account.userId != expectedUserId ||
-              account.accountId != expectedAccountId ||
-              account.bindingRevision != expectedBindingRevision)) {
-        throw const MlsNativeException(
-          MlsNativeErrorCode.stateOwnerMismatch,
-          'MLS初始化的预期身份不一致',
-        );
-      }
       try {
-        // 复用运行态唯一账户/绑定/域/宿主/代次守卫，不另立初始化权限事实。
+        // 自动准备复用唯一账户/绑定/域/宿主/代次守卫。
         await _requireCurrentAccount(account, generation);
       } on StateError {
         throw const MlsNativeException(
           MlsNativeErrorCode.stateOwnerMismatch,
-          'MLS初始化期间身份已切换',
+          'MLS准备期间身份已切换',
         );
       }
     }
 
     await requireCurrent();
-    return _runUserFileMutation(
+    final identity = await _runUserFileMutation(
       userId: account.userId,
       operation: () async {
         final store = await _stateStore(account.userId);
         await requireCurrent();
-        final identity = expectedUserId == null
-            ? await store.prepareIdentity()
-            : await store.initializeIdentity();
+        final identity = await store.prepareIdentity();
         await requireCurrent();
         return identity;
       },
     );
+    // 文件屏障退出仍有异步边界，交付前再次核对账户和运行态。
+    await requireCurrent();
+    return identity;
   }
 
   /// 通讯录复用同一已存在MLS身份，不启动聊天网络或请求会员权益。

@@ -16,7 +16,7 @@ void main() {
       Directory(await root.resolveSymbolicLinks()),
       ownerUserId: 'user',
     );
-    final identity = await store.initializeIdentity();
+    final identity = await store.prepareIdentity();
     const wire = MlsWireMessage(wireBytes: [1, 2], conversationId: 'group');
     await store.queuePendingInbound(wire);
     await store.queuePendingInbound(wire);
@@ -42,13 +42,14 @@ void main() {
     final messenger =
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
     var path = root.path;
-    messenger.setMockMethodCallHandler(
-      channel,
-      (call) async => {'path': path, 'created': false},
-    );
+    messenger.setMockMethodCallHandler(channel, (call) async => {'path': path});
     addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
     final store = await MlsStateStore.prepare('synthetic-user');
     expect(store.path, await root.resolveSymbolicLinks());
+    final identity = await store.prepareIdentity();
+    // 平台再次打开既有目录不需要创建标记，仍复用原身份。
+    final reopened = await MlsStateStore.prepare('synthetic-user');
+    expect((await reopened.prepareIdentity()).deviceId, identity.deviceId);
     final link = await Link('${root.path}/link').create(root.path);
     path = link.path;
     await expectLater(

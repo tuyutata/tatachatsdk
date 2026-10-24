@@ -208,8 +208,8 @@ void main() {
   });
 
   for (final changed in [false, true]) {
-    test('显式MLS初始化固定用户和账户，迟到绑定变化=$changed不得交付身份', () async {
-      final temporary = await Directory.systemTemp.createTemp('mls_explicit_');
+    test('离线自动准备固定当前账户，准备前绑定变化=$changed不得交付身份', () async {
+      final temporary = await Directory.systemTemp.createTemp('mls_prepare_');
       final root = Directory(await temporary.resolveSymbolicLinks());
       addTearDown(() => root.delete(recursive: true));
       final host = _AuthenticationHost(_account());
@@ -235,20 +235,60 @@ void main() {
         },
       );
       addTearDown(runtime.close);
-      final result = runtime.initializeLocalMlsIdentity(
-        expectedUserId: 'user-a',
-        expectedAccountId: _hex(0x11),
-        expectedBindingRevision: 1,
-      );
+      final result = runtime.readLocalMlsIdentity();
       if (changed) {
         await expectLater(result, throwsA(isA<MlsNativeException>()));
         expect(actions, isEmpty);
       } else {
         expect((await result).userId, 'user-a');
-        expect(actions, ['initialize']);
+        expect(actions, ['prepare']);
         await runtime.readLocalMlsIdentity();
-        expect(actions, ['initialize', 'prepare']);
+        expect(actions, ['prepare', 'prepare']);
       }
+      expect(host.forbiddenCalls, 0);
+    });
+  }
+
+  for (final change in ['user', 'account', 'binding', 'domain', 'host']) {
+    test('自动准备原生返回后$change变化，不交付旧身份或启动网络', () async {
+      final temporary = await Directory.systemTemp.createTemp(
+        'mls_prepare_late_',
+      );
+      final root = Directory(await temporary.resolveSymbolicLinks());
+      addTearDown(() => root.delete(recursive: true));
+      final host = _AuthenticationHost(_account());
+      var calls = 0;
+      final runtime = ChatRuntimeCore(
+        host: host,
+        store: ChatStore(),
+        documentsDirectoryProvider: () async => root,
+        stateStoreFactory: (user) async => MlsStateStore(
+          root,
+          ownerUserId: user,
+          debugCallJson: (input) {
+            expect(input['action'], 'prepare');
+            calls++;
+            host.account = _account(
+              user: change == 'user' ? 'user-b' : 'user-a',
+              account: change == 'account' ? _hex(0x33) : _hex(0x11),
+              revision: change == 'binding' ? 2 : 1,
+              domain: change == 'domain' ? 'other' : 'synthetic',
+              hostIndex: change == 'host' ? 2 : 1,
+            );
+            return {
+              'user_id': user,
+              'device_id': '22' * 32,
+              'public_key': '0x${'22' * 32}',
+            };
+          },
+        ),
+      );
+      addTearDown(runtime.close);
+      await expectLater(
+        runtime.readLocalMlsIdentity(),
+        throwsA(isA<MlsNativeException>()),
+      );
+      expect(calls, 1);
       expect(host.forbiddenCalls, 0);
     });
   }
@@ -270,8 +310,7 @@ void main() {
         return MlsStateStore(
           directory,
           ownerUserId: user,
-          // 即使目录新建，认证也只能read，不能initialize。
-          newlyCreated: true,
+          // 请求证明严格读取已准备身份，不在签名途中准备新密钥。
           debugCallJson: (input) {
             actions.add(input['action']);
             return _nativeResponse(input);
@@ -339,43 +378,50 @@ void main() {
     }
   }
 
-  test('等待保护存储期间关闭运行时，必须失败且不能晚签', () async {
-    final root = await Directory.systemTemp.createTemp('tatachat_auth_close_');
-    addTearDown(() => root.delete(recursive: true));
-    final directory = Directory(await root.resolveSymbolicLinks());
-    final entered = Completer<void>(), release = Completer<void>();
-    final host = _AuthenticationHost(_account());
-    var nativeCalls = 0;
-    final runtime = ChatRuntimeCore(
-      host: host,
-      store: ChatStore(),
-      documentsDirectoryProvider: () async => directory,
-      stateStoreFactory: (user) async {
-        entered.complete();
-        await release.future;
-        return MlsStateStore(
-          directory,
-          ownerUserId: user,
-          debugCallJson: (input) {
-            nativeCalls++;
-            return _nativeResponse(input);
-          },
-        );
-      },
-    );
-    addTearDown(runtime.close);
-    final rejected = expectLater(
-      runtime.createMlsAuthenticationProof(_request()),
-      throwsStateError,
-    );
-    await entered.future;
-    final closed = runtime.close();
-    release.complete();
-    await rejected;
-    await closed;
-    expect(nativeCalls, 0);
-    expect(host.forbiddenCalls, 0);
-  });
+  for (final prepare in [false, true]) {
+    test('等待保护存储期间关闭运行时，准备=$prepare不得生成或交付旧结果', () async {
+      final root = await Directory.systemTemp.createTemp(
+        'tatachat_auth_close_',
+      );
+      addTearDown(() => root.delete(recursive: true));
+      final directory = Directory(await root.resolveSymbolicLinks());
+      final entered = Completer<void>(), release = Completer<void>();
+      final host = _AuthenticationHost(_account());
+      var nativeCalls = 0;
+      final runtime = ChatRuntimeCore(
+        host: host,
+        store: ChatStore(),
+        documentsDirectoryProvider: () async => directory,
+        stateStoreFactory: (user) async {
+          entered.complete();
+          await release.future;
+          return MlsStateStore(
+            directory,
+            ownerUserId: user,
+            debugCallJson: (input) {
+              nativeCalls++;
+              return _nativeResponse(input);
+            },
+          );
+        },
+      );
+      addTearDown(runtime.close);
+      final result = prepare
+          ? runtime.readLocalMlsIdentity()
+          : runtime.createMlsAuthenticationProof(_request());
+      final rejected = expectLater(
+        result,
+        prepare ? throwsA(isA<MlsNativeException>()) : throwsStateError,
+      );
+      await entered.future;
+      final closed = runtime.close();
+      release.complete();
+      await rejected;
+      await closed;
+      expect(nativeCalls, 0);
+      expect(host.forbiddenCalls, 0);
+    });
+  }
 }
 
 // 以下全部为合成夹具，不读取设备数据、真实账户或真实密钥。

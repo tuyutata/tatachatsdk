@@ -90,7 +90,6 @@ public final class TataChatSdkPlugin: NSObject, FlutterPlugin,
     // UTF-8编码保持一一对应，不用字符替换造成不同用户目录碰撞。
     guard name.count <= 240 else { throw CocoaError(.fileReadInvalidFileName) }
     let target = root.appendingPathComponent(name, isDirectory: true)
-    let created = !manager.fileExists(atPath: target.path)
     for var directory in [root, target] {
       if manager.fileExists(atPath: directory.path) {
         let resource = try directory.resourceValues(forKeys: [.isSymbolicLinkKey, .isDirectoryKey])
@@ -121,7 +120,8 @@ public final class TataChatSdkPlugin: NSObject, FlutterPlugin,
               try item.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup == true else { throw CocoaError(.fileWriteUnknown) }
       }
     }
-    return ["path": target.path, "created": created]
+    // 平台只交付保护目录，身份首次准备由原生持久状态决定。
+    return ["path": target.path]
   }
 
   /// SDK 唯一数据目录；首次解锁后可后台使用，不引入应用包装密钥。

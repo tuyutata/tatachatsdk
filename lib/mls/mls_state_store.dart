@@ -12,12 +12,10 @@ class MlsStateStore {
   const MlsStateStore(
     this.directory, {
     required this.ownerUserId,
-    this.newlyCreated = false,
     this.debugCallJson,
   });
   final Directory directory;
   final String ownerUserId;
-  final bool newlyCreated;
   @visibleForTesting
   final Map<String, dynamic> Function(Map<String, Object?>)? debugCallJson;
   @visibleForTesting
@@ -43,9 +41,7 @@ class MlsStateStore {
       'prepareMlsStorage',
       {'user_id': userId},
     );
-    if (result == null ||
-        result['path'] is! String ||
-        result['created'] is! bool) {
+    if (result == null || result.length != 1 || result['path'] is! String) {
       throw StateError('MLS保护存储不可用');
     }
     final raw = Directory(result['path'] as String);
@@ -78,11 +74,7 @@ class MlsStateStore {
         'MLS目录暂不可读',
       );
     }
-    final store = MlsStateStore(
-      canonical,
-      ownerUserId: userId,
-      newlyCreated: result['created'] as bool,
-    );
+    final store = MlsStateStore(canonical, ownerUserId: userId);
     await store.ensureReady();
     return store;
   }
@@ -135,23 +127,17 @@ class MlsStateStore {
     }
   }
 
-  /// 普通读取与确认初始化分离；未知缺状态须确认，已提交身份缺失禁止换钥。
-  Future<ChatDevice> initializeIdentity() => _identity('initialize');
-  Future<ChatDevice> readIdentity() => _identity('read');
+  /// 唯一自动准备入口；合法空目录和中断提交由原生持久事实幂等处理。
+  Future<ChatDevice> prepareIdentity() => _identity('prepare');
 
-  /// 创建目录只提供首次提示；是否可续行由原生锁内持久阶段判定。
-  Future<ChatDevice> prepareIdentity() =>
-      _identity('prepare', {'initialize_if_new': newlyCreated});
-  Future<ChatDevice> _identity(
-    String action, [
-    Map<String, Object?> extra = const {},
-  ]) async {
+  /// 只读已有身份；缺失或损坏不得在认证请求中生成新密钥。
+  Future<ChatDevice> readIdentity() => _identity('read');
+  Future<ChatDevice> _identity(String action) async {
     await ensureReady();
     final response = _call(true, {
       'state_store_dir': path,
       'user_id': ownerUserId,
       'action': action,
-      ...extra,
     });
     if (response['user_id'] != ownerUserId) throw StateError('MLS身份所有者不一致');
     final identity = ChatDevice(

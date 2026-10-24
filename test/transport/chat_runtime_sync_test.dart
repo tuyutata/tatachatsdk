@@ -627,7 +627,7 @@ void main() {
       await Directory('${root.path}/peer').create(),
       ownerUserId: 'user-b',
     );
-    final peerIdentity = await peerStore.initializeIdentity();
+    final peerIdentity = await peerStore.prepareIdentity();
     final peerPackage = await NativeMlsCrypto(
       identity: peerIdentity,
       stateStore: peerStore,
@@ -636,7 +636,7 @@ void main() {
       await Directory('${root.path}/self').create(),
       ownerUserId: 'user-a',
     );
-    final selfIdentity = await selfStore.initializeIdentity();
+    final selfIdentity = await selfStore.prepareIdentity();
     final runtime = ChatRuntimeCore(
       host: host,
       store: store,

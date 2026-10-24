@@ -139,7 +139,7 @@ void main() {
       final root = Directory(await temp.resolveSymbolicLinks());
       addTearDown(() => root.delete(recursive: true));
       final initial = MlsStateStore(root, ownerUserId: 'user-a');
-      final identity = await initial.initializeIdentity();
+      final identity = await initial.prepareIdentity();
       final host = _ContactHost(), relay = _Relay();
       final runtime = ChatSdk(
         host: host,
@@ -190,7 +190,7 @@ void main() {
       expect(requests, before);
     });
   }
-  test('旧空目录通讯录不联网不自动补身份，明确初始化后复用同一设备完成同步', () async {
+  test('通讯录签读不补密钥，统一离线自动准备后复用同一设备同步', () async {
     final temporary = await Directory.systemTemp.createTemp(
       'mls_contact_empty_',
     );
@@ -221,11 +221,7 @@ void main() {
     await expectLater(sync(), throwsA(isA<MlsNativeException>()));
     expect(exchanges, 0);
     expect(await File('${root.path}/state.bin').exists(), isFalse);
-    identity = await runtime.initializeLocalMlsIdentity(
-      expectedUserId: host.account.userId,
-      expectedAccountId: host.account.accountId,
-      expectedBindingRevision: host.account.bindingRevision,
-    );
+    identity = await runtime.readLocalMlsIdentity();
     expect(await sync(), [utf8.encode('synthetic snapshot')]);
     expect((await runtime.readLocalMlsIdentity()).deviceId, identity.deviceId);
     expect(exchanges, greaterThan(0));
@@ -263,7 +259,7 @@ void main() {
     for (var index = 0; index < 3; index++) {
       final directory = await Directory('${root.path}/$index').create();
       final store = MlsStateStore(directory, ownerUserId: 'CID-A');
-      final identity = await store.initializeIdentity();
+      final identity = await store.prepareIdentity();
       stores.add(store);
       devices.add(identity);
       cryptos.add(NativeMlsCrypto(identity: identity, stateStore: store));

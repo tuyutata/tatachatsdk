@@ -36,7 +36,7 @@ Future<_Device> _device(
 }) async {
   final root = await Directory('${parent.path}/$name').create();
   final store = MlsStateStore(root, ownerUserId: cid);
-  return _Device(store, await store.initializeIdentity(), root);
+  return _Device(store, await store.prepareIdentity(), root);
 }
 
 ChatContent _content(

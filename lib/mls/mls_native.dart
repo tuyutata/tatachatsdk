@@ -450,7 +450,6 @@ DynamicLibrary _loadChatSdkLibrary() {
 enum MlsNativeErrorCode {
   directoryInvalid,
   directoryUnavailable,
-  initializationRequired,
   stateMissing,
   stateOwnerMismatch,
   storageReadFailed,
@@ -466,12 +465,6 @@ class MlsNativeException implements Exception {
   const MlsNativeException(this.code, this.technicalMessage);
 
   factory MlsNativeException.fromTechnicalMessage(String message) {
-    if (message.startsWith('CHAT_MLS_INITIALIZATION_REQUIRED:')) {
-      return MlsNativeException(
-        MlsNativeErrorCode.initializationRequired,
-        message,
-      );
-    }
     if (message.startsWith('CHAT_MLS_STATE_MISSING:')) {
       return MlsNativeException(MlsNativeErrorCode.stateMissing, message);
     }
@@ -497,7 +490,6 @@ class MlsNativeException implements Exception {
   String get diagnosticCode => switch (code) {
     MlsNativeErrorCode.directoryInvalid => 'directory_invalid',
     MlsNativeErrorCode.directoryUnavailable => 'directory_unavailable',
-    MlsNativeErrorCode.initializationRequired => 'initialization_required',
     MlsNativeErrorCode.stateMissing => 'state_missing',
     MlsNativeErrorCode.stateOwnerMismatch => 'state_owner_mismatch',
     MlsNativeErrorCode.storageReadFailed => 'storage_read_failed',
@@ -512,8 +504,7 @@ class MlsNativeException implements Exception {
   String get userMessage => switch (code) {
     MlsNativeErrorCode.directoryInvalid => '本机聊天存储路径校验失败',
     MlsNativeErrorCode.directoryUnavailable => '本机聊天存储暂时不可读取，请稍后重试',
-    MlsNativeErrorCode.initializationRequired => '本机聊天身份文件缺失，需要确认初始化本机设备',
-    MlsNativeErrorCode.stateMissing => '本机已使用的聊天身份文件缺失，无法自动重新初始化',
+    MlsNativeErrorCode.stateMissing => '本机聊天身份文件缺失，聊天暂时无法使用',
     MlsNativeErrorCode.stateOwnerMismatch => '当前用户身份的聊天设备状态属于其他用户，请重新切换账户后再试',
     MlsNativeErrorCode.storageReadFailed ||
     MlsNativeErrorCode.stateInvalid ||

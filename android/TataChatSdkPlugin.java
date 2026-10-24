@@ -173,7 +173,6 @@ public final class TataChatSdkPlugin implements FlutterPlugin, ActivityAware,
         // 规范系统提供的容器别名；SDK子目录仍须逐项拒绝符号链接。
         File root = new File(context.getNoBackupFilesDir().getCanonicalFile(), "tatachat_sdk_mls");
         File target = new File(root, name.toString());
-        boolean created = !target.exists();
         for (File directory : new File[]{root, target}) {
             if (!directory.getCanonicalPath().equals(directory.getAbsolutePath())) throw new IOException("symlink");
             if (!directory.exists() && !directory.mkdir()) throw new IOException("mkdir failed");
@@ -182,7 +181,8 @@ public final class TataChatSdkPlugin implements FlutterPlugin, ActivityAware,
             if ((Os.stat(directory.getAbsolutePath()).st_mode & 0777) != 0700) throw new IOException("permissions failed");
         }
         Map<String, Object> result = new HashMap<>();
-        result.put("path", target.getCanonicalPath()); result.put("created", created);
+        // 平台只交付保护目录，身份首次准备由原生持久状态决定。
+        result.put("path", target.getCanonicalPath());
         return result;
     }
 
