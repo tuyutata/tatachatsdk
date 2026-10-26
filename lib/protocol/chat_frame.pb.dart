@@ -67,6 +67,7 @@ class ChatFrame extends $pb.GeneratedMessage {
     AbortAttachment? abortAttachment,
     RegisterPush? registerPush,
     RemovePush? removePush,
+    ResourceUsage? resourceUsage,
   }) {
     final result = create();
     if (ready != null) result.ready = ready;
@@ -93,6 +94,7 @@ class ChatFrame extends $pb.GeneratedMessage {
     if (abortAttachment != null) result.abortAttachment = abortAttachment;
     if (registerPush != null) result.registerPush = registerPush;
     if (removePush != null) result.removePush = removePush;
+    if (resourceUsage != null) result.resourceUsage = resourceUsage;
     return result;
   }
 
@@ -192,6 +194,8 @@ class ChatFrame extends $pb.GeneratedMessage {
         subBuilder: RegisterPush.create)
     ..aOM<RemovePush>(41, _omitFieldNames ? '' : 'removePush',
         subBuilder: RemovePush.create)
+    ..aOM<ResourceUsage>(50, _omitFieldNames ? '' : 'resourceUsage',
+        subBuilder: ResourceUsage.create)
     ..hasRequiredFields = false;
 
   @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
@@ -475,6 +479,239 @@ class ChatFrame extends $pb.GeneratedMessage {
   void clearRemovePush() => $_clearField(41);
   @$pb.TagNumber(41)
   RemovePush ensureRemovePush() => $_ensure(19);
+
+  /// 仅服务端响应填写；客户端不能用它声明资格或修改用量。
+  @$pb.TagNumber(50)
+  ResourceUsage get resourceUsage => $_getN(20);
+  @$pb.TagNumber(50)
+  set resourceUsage(ResourceUsage value) => $_setField(50, value);
+  @$pb.TagNumber(50)
+  $core.bool hasResourceUsage() => $_has(20);
+  @$pb.TagNumber(50)
+  void clearResourceUsage() => $_clearField(50);
+  @$pb.TagNumber(50)
+  ResourceUsage ensureResourceUsage() => $_ensure(20);
+}
+
+/// 中性宿主计量回执；不包含会员、价格或数据库模型。
+class ResourceUsage extends $pb.GeneratedMessage {
+  factory ResourceUsage({
+    $core.String? userId,
+    $core.String? deviceId,
+    $core.String? accountId,
+    $fixnum.Int64? bindingRevision,
+    $fixnum.Int64? serverTimeMillis,
+    $core.Iterable<ResourceCounter>? counters,
+  }) {
+    final result = create();
+    if (userId != null) result.userId = userId;
+    if (deviceId != null) result.deviceId = deviceId;
+    if (accountId != null) result.accountId = accountId;
+    if (bindingRevision != null) result.bindingRevision = bindingRevision;
+    if (serverTimeMillis != null) result.serverTimeMillis = serverTimeMillis;
+    if (counters != null) result.counters.addAll(counters);
+    return result;
+  }
+
+  ResourceUsage._();
+
+  factory ResourceUsage.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromBuffer(data, registry);
+  factory ResourceUsage.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'ResourceUsage',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'chat.protocol'),
+      createEmptyInstance: create)
+    ..aOS(1, _omitFieldNames ? '' : 'userId')
+    ..aOS(2, _omitFieldNames ? '' : 'deviceId')
+    ..aOS(3, _omitFieldNames ? '' : 'accountId')
+    ..a<$fixnum.Int64>(
+        4, _omitFieldNames ? '' : 'bindingRevision', $pb.PbFieldType.OU6,
+        defaultOrMaker: $fixnum.Int64.ZERO)
+    ..a<$fixnum.Int64>(
+        5, _omitFieldNames ? '' : 'serverTimeMillis', $pb.PbFieldType.OU6,
+        defaultOrMaker: $fixnum.Int64.ZERO)
+    ..pPM<ResourceCounter>(6, _omitFieldNames ? '' : 'counters',
+        subBuilder: ResourceCounter.create)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  ResourceUsage clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  ResourceUsage copyWith(void Function(ResourceUsage) updates) =>
+      super.copyWith((message) => updates(message as ResourceUsage))
+          as ResourceUsage;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  static ResourceUsage create() => ResourceUsage._();
+  @$core.override
+  ResourceUsage createEmptyInstance() => create();
+  @$core.pragma('dart2js:noInline')
+  static ResourceUsage getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<ResourceUsage>(create);
+  static ResourceUsage? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get userId => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set userId($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasUserId() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearUserId() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $core.String get deviceId => $_getSZ(1);
+  @$pb.TagNumber(2)
+  set deviceId($core.String value) => $_setString(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasDeviceId() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearDeviceId() => $_clearField(2);
+
+  @$pb.TagNumber(3)
+  $core.String get accountId => $_getSZ(2);
+  @$pb.TagNumber(3)
+  set accountId($core.String value) => $_setString(2, value);
+  @$pb.TagNumber(3)
+  $core.bool hasAccountId() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearAccountId() => $_clearField(3);
+
+  @$pb.TagNumber(4)
+  $fixnum.Int64 get bindingRevision => $_getI64(3);
+  @$pb.TagNumber(4)
+  set bindingRevision($fixnum.Int64 value) => $_setInt64(3, value);
+  @$pb.TagNumber(4)
+  $core.bool hasBindingRevision() => $_has(3);
+  @$pb.TagNumber(4)
+  void clearBindingRevision() => $_clearField(4);
+
+  @$pb.TagNumber(5)
+  $fixnum.Int64 get serverTimeMillis => $_getI64(4);
+  @$pb.TagNumber(5)
+  set serverTimeMillis($fixnum.Int64 value) => $_setInt64(4, value);
+  @$pb.TagNumber(5)
+  $core.bool hasServerTimeMillis() => $_has(4);
+  @$pb.TagNumber(5)
+  void clearServerTimeMillis() => $_clearField(5);
+
+  @$pb.TagNumber(6)
+  $pb.PbList<ResourceCounter> get counters => $_getList(5);
+}
+
+class ResourceCounter extends $pb.GeneratedMessage {
+  factory ResourceCounter({
+    $core.String? metric,
+    $fixnum.Int64? windowStartMillis,
+    $fixnum.Int64? charged,
+    $fixnum.Int64? used,
+    $fixnum.Int64? limit,
+  }) {
+    final result = create();
+    if (metric != null) result.metric = metric;
+    if (windowStartMillis != null) result.windowStartMillis = windowStartMillis;
+    if (charged != null) result.charged = charged;
+    if (used != null) result.used = used;
+    if (limit != null) result.limit = limit;
+    return result;
+  }
+
+  ResourceCounter._();
+
+  factory ResourceCounter.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromBuffer(data, registry);
+  factory ResourceCounter.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'ResourceCounter',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'chat.protocol'),
+      createEmptyInstance: create)
+    ..aOS(1, _omitFieldNames ? '' : 'metric')
+    ..a<$fixnum.Int64>(
+        2, _omitFieldNames ? '' : 'windowStartMillis', $pb.PbFieldType.OU6,
+        defaultOrMaker: $fixnum.Int64.ZERO)
+    ..a<$fixnum.Int64>(3, _omitFieldNames ? '' : 'charged', $pb.PbFieldType.OU6,
+        defaultOrMaker: $fixnum.Int64.ZERO)
+    ..a<$fixnum.Int64>(4, _omitFieldNames ? '' : 'used', $pb.PbFieldType.OU6,
+        defaultOrMaker: $fixnum.Int64.ZERO)
+    ..a<$fixnum.Int64>(5, _omitFieldNames ? '' : 'limit', $pb.PbFieldType.OU6,
+        defaultOrMaker: $fixnum.Int64.ZERO)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  ResourceCounter clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  ResourceCounter copyWith(void Function(ResourceCounter) updates) =>
+      super.copyWith((message) => updates(message as ResourceCounter))
+          as ResourceCounter;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  static ResourceCounter create() => ResourceCounter._();
+  @$core.override
+  ResourceCounter createEmptyInstance() => create();
+  @$core.pragma('dart2js:noInline')
+  static ResourceCounter getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<ResourceCounter>(create);
+  static ResourceCounter? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get metric => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set metric($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasMetric() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearMetric() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $fixnum.Int64 get windowStartMillis => $_getI64(1);
+  @$pb.TagNumber(2)
+  set windowStartMillis($fixnum.Int64 value) => $_setInt64(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasWindowStartMillis() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearWindowStartMillis() => $_clearField(2);
+
+  @$pb.TagNumber(3)
+  $fixnum.Int64 get charged => $_getI64(2);
+  @$pb.TagNumber(3)
+  set charged($fixnum.Int64 value) => $_setInt64(2, value);
+  @$pb.TagNumber(3)
+  $core.bool hasCharged() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearCharged() => $_clearField(3);
+
+  @$pb.TagNumber(4)
+  $fixnum.Int64 get used => $_getI64(3);
+  @$pb.TagNumber(4)
+  set used($fixnum.Int64 value) => $_setInt64(3, value);
+  @$pb.TagNumber(4)
+  $core.bool hasUsed() => $_has(3);
+  @$pb.TagNumber(4)
+  void clearUsed() => $_clearField(4);
+
+  @$pb.TagNumber(5)
+  $fixnum.Int64 get limit => $_getI64(4);
+  @$pb.TagNumber(5)
+  set limit($fixnum.Int64 value) => $_setInt64(4, value);
+  @$pb.TagNumber(5)
+  $core.bool hasLimit() => $_has(4);
+  @$pb.TagNumber(5)
+  void clearLimit() => $_clearField(5);
 }
 
 class Ready extends $pb.GeneratedMessage {

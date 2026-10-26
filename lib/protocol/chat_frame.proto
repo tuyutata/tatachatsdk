@@ -7,6 +7,8 @@ import "message.proto";
 
 // WSS 唯一顶层二进制帧。业务相关性只使用消息、附件或密钥包自身编号。
 message ChatFrame {
+  // 仅服务端响应填写；客户端不能用它声明资格或修改用量。
+  ResourceUsage resource_usage = 50;
   oneof body {
     Ready ready = 1;
     Failure failure = 2;
@@ -29,6 +31,24 @@ message ChatFrame {
     RegisterPush register_push = 40;
     RemovePush remove_push = 41;
   }
+}
+
+// 中性宿主计量回执；不包含会员、价格或数据库模型。
+message ResourceUsage {
+  string user_id = 1;
+  string device_id = 2;
+  string account_id = 3;
+  uint64 binding_revision = 4;
+  uint64 server_time_millis = 5;
+  repeated ResourceCounter counters = 6;
+}
+
+message ResourceCounter {
+  string metric = 1;
+  uint64 window_start_millis = 2;
+  uint64 charged = 3;
+  uint64 used = 4;
+  optional uint64 limit = 5;
 }
 
 message Ready {

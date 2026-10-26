@@ -20,6 +20,14 @@ const ChatFrame$json = {
   '1': 'ChatFrame',
   '2': [
     {
+      '1': 'resource_usage',
+      '3': 50,
+      '4': 1,
+      '5': 11,
+      '6': '.chat.protocol.ResourceUsage',
+      '10': 'resourceUsage'
+    },
+    {
       '1': 'ready',
       '3': 1,
       '4': 1,
@@ -207,32 +215,95 @@ const ChatFrame$json = {
 
 /// Descriptor for `ChatFrame`. Decode as a `google.protobuf.DescriptorProto`.
 final $typed_data.Uint8List chatFrameDescriptor = $convert.base64Decode(
-    'CglDaGF0RnJhbWUSLAoFcmVhZHkYASABKAsyFC5jaGF0LnByb3RvY29sLlJlYWR5SABSBXJlYW'
-    'R5EjIKB2ZhaWx1cmUYAiABKAsyFi5jaGF0LnByb3RvY29sLkZhaWx1cmVIAFIHZmFpbHVyZRIy'
-    'CgdzdWNjZXNzGAMgASgLMhYuY2hhdC5wcm90b2NvbC5TdWNjZXNzSABSB3N1Y2Nlc3MSKQoEcG'
-    'luZxgEIAEoCzITLmNoYXQucHJvdG9jb2wuUGluZ0gAUgRwaW5nEikKBHBvbmcYBSABKAsyEy5j'
-    'aGF0LnByb3RvY29sLlBvbmdIAFIEcG9uZxJSChNwdWJsaXNoX2tleV9wYWNrYWdlGAogASgLMi'
-    'AuY2hhdC5wcm90b2NvbC5QdWJsaXNoS2V5UGFja2FnZUgAUhFwdWJsaXNoS2V5UGFja2FnZRJV'
-    'ChRyZXNvbHZlX2tleV9wYWNrYWdlcxgLIAEoCzIhLmNoYXQucHJvdG9jb2wuUmVzb2x2ZUtleV'
-    'BhY2thZ2VzSABSEnJlc29sdmVLZXlQYWNrYWdlcxJMChFrZXlfcGFja2FnZV9iYXRjaBgMIAEo'
-    'CzIeLmNoYXQucHJvdG9jb2wuS2V5UGFja2FnZUJhdGNoSABSD2tleVBhY2thZ2VCYXRjaBI/Cg'
-    'xzZW5kX21lc3NhZ2UYFCABKAsyGi5jaGF0LnByb3RvY29sLlNlbmRNZXNzYWdlSABSC3NlbmRN'
-    'ZXNzYWdlEkIKDXN5bmNfbWVzc2FnZXMYFSABKAsyGy5jaGF0LnByb3RvY29sLlN5bmNNZXNzYW'
-    'dlc0gAUgxzeW5jTWVzc2FnZXMSQgoNbWVzc2FnZV9iYXRjaBgWIAEoCzIbLmNoYXQucHJvdG9j'
-    'b2wuTWVzc2FnZUJhdGNoSABSDG1lc3NhZ2VCYXRjaBJXChRhY2tub3dsZWRnZV9tZXNzYWdlcx'
-    'gXIAEoCzIiLmNoYXQucHJvdG9jb2wuQWNrbm93bGVkZ2VNZXNzYWdlc0gAUhNhY2tub3dsZWRn'
-    'ZU1lc3NhZ2VzEk4KEW1lc3NhZ2VfYXZhaWxhYmxlGBggASgLMh8uY2hhdC5wcm90b2NvbC5NZX'
-    'NzYWdlQXZhaWxhYmxlSABSEG1lc3NhZ2VBdmFpbGFibGUSSwoQYmVnaW5fYXR0YWNobWVudBge'
-    'IAEoCzIeLmNoYXQucHJvdG9jb2wuQmVnaW5BdHRhY2htZW50SABSD2JlZ2luQXR0YWNobWVudB'
-    'JUChNjb21wbGV0ZV9hdHRhY2htZW50GB8gASgLMiEuY2hhdC5wcm90b2NvbC5Db21wbGV0ZUF0'
-    'dGFjaG1lbnRIAFISY29tcGxldGVBdHRhY2htZW50EksKEGF0dGFjaG1lbnRfcmVhZHkYICABKA'
-    'syHi5jaGF0LnByb3RvY29sLkF0dGFjaG1lbnRSZWFkeUgAUg9hdHRhY2htZW50UmVhZHkSXQoW'
-    'YWNrbm93bGVkZ2VfYXR0YWNobWVudBghIAEoCzIkLmNoYXQucHJvdG9jb2wuQWNrbm93bGVkZ2'
-    'VBdHRhY2htZW50SABSFWFja25vd2xlZGdlQXR0YWNobWVudBJLChBhYm9ydF9hdHRhY2htZW50'
-    'GCIgASgLMh4uY2hhdC5wcm90b2NvbC5BYm9ydEF0dGFjaG1lbnRIAFIPYWJvcnRBdHRhY2htZW'
-    '50EkIKDXJlZ2lzdGVyX3B1c2gYKCABKAsyGy5jaGF0LnByb3RvY29sLlJlZ2lzdGVyUHVzaEgA'
-    'UgxyZWdpc3RlclB1c2gSPAoLcmVtb3ZlX3B1c2gYKSABKAsyGS5jaGF0LnByb3RvY29sLlJlbW'
-    '92ZVB1c2hIAFIKcmVtb3ZlUHVzaEIGCgRib2R5');
+    'CglDaGF0RnJhbWUSQwoOcmVzb3VyY2VfdXNhZ2UYMiABKAsyHC5jaGF0LnByb3RvY29sLlJlc2'
+    '91cmNlVXNhZ2VSDXJlc291cmNlVXNhZ2USLAoFcmVhZHkYASABKAsyFC5jaGF0LnByb3RvY29s'
+    'LlJlYWR5SABSBXJlYWR5EjIKB2ZhaWx1cmUYAiABKAsyFi5jaGF0LnByb3RvY29sLkZhaWx1cm'
+    'VIAFIHZmFpbHVyZRIyCgdzdWNjZXNzGAMgASgLMhYuY2hhdC5wcm90b2NvbC5TdWNjZXNzSABS'
+    'B3N1Y2Nlc3MSKQoEcGluZxgEIAEoCzITLmNoYXQucHJvdG9jb2wuUGluZ0gAUgRwaW5nEikKBH'
+    'BvbmcYBSABKAsyEy5jaGF0LnByb3RvY29sLlBvbmdIAFIEcG9uZxJSChNwdWJsaXNoX2tleV9w'
+    'YWNrYWdlGAogASgLMiAuY2hhdC5wcm90b2NvbC5QdWJsaXNoS2V5UGFja2FnZUgAUhFwdWJsaX'
+    'NoS2V5UGFja2FnZRJVChRyZXNvbHZlX2tleV9wYWNrYWdlcxgLIAEoCzIhLmNoYXQucHJvdG9j'
+    'b2wuUmVzb2x2ZUtleVBhY2thZ2VzSABSEnJlc29sdmVLZXlQYWNrYWdlcxJMChFrZXlfcGFja2'
+    'FnZV9iYXRjaBgMIAEoCzIeLmNoYXQucHJvdG9jb2wuS2V5UGFja2FnZUJhdGNoSABSD2tleVBh'
+    'Y2thZ2VCYXRjaBI/CgxzZW5kX21lc3NhZ2UYFCABKAsyGi5jaGF0LnByb3RvY29sLlNlbmRNZX'
+    'NzYWdlSABSC3NlbmRNZXNzYWdlEkIKDXN5bmNfbWVzc2FnZXMYFSABKAsyGy5jaGF0LnByb3Rv'
+    'Y29sLlN5bmNNZXNzYWdlc0gAUgxzeW5jTWVzc2FnZXMSQgoNbWVzc2FnZV9iYXRjaBgWIAEoCz'
+    'IbLmNoYXQucHJvdG9jb2wuTWVzc2FnZUJhdGNoSABSDG1lc3NhZ2VCYXRjaBJXChRhY2tub3ds'
+    'ZWRnZV9tZXNzYWdlcxgXIAEoCzIiLmNoYXQucHJvdG9jb2wuQWNrbm93bGVkZ2VNZXNzYWdlc0'
+    'gAUhNhY2tub3dsZWRnZU1lc3NhZ2VzEk4KEW1lc3NhZ2VfYXZhaWxhYmxlGBggASgLMh8uY2hh'
+    'dC5wcm90b2NvbC5NZXNzYWdlQXZhaWxhYmxlSABSEG1lc3NhZ2VBdmFpbGFibGUSSwoQYmVnaW'
+    '5fYXR0YWNobWVudBgeIAEoCzIeLmNoYXQucHJvdG9jb2wuQmVnaW5BdHRhY2htZW50SABSD2Jl'
+    'Z2luQXR0YWNobWVudBJUChNjb21wbGV0ZV9hdHRhY2htZW50GB8gASgLMiEuY2hhdC5wcm90b2'
+    'NvbC5Db21wbGV0ZUF0dGFjaG1lbnRIAFISY29tcGxldGVBdHRhY2htZW50EksKEGF0dGFjaG1l'
+    'bnRfcmVhZHkYICABKAsyHi5jaGF0LnByb3RvY29sLkF0dGFjaG1lbnRSZWFkeUgAUg9hdHRhY2'
+    'htZW50UmVhZHkSXQoWYWNrbm93bGVkZ2VfYXR0YWNobWVudBghIAEoCzIkLmNoYXQucHJvdG9j'
+    'b2wuQWNrbm93bGVkZ2VBdHRhY2htZW50SABSFWFja25vd2xlZGdlQXR0YWNobWVudBJLChBhYm'
+    '9ydF9hdHRhY2htZW50GCIgASgLMh4uY2hhdC5wcm90b2NvbC5BYm9ydEF0dGFjaG1lbnRIAFIP'
+    'YWJvcnRBdHRhY2htZW50EkIKDXJlZ2lzdGVyX3B1c2gYKCABKAsyGy5jaGF0LnByb3RvY29sLl'
+    'JlZ2lzdGVyUHVzaEgAUgxyZWdpc3RlclB1c2gSPAoLcmVtb3ZlX3B1c2gYKSABKAsyGS5jaGF0'
+    'LnByb3RvY29sLlJlbW92ZVB1c2hIAFIKcmVtb3ZlUHVzaEIGCgRib2R5');
+
+@$core.Deprecated('Use resourceUsageDescriptor instead')
+const ResourceUsage$json = {
+  '1': 'ResourceUsage',
+  '2': [
+    {'1': 'user_id', '3': 1, '4': 1, '5': 9, '10': 'userId'},
+    {'1': 'device_id', '3': 2, '4': 1, '5': 9, '10': 'deviceId'},
+    {'1': 'account_id', '3': 3, '4': 1, '5': 9, '10': 'accountId'},
+    {'1': 'binding_revision', '3': 4, '4': 1, '5': 4, '10': 'bindingRevision'},
+    {
+      '1': 'server_time_millis',
+      '3': 5,
+      '4': 1,
+      '5': 4,
+      '10': 'serverTimeMillis'
+    },
+    {
+      '1': 'counters',
+      '3': 6,
+      '4': 3,
+      '5': 11,
+      '6': '.chat.protocol.ResourceCounter',
+      '10': 'counters'
+    },
+  ],
+};
+
+/// Descriptor for `ResourceUsage`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List resourceUsageDescriptor = $convert.base64Decode(
+    'Cg1SZXNvdXJjZVVzYWdlEhcKB3VzZXJfaWQYASABKAlSBnVzZXJJZBIbCglkZXZpY2VfaWQYAi'
+    'ABKAlSCGRldmljZUlkEh0KCmFjY291bnRfaWQYAyABKAlSCWFjY291bnRJZBIpChBiaW5kaW5n'
+    'X3JldmlzaW9uGAQgASgEUg9iaW5kaW5nUmV2aXNpb24SLAoSc2VydmVyX3RpbWVfbWlsbGlzGA'
+    'UgASgEUhBzZXJ2ZXJUaW1lTWlsbGlzEjoKCGNvdW50ZXJzGAYgAygLMh4uY2hhdC5wcm90b2Nv'
+    'bC5SZXNvdXJjZUNvdW50ZXJSCGNvdW50ZXJz');
+
+@$core.Deprecated('Use resourceCounterDescriptor instead')
+const ResourceCounter$json = {
+  '1': 'ResourceCounter',
+  '2': [
+    {'1': 'metric', '3': 1, '4': 1, '5': 9, '10': 'metric'},
+    {
+      '1': 'window_start_millis',
+      '3': 2,
+      '4': 1,
+      '5': 4,
+      '10': 'windowStartMillis'
+    },
+    {'1': 'charged', '3': 3, '4': 1, '5': 4, '10': 'charged'},
+    {'1': 'used', '3': 4, '4': 1, '5': 4, '10': 'used'},
+    {'1': 'limit', '3': 5, '4': 1, '5': 4, '9': 0, '10': 'limit', '17': true},
+  ],
+  '8': [
+    {'1': '_limit'},
+  ],
+};
+
+/// Descriptor for `ResourceCounter`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List resourceCounterDescriptor = $convert.base64Decode(
+    'Cg9SZXNvdXJjZUNvdW50ZXISFgoGbWV0cmljGAEgASgJUgZtZXRyaWMSLgoTd2luZG93X3N0YX'
+    'J0X21pbGxpcxgCIAEoBFIRd2luZG93U3RhcnRNaWxsaXMSGAoHY2hhcmdlZBgDIAEoBFIHY2hh'
+    'cmdlZBISCgR1c2VkGAQgASgEUgR1c2VkEhkKBWxpbWl0GAUgASgESABSBWxpbWl0iAEBQggKBl'
+    '9saW1pdA==');
 
 @$core.Deprecated('Use readyDescriptor instead')
 const Ready$json = {

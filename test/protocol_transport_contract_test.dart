@@ -3,6 +3,39 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tatachat_sdk/tatachat_sdk.dart';
 
 void main() {
+  test('宿主资源回执只扩展原帧，指标与窗口完整往返', () {
+    final frame = ChatFrame()
+      ..success = Success(kind: 'fixture')
+      ..resourceUsage = ResourceUsage(
+        userId: 'user',
+        deviceId: 'phone',
+        accountId: 'fixture-account',
+        bindingRevision: Int64.ONE,
+        serverTimeMillis: Int64(1000),
+        counters: [
+          ResourceCounter(
+            metric: 'chat_commands',
+            windowStartMillis: Int64.ZERO,
+            charged: Int64.ONE,
+            used: Int64(3),
+            limit: Int64(20000),
+          ),
+          ResourceCounter(
+            metric: 'published',
+            windowStartMillis: Int64(100),
+            charged: Int64.ONE,
+            used: Int64(4),
+          ),
+        ],
+      );
+    final decoded = ChatFrame.fromBuffer(frame.writeToBuffer());
+    expect(decoded.whichBody(), ChatFrame_Body.success);
+    expect(decoded.resourceUsage.counters.first.used, Int64(3));
+    expect(decoded.resourceUsage.counters.first.hasLimit(), isTrue);
+    expect(decoded.resourceUsage.counters.last.hasLimit(), isFalse);
+    expect(decoded.resourceUsage.serverTimeMillis, Int64(1000));
+  });
+
   test('完整WSS控制入口与同origin HTTPS分块是唯一公开地址合同', () {
     final now = DateTime.now().millisecondsSinceEpoch;
     final access = ChatAccess(
