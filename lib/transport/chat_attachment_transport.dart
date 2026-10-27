@@ -268,14 +268,30 @@ final class ChatAttachmentTransport {
     if (actual != cipherSha256.toLowerCase()) {
       throw const ChatServerConnectionException('attachment_hash_mismatch');
     }
-    final response = await _bounded(
-      _adapter.putChunk(
-        uri: _chunkUri(attachmentId, chunkIndex),
-        bearerToken: _access.accessToken,
-        body: bytes,
-        cipherSha256: actual,
-      ),
+    final resource = await _access.resources?.reserve(
+      'attachment_upload',
+      bytes: bytes.length,
     );
+    late final ChatHttpResponse response;
+    try {
+      _ensureCurrent();
+      resource?.sent();
+      response = await _bounded(
+        _adapter.putChunk(
+          uri: _chunkUri(attachmentId, chunkIndex),
+          bearerToken: _access.accessToken,
+          body: bytes,
+          cipherSha256: actual,
+        ),
+      );
+      resource?.finish(
+        headers: response.headers,
+        accepted: response.statusCode >= 200 && response.statusCode < 300,
+      );
+    } on Object {
+      resource?.cancel();
+      rethrow;
+    }
     _ensureCurrent();
     if (response.statusCode != HttpStatus.noContent ||
         response.body.isNotEmpty) {
@@ -295,13 +311,29 @@ final class ChatAttachmentTransport {
     if (expectedBytes <= 0 || expectedBytes > chatAttachmentChunkBytes) {
       throw const ChatServerConnectionException('attachment_size_invalid');
     }
-    final response = await _bounded(
-      _adapter.getChunk(
-        uri: _chunkUri(attachmentId, chunkIndex),
-        bearerToken: _access.accessToken,
-        maximumBytes: expectedBytes,
-      ),
+    final resource = await _access.resources?.reserve(
+      'attachment_download',
+      bytes: expectedBytes,
     );
+    late final ChatHttpResponse response;
+    try {
+      _ensureCurrent();
+      resource?.sent();
+      response = await _bounded(
+        _adapter.getChunk(
+          uri: _chunkUri(attachmentId, chunkIndex),
+          bearerToken: _access.accessToken,
+          maximumBytes: expectedBytes,
+        ),
+      );
+      resource?.finish(
+        headers: response.headers,
+        accepted: response.statusCode >= 200 && response.statusCode < 300,
+      );
+    } on Object {
+      resource?.cancel();
+      rethrow;
+    }
     _ensureCurrent();
     if (response.statusCode != HttpStatus.ok) {
       throw ChatServerConnectionException(

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart' as crypto;
@@ -49,6 +50,32 @@ ChatAccess _access() => ChatAccess(
 );
 
 void main() {
+  test('密文块在宿主预检完成前零网络，按真实密文长度计量', () async {
+    final gate = _ChunkGate(), adapter = _FakeHttpAdapter();
+    final access = ChatAccess(
+      realtimeUrl: Uri.parse('wss://chat.example.test/api/tatachat/realtime'),
+      accessToken: 'synthetic',
+      expiresAtMillis: DateTime.now().millisecondsSinceEpoch + 300000,
+      resources: gate,
+    );
+    final transport = ChatAttachmentTransport(access: access, adapter: adapter);
+    final bytes = Uint8List.fromList([1, 2, 3]);
+    final work = transport.putChunk(
+      attachmentId: 'attachment-a',
+      chunkIndex: 0,
+      bytes: bytes,
+      cipherSha256: crypto.sha256.convert(bytes).toString(),
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(adapter.putBody, isNull);
+    expect(gate.bytes, 3);
+    gate.wait.complete();
+    await work;
+    expect(adapter.putBody, bytes);
+    expect(gate.finished, 1);
+    await transport.dispose();
+  });
+
   test('附件编号拒绝点、路径穿越和越界块号，同端口派生HTTPS', () async {
     final access = ChatAccess(
       realtimeUrl: Uri.parse(
@@ -144,4 +171,35 @@ void main() {
     expect(adapter.putUri, isNull);
     await transport.dispose();
   });
+}
+
+final class _ChunkGate implements ChatResourceGate, ChatResourceLease {
+  final wait = Completer<void>();
+  int bytes = 0, finished = 0;
+  @override
+  Future<ChatResourceLease> reserve(
+    String action, {
+    List<int> frame = const [],
+    int bytes = 0,
+  }) async {
+    expect(action, 'attachment_upload');
+    this.bytes = bytes;
+    await wait.future;
+    return this;
+  }
+
+  @override
+  void sent() {}
+  @override
+  void finish({
+    ResourceUsage? receipt,
+    Map<String, String>? headers,
+    bool accepted = true,
+    String? errorCode,
+  }) {
+    finished++;
+  }
+
+  @override
+  void cancel() {}
 }

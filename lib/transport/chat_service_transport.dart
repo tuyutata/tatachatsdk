@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import '../mls/mls_boundary.dart';
+import '../protocol/chat_frame.pb.dart' show ResourceUsage;
 import 'chat_transport.dart';
 
 /// 宿主签发的短期聊天许可。只接受完整WSS入口，Token只保存在内存中。
@@ -9,11 +10,13 @@ final class ChatAccess {
     required this.realtimeUrl,
     required this.accessToken,
     required this.expiresAtMillis,
+    this.resources,
   });
 
   final Uri realtimeUrl;
   final String accessToken;
   final int expiresAtMillis;
+  final ChatResourceGate? resources;
 
   bool isUsable(int nowMillis, {int skewMillis = 60 * 1000}) =>
       expiresAtMillis - skewMillis > nowMillis;
@@ -152,4 +155,24 @@ abstract interface class ChatServiceTransport
     required Future<void> Function(ChatServiceEvent event) onEvent,
     Future<void> Function()? onDisconnected,
   });
+}
+
+/// 资源规则由宿主拥有；SDK只交付实际编码帧、密文长度和真实服务端回执。
+abstract interface class ChatResourceGate {
+  Future<ChatResourceLease> reserve(
+    String action, {
+    List<int> frame = const [],
+    int bytes = 0,
+  });
+}
+
+abstract interface class ChatResourceLease {
+  void sent();
+  void finish({
+    ResourceUsage? receipt,
+    Map<String, String>? headers,
+    bool accepted = true,
+    String? errorCode,
+  });
+  void cancel();
 }

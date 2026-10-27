@@ -167,17 +167,18 @@ final class _MailboxMessage implements ChatMailboxMessage {
 
 final class _PendingCommand<T> {
   _PendingCommand({
-    required this.frame,
+    required this.bytes,
     required this.accept,
     required this.decode,
   });
 
-  final frame_protocol.ChatFrame frame;
+  final Uint8List bytes;
   final bool Function(frame_protocol.ChatFrame frame) accept;
   final T Function(frame_protocol.ChatFrame frame) decode;
   final Completer<T> completer = Completer<T>();
   Timer? deadline;
   bool sent = false;
+  ChatResourceLease? resource;
 }
 
 /// TataChatSDK 唯一正式传输。一个连接同一时刻只允许一个命令等待响应。
@@ -204,6 +205,7 @@ final class ChatServerConnection implements ChatServiceTransport {
   ChatAccess? _access;
   Completer<void>? _connecting;
   Completer<void>? _ready;
+  ChatResourceLease? _connectResource;
   Timer? _expiryTimer;
   Future<void> Function(ChatServiceEvent event)? _onEvent;
   Future<void> Function()? _onDisconnected;
@@ -258,6 +260,7 @@ final class ChatServerConnection implements ChatServiceTransport {
   }
 
   Future<void> _connectOnce(int generation, Completer<void> completer) async {
+    ChatResourceLease? localResource;
     try {
       final access = await _accessProvider().timeout(
         _responseDeadline,
@@ -268,6 +271,10 @@ final class ChatServerConnection implements ChatServiceTransport {
       _ensureCurrent(generation);
       final now = DateTime.now().millisecondsSinceEpoch;
       access.validate(now);
+      localResource = await access.resources?.reserve('chat_connect');
+      _ensureCurrent(generation);
+      _connectResource = localResource;
+      localResource?.sent();
       var abandoned = false;
       final connector = _socketConnector;
       Future<ChatSocket> socketFuture;
@@ -340,6 +347,10 @@ final class ChatServerConnection implements ChatServiceTransport {
       lastRealtimeDiagnosticCode = null;
       if (!completer.isCompleted) completer.complete();
     } catch (error, stackTrace) {
+      localResource?.cancel();
+      if (identical(_connectResource, localResource)) {
+        _connectResource = null;
+      }
       if (!completer.isCompleted) completer.completeError(error, stackTrace);
       if (_current(generation)) {
         try {
@@ -385,6 +396,10 @@ final class ChatServerConnection implements ChatServiceTransport {
         _disconnectSafely('realtime_ready_invalid');
         return;
       }
+      _connectResource?.finish(
+        receipt: frame.hasResourceUsage() ? frame.resourceUsage : null,
+      );
+      _connectResource = null;
       ready.complete();
       _readySuccess = true;
       return;
@@ -422,6 +437,11 @@ final class ChatServerConnection implements ChatServiceTransport {
     }
     final current = _commands.first;
     if (frame.whichBody() == frame_protocol.ChatFrame_Body.failure) {
+      current.resource?.finish(
+        receipt: frame.hasResourceUsage() ? frame.resourceUsage : null,
+        accepted: false,
+        errorCode: frame.failure.code,
+      );
       _commands.removeAt(0);
       current.deadline?.cancel();
       current.completer.completeError(
@@ -438,6 +458,9 @@ final class ChatServerConnection implements ChatServiceTransport {
       _disconnectSafely('realtime_response_mismatch');
       return;
     }
+    current.resource?.finish(
+      receipt: frame.hasResourceUsage() ? frame.resourceUsage : null,
+    );
     _commands.removeAt(0);
     current.deadline?.cancel();
     try {
@@ -458,19 +481,6 @@ final class ChatServerConnection implements ChatServiceTransport {
     });
   }
 
-  void _send(frame_protocol.ChatFrame frame) {
-    final socket = _socket;
-    if (socket == null ||
-        _access?.isUsable(DateTime.now().millisecondsSinceEpoch) != true) {
-      throw const ChatServerConnectionException('realtime_not_connected');
-    }
-    final bytes = frame.writeToBuffer();
-    if (bytes.isEmpty || bytes.length > _maximumFrameBytes) {
-      throw const ChatServerConnectionException('realtime_frame_size_invalid');
-    }
-    socket.add(bytes);
-  }
-
   Future<T> _command<T>({
     required frame_protocol.ChatFrame frame,
     required bool Function(frame_protocol.ChatFrame frame) accept,
@@ -480,11 +490,14 @@ final class ChatServerConnection implements ChatServiceTransport {
     if (_commands.length >= _maximumQueuedCommands) {
       throw const ChatServerConnectionException('realtime_queue_full');
     }
-    if (frame.writeToBuffer().length > _maximumFrameBytes) {
+    final bytes = frame.writeToBuffer();
+    if (frame.hasResourceUsage() ||
+        bytes.isEmpty ||
+        bytes.length > _maximumFrameBytes) {
       throw const ChatServerConnectionException('realtime_frame_size_invalid');
     }
     final pending = _PendingCommand<T>(
-      frame: frame,
+      bytes: bytes,
       accept: accept,
       decode: decode,
     );
@@ -499,16 +512,50 @@ final class ChatServerConnection implements ChatServiceTransport {
     }
     final command = _commands.first;
     if (command.sent) return;
-    command.sent = true;
-    command.deadline = Timer(_responseDeadline, () {
-      if (_commands.isNotEmpty && identical(_commands.first, command)) {
-        _disconnectSafely('realtime_command_timeout');
-      }
-    });
+    command.sent = true; // 仅锁住本队头；响应计时在实际发送之后开始。
+    unawaited(_dispatch(command));
+  }
+
+  Future<void> _dispatch(_PendingCommand<Object?> command) async {
+    final generation = _generation;
+    var sending = false;
     try {
-      _send(command.frame);
-    } catch (_) {
-      _disconnectSafely('realtime_send_failed');
+      // 同一份已校验字节用于预检和发送，不重复编码或接受队列期间的帧变更。
+      final bytes = command.bytes;
+      command.resource = await _access?.resources?.reserve(
+        'chat_command',
+        frame: bytes.asUnmodifiableView(),
+      );
+      _ensureCurrent(generation);
+      if (_commands.isEmpty ||
+          !identical(_commands.first, command) ||
+          _socket == null ||
+          _access?.isUsable(DateTime.now().millisecondsSinceEpoch) != true) {
+        throw const ChatServerConnectionException('realtime_send_cancelled');
+      }
+      command.resource?.sent();
+      sending = true;
+      _socket!.add(bytes);
+      if (_commands.isNotEmpty && identical(_commands.first, command)) {
+        command.deadline = Timer(_responseDeadline, () {
+          if (_commands.isNotEmpty && identical(_commands.first, command)) {
+            _disconnectSafely('realtime_command_timeout');
+          }
+        });
+      }
+    } catch (error, stack) {
+      command.resource?.cancel();
+      if (sending && _current(generation)) {
+        _disconnectSafely('realtime_send_failed');
+        return;
+      }
+      if (_commands.isNotEmpty && identical(_commands.first, command)) {
+        _commands.removeAt(0);
+        if (!command.completer.isCompleted) {
+          command.completer.completeError(error, stack);
+        }
+        _dispatchNext();
+      }
     }
   }
 
@@ -960,6 +1007,8 @@ final class ChatServerConnection implements ChatServiceTransport {
     if (existing != null) return existing;
     // 代际先失效，再等待资源关闭。迟到 provider/socket 和旧 stream 不能重新交付。
     ++_generation;
+    _connectResource?.cancel();
+    _connectResource = null;
     _readySuccess = false;
     _access = null;
     lastRealtimeDiagnosticCode = code;
@@ -987,6 +1036,7 @@ final class ChatServerConnection implements ChatServiceTransport {
     _commands.clear();
     for (final command in pending) {
       command.deadline?.cancel();
+      command.resource?.cancel();
       if (!command.completer.isCompleted) {
         command.completer.completeError(ChatServerConnectionException(code));
       }

@@ -1,8 +1,11 @@
 import 'dart:async';
 
+import 'package:fake_async/fake_async.dart';
 import 'package:fixnum/fixnum.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tatachat_sdk/tatachat_sdk.dart';
+import 'package:tatachat_sdk/transport/chat_attachment_transport.dart'
+    show ChatServerConnectionException;
 import 'package:tatachat_sdk/transport/chat_server_connection.dart';
 
 final class _FakeSocket implements ChatSocket {
@@ -11,12 +14,16 @@ final class _FakeSocket implements ChatSocket {
   final StreamController<Object?> _events = StreamController<Object?>();
   final List<ChatFrame> sent = <ChatFrame>[];
   bool closed = false;
+  bool refuseSend = false;
 
   @override
   Stream<Object?> get events => _events.stream;
 
   @override
-  void add(List<int> bytes) => sent.add(ChatFrame.fromBuffer(bytes));
+  void add(List<int> bytes) {
+    if (refuseSend) throw StateError('synthetic-private-socket-detail');
+    sent.add(ChatFrame.fromBuffer(bytes));
+  }
 
   void receive(ChatFrame frame) => _events.add(frame.writeToBuffer());
 
@@ -35,8 +42,43 @@ ChatAccess _access() => ChatAccess(
 );
 
 void main() {
-  test('空闲26秒不发送业务Ping，连接仍可执行原邮箱命令', () async {
-    final socket = _FakeSocket();
+  test('不匹配的响应不能结清当前命令预留，关闭连接保留不确定消耗', () async {
+    final socket = _FakeSocket(), gate = _ResourceGate();
+    final transport = ChatServerConnection(
+      identity: const ChatDevice(userId: 'user-a', deviceId: 'device-a'),
+      accessProvider: () async => ChatAccess(
+        realtimeUrl: _access().realtimeUrl,
+        accessToken: 'signed-token',
+        expiresAtMillis: _access().expiresAtMillis,
+        resources: gate,
+      ),
+      socketConnector: (_, _) async {
+        scheduleMicrotask(() => socket.receive(ChatFrame()..ready = Ready()));
+        return socket;
+      },
+    );
+    await transport.connect();
+    final mailbox = transport.fetchMailbox();
+    final assertion = expectLater(
+      mailbox,
+      throwsA(
+        isA<ChatServerConnectionException>().having(
+          (e) => e.code,
+          '相关性',
+          'realtime_response_mismatch',
+        ),
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+    socket.receive(ChatFrame()..success = (Success()..kind = 'unmatched'));
+    await assertion;
+    await transport.dispose();
+    expect(gate.finished, 1); // 只结清Ready，不能以旧/错误响应退款当前命令。
+    expect(gate.cancelled, greaterThan(0));
+  });
+
+  test('真实发送失败仍关闭连接并返回固定错误码，不泄漏原异常', () async {
+    final socket = _FakeSocket()..refuseSend = true;
     final transport = ChatServerConnection(
       identity: const ChatDevice(userId: 'user-a', deviceId: 'device-a'),
       accessProvider: () async => _access(),
@@ -45,18 +87,137 @@ void main() {
         return socket;
       },
     );
-    await transport.connect();
-    await Future<void>.delayed(const Duration(seconds: 26));
-    expect(socket.sent, isEmpty);
-    expect(socket.closed, isFalse);
-    final mailbox = transport.fetchMailbox();
-    await Future<void>.delayed(Duration.zero);
-    expect(socket.sent.single.whichBody(), ChatFrame_Body.syncMessages);
-    socket.receive(ChatFrame()..messageBatch = MessageBatch());
-    expect(await mailbox, isEmpty);
+    await expectLater(
+      transport.fetchMailbox(),
+      throwsA(
+        isA<ChatServerConnectionException>().having(
+          (e) => e.code,
+          '固定发送失败',
+          'realtime_send_failed',
+        ),
+      ),
+    );
     await transport.dispose();
     expect(socket.closed, isTrue);
+    expect(socket.sent, isEmpty);
   });
+
+  test('连接预检等待期间关闭，迟到预留释放且不打开socket', () async {
+    final gate = _ResourceGate()..connectWait = Completer<void>();
+    var openings = 0;
+    final transport = ChatServerConnection(
+      identity: const ChatDevice(userId: 'user-a', deviceId: 'device-a'),
+      accessProvider: () async => ChatAccess(
+        realtimeUrl: _access().realtimeUrl,
+        accessToken: 'signed-token',
+        expiresAtMillis: _access().expiresAtMillis,
+        resources: gate,
+      ),
+      socketConnector: (_, _) async {
+        openings++;
+        return _FakeSocket();
+      },
+    );
+    final opening = transport.connect();
+    final assertion = expectLater(
+      opening,
+      throwsA(isA<ChatServerConnectionException>()),
+    );
+    await Future<void>.delayed(Duration.zero);
+    await transport.dispose();
+    gate.connectWait!.complete();
+    await assertion;
+    await Future<void>.delayed(Duration.zero);
+    expect(openings, 0);
+    expect(gate.cancelled, 1);
+  });
+
+  test('宿主拒绝连接时零socket；异步命令预检取消后零发送', () async {
+    final gate = _ResourceGate();
+    var connections = 0;
+    final socket = _FakeSocket();
+    final transport = ChatServerConnection(
+      identity: const ChatDevice(userId: 'user-a', deviceId: 'device-a'),
+      accessProvider: () async => ChatAccess(
+        realtimeUrl: _access().realtimeUrl,
+        accessToken: 'signed-token',
+        expiresAtMillis: _access().expiresAtMillis,
+        resources: gate,
+      ),
+      socketConnector: (_, _) async {
+        connections++;
+        scheduleMicrotask(() => socket.receive(ChatFrame()..ready = Ready()));
+        return socket;
+      },
+    );
+    gate.reject = true;
+    await expectLater(transport.connect(), throwsA(isA<StateError>()));
+    expect(connections, 0);
+    gate.reject = false;
+    await transport.connect();
+    expect(gate.actions, ['chat_connect', 'chat_connect']);
+    gate.wait = Completer<void>();
+    final command = transport.fetchMailbox();
+    final assertion = expectLater(
+      command,
+      throwsA(isA<ChatServerConnectionException>()),
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(socket.sent, isEmpty);
+    await transport.dispose();
+    gate.wait!.complete();
+    await assertion;
+    await Future<void>.delayed(Duration.zero);
+    expect(socket.sent, isEmpty);
+    expect(gate.cancelled, greaterThan(0));
+  });
+
+  test('空闲26秒不发送业务Ping，连接仍可执行原邮箱命令', () async {
+    final clock = FakeAsync();
+    late _FakeSocket socket;
+    var closed = false;
+    clock.run((clock) {
+      socket = _FakeSocket();
+      final transport = ChatServerConnection(
+        identity: const ChatDevice(userId: 'user-a', deviceId: 'device-a'),
+        accessProvider: () async => _access(),
+        socketConnector: (_, _) async {
+          scheduleMicrotask(() => socket.receive(ChatFrame()..ready = Ready()));
+          return socket;
+        },
+      );
+      var connected = false;
+      transport.connect().then((_) {
+        connected = true;
+      });
+      clock.flushMicrotasks();
+      expect(connected, isTrue);
+      // FakeSocket没有网络时钟；仍验证原26秒边界，不挤占30秒总期限。
+      clock.elapse(const Duration(seconds: 26));
+      expect(socket.sent, isEmpty);
+      expect(socket.closed, isFalse);
+      List<ChatMailboxMessage>? mailbox;
+      transport.fetchMailbox().then((value) {
+        mailbox = value;
+      });
+      clock.flushMicrotasks();
+      expect(socket.sent.single.whichBody(), ChatFrame_Body.syncMessages);
+      socket.receive(ChatFrame()..messageBatch = MessageBatch());
+      clock.flushMicrotasks();
+      expect(mailbox, isEmpty);
+      transport.dispose().then((_) {
+        closed = true;
+      });
+      clock.flushMicrotasks();
+    });
+    // StreamController取消的系统Future在真实zone完成；只排空收尾，不推进协议时间。
+    for (var turn = 0; turn < 5 && !closed; turn++) {
+      await Future<void>.delayed(Duration.zero);
+      clock.flushMicrotasks();
+    }
+    expect(closed, isTrue);
+    expect(socket.closed, isTrue);
+  }, timeout: const Timeout(Duration(seconds: 30)));
 
   test('未请求的应用层Pong继续关闭连接', () async {
     final socket = _FakeSocket();
@@ -224,4 +385,50 @@ void main() {
       await transport.dispose();
     },
   );
+}
+
+final class _ResourceGate implements ChatResourceGate {
+  bool reject = false;
+  Completer<void>? wait;
+  Completer<void>? connectWait;
+  final actions = <String>[];
+  int cancelled = 0;
+  int finished = 0;
+  @override
+  Future<ChatResourceLease> reserve(
+    String action, {
+    List<int> frame = const [],
+    int bytes = 0,
+  }) async {
+    actions.add(action);
+    if (action == 'chat_connect') await connectWait?.future;
+    if (reject) {
+      throw StateError('synthetic-local-limit');
+    }
+    if (action == 'chat_command') {
+      expect(frame, isNotEmpty);
+      await wait?.future;
+    }
+    return _ResourceLease(() => cancelled++, () => finished++);
+  }
+}
+
+final class _ResourceLease implements ChatResourceLease {
+  _ResourceLease(this.onCancel, this.onFinish);
+  final void Function() onCancel;
+  final void Function() onFinish;
+  @override
+  void sent() {}
+  @override
+  void finish({
+    ResourceUsage? receipt,
+    Map<String, String>? headers,
+    bool accepted = true,
+    String? errorCode,
+  }) {
+    onFinish();
+  }
+
+  @override
+  void cancel() => onCancel();
 }
