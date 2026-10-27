@@ -13,6 +13,7 @@ final class _FakeHttpAdapter implements ChatHttpAdapter {
   String? putHash;
   ChatHttpResponse? getResponse;
   bool disposed = false;
+  int putStatus = 204;
 
   @override
   Future<ChatHttpResponse> putChunk({
@@ -26,7 +27,7 @@ final class _FakeHttpAdapter implements ChatHttpAdapter {
     putBody = body;
     putHash = cipherSha256;
     return ChatHttpResponse(
-      statusCode: 204,
+      statusCode: putStatus,
       headers: <String, String>{},
       body: Uint8List(0),
     );
@@ -74,6 +75,37 @@ void main() {
     expect(adapter.putBody, bytes);
     expect(gate.finished, 1);
     await transport.dispose();
+  });
+
+  test('附件HTTP未知失败交付宿主，明确拒绝不冒充未知扣量', () async {
+    for (final status in [503, 429]) {
+      final gate = _ChunkGate()..wait.complete();
+      final adapter = _FakeHttpAdapter()..putStatus = status;
+      final access = ChatAccess(
+        realtimeUrl: Uri.parse('wss://chat.example.test/api/tatachat/realtime'),
+        accessToken: 'synthetic',
+        expiresAtMillis: DateTime.now().millisecondsSinceEpoch + 300000,
+        resources: gate,
+      );
+      final transport = ChatAttachmentTransport(
+        access: access,
+        adapter: adapter,
+      );
+      final bytes = Uint8List.fromList([1, 2, 3]);
+      await expectLater(
+        transport.putChunk(
+          attachmentId: 'attachment-a',
+          chunkIndex: 0,
+          bytes: bytes,
+          cipherSha256: crypto.sha256.convert(bytes).toString(),
+        ),
+        throwsA(isA<ChatServerConnectionException>()),
+      );
+      expect(gate.accepted, false);
+      expect(gate.error, status == 503 ? 'storage_unavailable' : null);
+      expect(gate.finished, 1);
+      await transport.dispose();
+    }
   });
 
   test('附件编号拒绝点、路径穿越和越界块号，同端口派生HTTPS', () async {
@@ -176,6 +208,8 @@ void main() {
 final class _ChunkGate implements ChatResourceGate, ChatResourceLease {
   final wait = Completer<void>();
   int bytes = 0, finished = 0;
+  bool? accepted;
+  String? error;
   @override
   Future<ChatResourceLease> reserve(
     String action, {
@@ -198,6 +232,8 @@ final class _ChunkGate implements ChatResourceGate, ChatResourceLease {
     String? errorCode,
   }) {
     finished++;
+    this.accepted = accepted;
+    error = errorCode;
   }
 
   @override

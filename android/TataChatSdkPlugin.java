@@ -43,7 +43,6 @@ public final class TataChatSdkPlugin implements FlutterPlugin, ActivityAware,
         MethodChannel.MethodCallHandler, PluginRegistry.ActivityResultListener {
     private static final String CHANNEL = "chat.tata.sdk/attachment";
     private static final int PICK_FILE_REQUEST = 41702;
-    private static final long MAX_SELECTED_BYTES = 512L * 1024L * 1024L;
     private static final int THUMBNAIL_EDGE = 64;
     private static final int MAX_THUMBNAIL_BYTES = 256 * 1024;
     private static final Pattern MIME = Pattern.compile(
@@ -57,6 +56,7 @@ public final class TataChatSdkPlugin implements FlutterPlugin, ActivityAware,
     private Activity activity;
     private ActivityPluginBinding activityBinding;
     private MethodChannel.Result pendingPicker;
+    private long pendingMaxBytes;
 
     @Override
     public void onAttachedToEngine(FlutterPluginBinding binding) {
@@ -221,7 +221,7 @@ public final class TataChatSdkPlugin implements FlutterPlugin, ActivityAware,
     public void onMethodCall(MethodCall call, MethodChannel.Result result) {
         switch (call.method) {
             case "pickFile":
-                pickFile(result);
+                pickFile(call, result);
                 return;
             case "probeVideo":
                 probeVideo(call, result);
@@ -250,7 +250,12 @@ public final class TataChatSdkPlugin implements FlutterPlugin, ActivityAware,
         });
     }
 
-    private void pickFile(MethodChannel.Result result) {
+    private void pickFile(MethodCall call, MethodChannel.Result result) {
+        final Object value = call.argument("max_bytes");
+        if (!(value instanceof Long || value instanceof Integer) || ((Number) value).longValue() <= 0) {
+            result.error("picker_invalid", "文件选择上限无效", null);
+            return;
+        }
         if (pendingPicker != null) {
             result.error("picker_busy", "已有文件选择正在进行", null);
             return;
@@ -265,6 +270,7 @@ public final class TataChatSdkPlugin implements FlutterPlugin, ActivityAware,
             .setType("*/*")
             .putExtra(Intent.EXTRA_ALLOW_MULTIPLE, false);
         pendingPicker = result;
+        pendingMaxBytes = ((Number) value).longValue();
         try {
             current.startActivityForResult(intent, PICK_FILE_REQUEST);
         } catch (RuntimeException error) {
@@ -291,10 +297,11 @@ public final class TataChatSdkPlugin implements FlutterPlugin, ActivityAware,
             pending.error("picker_invalid", "系统没有返回可读取文件", null);
             return true;
         }
+        final long maxBytes = pendingMaxBytes;
         current.execute(() -> {
             Map<String, Object> staged = null;
             try {
-                staged = stageSelectedFile(context, uri);
+                staged = stageSelectedFile(context, uri, maxBytes);
                 final Map<String, Object> value = staged;
                 mainHandler.post(() -> finishPicker(pending, value, null, null));
             } catch (Exception error) {
@@ -323,7 +330,7 @@ public final class TataChatSdkPlugin implements FlutterPlugin, ActivityAware,
         if (pending != null) pending.error(code, message, null);
     }
 
-    private static Map<String, Object> stageSelectedFile(Context context, Uri uri)
+    private static Map<String, Object> stageSelectedFile(Context context, Uri uri, long maxBytes)
             throws IOException {
         if (!ContentResolver.SCHEME_CONTENT.equals(uri.getScheme())) {
             throw new IOException("unsupported uri");
@@ -341,7 +348,7 @@ public final class TataChatSdkPlugin implements FlutterPlugin, ActivityAware,
                 if (sizeIndex >= 0 && !cursor.isNull(sizeIndex)) reportedSize = cursor.getLong(sizeIndex);
             }
         }
-        if (reportedSize != null && (reportedSize < 0 || reportedSize > MAX_SELECTED_BYTES)) {
+        if (reportedSize != null && (reportedSize < 0 || reportedSize > maxBytes)) {
             throw new IOException("file too large");
         }
         fileName = safeFileName(fileName);
@@ -371,7 +378,7 @@ public final class TataChatSdkPlugin implements FlutterPlugin, ActivityAware,
             final byte[] buffer = new byte[64 * 1024];
             int count;
             while ((count = input.read(buffer)) != -1) {
-                if (Thread.currentThread().isInterrupted() || total + count > MAX_SELECTED_BYTES) {
+                if (Thread.currentThread().isInterrupted() || total + count > maxBytes) {
                     throw new IOException("copy interrupted or too large");
                 }
                 output.write(buffer, 0, count);

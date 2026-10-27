@@ -24,8 +24,14 @@ final class ChatAttachmentPlatform {
     'chat.tata.sdk/attachment',
   );
 
-  Future<ChatPickedFile?> pickFile() async {
-    final result = await _channel.invokeMapMethod<String, Object?>('pickFile');
+  Future<ChatPickedFile?> pickFile({required int maxBytes}) async {
+    if (maxBytes <= 0 || maxBytes > 0x7fffffffffffffff) {
+      throw const FormatException('文件选择上限无效');
+    }
+    // 原生流式复制消费宿主当前上限，不另设SDK会员大小限制。
+    final result = await _channel.invokeMapMethod<String, Object?>('pickFile', {
+      'max_bytes': maxBytes,
+    });
     if (result == null) return null;
     final path = result['path'];
     final fileName = result['file_name'];
@@ -36,9 +42,8 @@ final class ChatAttachmentPlatform {
         fileName is! String ||
         !_validFileName(fileName) ||
         mime is! String ||
-        !RegExp(
-          r'^[a-z0-9][a-z0-9.+-]*/[a-z0-9][a-z0-9.+-]*$',
-        ).hasMatch(mime)) {
+        !RegExp(r'^[a-z0-9][a-z0-9.+-]*/[a-z0-9][a-z0-9.+-]*$')
+            .hasMatch(mime)) {
       throw const FormatException('系统文件选择结果无效');
     }
     return ChatPickedFile(path: path, fileName: fileName, mime: mime);

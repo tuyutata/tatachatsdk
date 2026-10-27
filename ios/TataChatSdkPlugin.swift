@@ -8,11 +8,10 @@ public final class TataChatSdkPlugin: NSObject, FlutterPlugin,
   UIDocumentPickerDelegate, UIAdaptivePresentationControllerDelegate
 {
   private static let channel = "chat.tata.sdk/attachment"
-  private static let maximumSelectedBytes: Int64 = 512 * 1024 * 1024
   private static let maximumPathLength = 4096
   private static let maximumThumbnailBytes = 256 * 1024
   private weak var viewController: UIViewController?
-  private var pendingPicker: (id: UUID, result: FlutterResult)?
+  private var pendingPicker: (id: UUID, result: FlutterResult, maxBytes: Int64)?
   private var pickerCopying = false
 
   private init(viewController: UIViewController?) {
@@ -193,7 +192,7 @@ public final class TataChatSdkPlugin: NSObject, FlutterPlugin,
   public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
     switch call.method {
     case "pickFile":
-      DispatchQueue.main.async { self.pickFile(result) }
+      DispatchQueue.main.async { self.pickFile(call, result) }
     case "probeVideo":
       probeVideo(call, result: result)
     default:
@@ -225,7 +224,12 @@ public final class TataChatSdkPlugin: NSObject, FlutterPlugin,
     }
   }
 
-  private func pickFile(_ result: @escaping FlutterResult) {
+  private func pickFile(_ call: FlutterMethodCall, _ result: @escaping FlutterResult) {
+    guard let args = call.arguments as? [String: Any],
+          let maxBytes = args["max_bytes"] as? Int64, maxBytes > 0 else {
+      result(FlutterError(code: "picker_invalid", message: "文件选择上限无效", details: nil))
+      return
+    }
     guard pendingPicker == nil else {
       result(FlutterError(code: "picker_busy", message: "已有文件选择正在进行", details: nil))
       return
@@ -235,7 +239,7 @@ public final class TataChatSdkPlugin: NSObject, FlutterPlugin,
       return
     }
     let id = UUID()
-    pendingPicker = (id, result)
+    pendingPicker = (id, result, maxBytes)
     pickerCopying = false
     let picker = UIDocumentPickerViewController(
       forOpeningContentTypes: [.data], asCopy: true)
@@ -264,7 +268,7 @@ public final class TataChatSdkPlugin: NSObject, FlutterPlugin,
     pickerCopying = true
     DispatchQueue.global(qos: .userInitiated).async {
       do {
-        let value = try Self.stageSelectedFile(source)
+        let value = try Self.stageSelectedFile(source, maxBytes: request.maxBytes)
         DispatchQueue.main.async {
           guard self.pendingPicker?.id == request.id else {
             Self.deleteStaged(value)
@@ -303,7 +307,7 @@ public final class TataChatSdkPlugin: NSObject, FlutterPlugin,
     return current
   }
 
-  private static func stageSelectedFile(_ source: URL) throws -> [String: Any] {
+  private static func stageSelectedFile(_ source: URL, maxBytes: Int64) throws -> [String: Any] {
     let accessed = source.startAccessingSecurityScopedResource()
     defer { if accessed { source.stopAccessingSecurityScopedResource() } }
     let values = try source.resourceValues(forKeys: [
@@ -311,7 +315,7 @@ public final class TataChatSdkPlugin: NSObject, FlutterPlugin,
     ])
     guard values.isRegularFile == true,
           Int64(values.fileSize ?? -1) >= 0,
-          Int64(values.fileSize ?? -1) <= maximumSelectedBytes else {
+          Int64(values.fileSize ?? -1) <= maxBytes else {
       throw ProbeError.unreadable
     }
     let fileName = safeFileName(source.lastPathComponent)
@@ -347,7 +351,7 @@ public final class TataChatSdkPlugin: NSObject, FlutterPlugin,
         if read < 0 { throw input.streamError ?? ProbeError.unreadable }
         if read == 0 { break }
         total += Int64(read)
-        if total > maximumSelectedBytes { throw ProbeError.unreadable }
+        if total > maxBytes { throw ProbeError.unreadable }
         var written = 0
         while written < read {
           let count = buffer.withUnsafeBytes { raw in

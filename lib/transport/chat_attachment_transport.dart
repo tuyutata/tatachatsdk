@@ -287,6 +287,7 @@ final class ChatAttachmentTransport {
       resource?.finish(
         headers: response.headers,
         accepted: response.statusCode >= 200 && response.statusCode < 300,
+        errorCode: response.statusCode >= 500 ? 'storage_unavailable' : null,
       );
     } on Object {
       resource?.cancel();
@@ -329,6 +330,7 @@ final class ChatAttachmentTransport {
       resource?.finish(
         headers: response.headers,
         accepted: response.statusCode >= 200 && response.statusCode < 300,
+        errorCode: response.statusCode >= 500 ? 'storage_unavailable' : null,
       );
     } on Object {
       resource?.cancel();

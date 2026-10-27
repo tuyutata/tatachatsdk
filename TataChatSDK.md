@@ -206,7 +206,7 @@ TataChatSDK 提供会话列表、私聊与群聊页面、消息气泡、时间�
 OpenMLS 核心。
 
 文件选择固定由TataChatSDK自己的附件平台插件调用Android `ACTION_OPEN_DOCUMENT`与iOS
-`UIDocumentPickerViewController`；只允许一个单文件请求，取消返回空，选中内容以512MiB硬上限流式复制到
+`UIDocumentPickerViewController`；只允许一个单文件请求，取消返回空，选中内容按宿主传入的max_bytes上限流式复制到
 SDK系统临时目录，发送收口后删除，不改变既有附件数量、类型、大小和发送门禁。`file_picker`及其全部联邦子包
 已经删除。表情、相册保存和宿主扫码闭包分别统一到`emoji_picker_flutter 4.5.4`、
 `saver_gallery 5.1.0`和宿主锁定的`mobile_scanner 7.4.2`。图片缩略图继续使用
@@ -381,3 +381,5 @@ ChatAccess可由宿主交付中性ChatResourceGate。正式连接在socket之前
 ### 宿主用量精简
 
 SDK继续只交付实际连接、命令及附件传输事实，不定义会员数值或计量账本。CitizenServe宿主已将会员日计量收敛为统一媒体请求/下发、附件上传字节及新建附件许可；分块仍是传输机制，不存在独立分块额度。无计量的动作仍可执行宿主身份校验并返回空counter_list；SDK不能自行恢复已删除的连接、命令、投递额度。现有ResourceUsage及通用钩子不增加字段；宿主容量统一用整数字节，展示1024单位由消费产品完成。
+
+附件系统选择的唯一大小输入由ChatAttachmentPlatform.pickFile(maxBytes:)交付，聊天页面读取宿主mediaLimits的file规则；Android/iOS在读取前及流式复制中均校验同份整数字节上限，删除固定512MiB限额。无效上限在打开选择器前拒绝，系统取消、单文件、沙箱及临时文件清理保持。附件HTTP的5xx以storage_unavailable交付原资源钩子，让宿主保留缺回执的未知消耗；SDK不建立会员账本或改变聊天协议。

@@ -180,7 +180,7 @@ void main() {
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
     messenger.setMockMethodCallHandler(channel, (call) async {
       expect(call.method, 'pickFile');
-      expect(call.arguments, isNull);
+      expect(call.arguments, {'max_bytes': 5 * 1024 * 1024 * 1024});
       return <String, Object?>{
         'path': '/tmp/document.pdf',
         'file_name': '文档.pdf',
@@ -189,7 +189,9 @@ void main() {
     });
     addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
 
-    final picked = await const ChatAttachmentPlatform().pickFile();
+    final picked = await const ChatAttachmentPlatform().pickFile(
+      maxBytes: 5 * 1024 * 1024 * 1024,
+    );
     expect(picked?.path, '/tmp/document.pdf');
     expect(picked?.fileName, '文档.pdf');
     expect(picked?.mime, 'application/pdf');
@@ -202,7 +204,12 @@ void main() {
     messenger.setMockMethodCallHandler(channel, (_) async => null);
     addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
 
-    expect(await const ChatAttachmentPlatform().pickFile(), isNull);
+    expect(
+      await const ChatAttachmentPlatform().pickFile(
+        maxBytes: 5 * 1024 * 1024 * 1024,
+      ),
+      isNull,
+    );
   });
 
   test('附件平台拒绝越界路径、文件名和 MIME', () async {
@@ -229,9 +236,29 @@ void main() {
     ]) {
       messenger.setMockMethodCallHandler(channel, (_) async => invalid);
       await expectLater(
-        const ChatAttachmentPlatform().pickFile(),
+        const ChatAttachmentPlatform().pickFile(
+          maxBytes: 5 * 1024 * 1024 * 1024,
+        ),
         throwsFormatException,
       );
     }
+  });
+  test('附件选择拒绝无效宿主额度且不调用平台', () async {
+    const channel = MethodChannel('chat.tata.sdk/attachment');
+    var calls = 0;
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(channel, (_) async {
+      calls++;
+      return null;
+    });
+    addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
+    for (final bytes in [0, -1]) {
+      await expectLater(
+        const ChatAttachmentPlatform().pickFile(maxBytes: bytes),
+        throwsFormatException,
+      );
+    }
+    expect(calls, 0);
   });
 }

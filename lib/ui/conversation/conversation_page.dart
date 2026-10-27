@@ -293,7 +293,9 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
   }
 
   Future<void> _pickFile() async {
-    final file = await const ChatAttachmentPlatform().pickFile();
+    final file = await const ChatAttachmentPlatform().pickFile(
+      maxBytes: widget.host.mediaLimits.limitForKind(ChatMessageKind.file),
+    );
     if (file == null) return;
     ChatMediaDraft? draft;
     try {
