@@ -71,17 +71,17 @@ String _bytesToHex(List<int> bytes) =>
 class MlsAuthenticationRequest {
   MlsAuthenticationRequest({
     required this.serviceOrigin,
-    required this.challenge,
-    required this.expiresAtMillis,
-    required this.method,
+    required this.nonceId,
+    required this.expiresAt,
+    required this.httpMethod,
     required this.requestTarget,
     required List<int> bodyBytes,
   }) : bodyBytes = List<int>.unmodifiable(bodyBytes);
 
   final String serviceOrigin;
-  final String challenge;
-  final int expiresAtMillis;
-  final String method;
+  final String nonceId;
+  final int expiresAt;
+  final String httpMethod;
   final String requestTarget;
   final List<int> bodyBytes;
 
@@ -114,8 +114,8 @@ class MlsAuthenticationRequest {
         serviceOrigin.length > 268 ||
         !serviceOrigin.codeUnits.every((byte) => byte >= 33 && byte <= 126) ||
         serviceOrigin.contains(r'\') ||
-        !_hex32.hasMatch(challenge) ||
-        !_methods.contains(method) ||
+        !_hex32.hasMatch(nonceId) ||
+        !_methods.contains(httpMethod) ||
         requestTarget.length > 8192 ||
         !requestTarget.startsWith('/') ||
         requestTarget.startsWith('//') ||
@@ -127,7 +127,7 @@ class MlsAuthenticationRequest {
         !bodyBytes.every((byte) => byte >= 0 && byte <= 255)) {
       throw ArgumentError('MLS认证请求结构无效');
     }
-    validateExpiry(expiresAtMillis);
+    validateExpiry(expiresAt);
   }
 
   static void validateExpiry(int expiry) {
@@ -140,59 +140,49 @@ class MlsAuthenticationRequest {
   /// 仅供固定身份JSON入口消费；不接收签名标签或原始待签内容。
   Map<String, Object> toJson() => {
     'service_origin': serviceOrigin,
-    'challenge': challenge,
-    'expires_at_millis': expiresAtMillis,
-    'method': method,
+    'nonce_id': nonceId,
+    'expires_at': expiresAt,
+    'http_method': httpMethod,
     'request_target': requestTarget,
     'body_hex': _bytesToHex(bodyBytes),
   };
 }
 
-/// 公开认证证明；私钥、请求正文和MLS内部状态从不返回。
-///
-/// 这是应用认证扩展。服务端必须验证可信登记身份、实际请求和一次性挑战，
-/// 不能把公开公钥或这份自报身份当作已授权的会话。
+/// 公开认证证明直接持有原生Serde输出的唯一字段集；不再逐字段回抄。
+/// 私钥、正文与MLS内部状态不进入本对象。
 class MlsAuthenticationProof {
-  const MlsAuthenticationProof({
-    required this.userId,
-    required this.deviceId,
-    required this.publicKey,
-    required this.accountId,
-    required this.bindingRevision,
-    required this.serviceOrigin,
-    required this.challenge,
-    required this.expiresAtMillis,
-    required this.method,
-    required this.requestTarget,
-    required this.bodySha256,
-    required this.signature,
-  });
+  MlsAuthenticationProof.fromJson(Map<String, Object> fields)
+    : _fields = Map<String, Object>.unmodifiable(fields) {
+    const names = {
+      'user_id',
+      'device_id',
+      'public_key',
+      'account_id',
+      'bind_rev',
+      'service_origin',
+      'nonce_id',
+      'expires_at',
+      'http_method',
+      'request_target',
+      'body_hash',
+      'signature',
+    };
+    if (_fields.length != names.length ||
+        !_fields.keys.every(names.contains) ||
+        _fields.entries.any(
+          (entry) =>
+              entry.key != 'bind_rev' &&
+              entry.key != 'expires_at' &&
+              entry.value is! String,
+        ) ||
+        _fields['bind_rev'] is! int ||
+        _fields['expires_at'] is! int) {
+      throw const FormatException('MLS认证证明字段无效');
+    }
+  }
 
-  final String userId;
-  final String deviceId;
-  final String publicKey;
-  final String accountId;
-  final int bindingRevision;
-  final String serviceOrigin;
-  final String challenge;
-  final int expiresAtMillis;
-  final String method;
-  final String requestTarget;
-  final String bodySha256;
-  final String signature;
+  final Map<String, Object> _fields;
 
-  Map<String, Object> toJson() => {
-    'user_id': userId,
-    'device_id': deviceId,
-    'public_key': publicKey,
-    'account_id': accountId,
-    'binding_revision': bindingRevision,
-    'service_origin': serviceOrigin,
-    'challenge': challenge,
-    'expires_at_millis': expiresAtMillis,
-    'method': method,
-    'request_target': requestTarget,
-    'body_sha256': bodySha256,
-    'signature': signature,
-  };
+  /// JSON键与原生合同完全相同，不创建旧名或第二份证明。
+  Map<String, Object> toJson() => _fields;
 }

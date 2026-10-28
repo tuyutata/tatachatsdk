@@ -483,7 +483,6 @@ class ChatGroupFlow<TBindingToken> {
       currentAccountId: _currentAccountId,
       groupId: groupId,
       senderUserId: senderUserId,
-      senderDeviceId: senderDeviceId,
       logicalMessageId: logicalMessageId,
       messageKind: messageKind,
       payload: payload,
@@ -604,7 +603,6 @@ class ChatGroupFlow<TBindingToken> {
           ownerUserId: _ownerUserId,
           message: message,
           messageBytes: messageBytes,
-          reason: error.toString(),
         );
         return const <EncryptedMessage>[];
       }
@@ -667,8 +665,7 @@ class ChatGroupFlow<TBindingToken> {
         if (content.isMedia &&
             (result.senderMemberIdentity !=
                     '${message.senderUserId}:${message.senderDeviceId}' ||
-                content.attachmentSenderMemberIdentity !=
-                    result.senderMemberIdentity)) {
+                content.senderIdentity != result.senderMemberIdentity)) {
           throw StateError('群附件控制实际MLS发送者不一致');
         }
         await _store.saveIncomingGroupMessage(
@@ -785,7 +782,6 @@ class ChatGroupFlow<TBindingToken> {
         message: message,
         messageBytes: bytes,
         recipientUserId: recipientUserId,
-        deliveryState: ChatMessageDeliveryState.queued,
       );
       final result = await _deliverer(
         message,

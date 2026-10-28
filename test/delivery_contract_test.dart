@@ -30,10 +30,7 @@ void main() {
       source,
       contains('final recipients = _attachmentRecipientUserIds(content)'),
     );
-    expect(
-      source,
-      contains('member != content.attachmentSenderMemberIdentity'),
-    );
+    expect(source, contains('member != content.senderIdentity'));
     final application = File('lib/mls/mls_attachment.dart').readAsStringSync();
     expect(
       application,
@@ -83,8 +80,9 @@ void main() {
   });
 
   test('聊天服务模块 邮箱密文必须匹配当前用户和当前设备', () {
-    final transportSource = File('lib/transport/chat_server_connection.dart')
-        .readAsStringSync();
+    final transportSource = File(
+      'lib/transport/chat_server_connection.dart',
+    ).readAsStringSync();
 
     expect(
       transportSource,

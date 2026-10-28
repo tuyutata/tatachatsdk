@@ -33,6 +33,112 @@ String _payload(String text) => ChatPayloadCodec.encode(ChatContent.text(text));
 void main() {
   useIsolatedChatIsar();
 
+  test('十集合使用规范物理名，逐收件人事实用三元自然索引', () async {
+    const schemas = <CollectionSchema<dynamic>>[
+      ChatConversationEntitySchema,
+      ChatMessageEntitySchema,
+      ChatOutboundQueueEntitySchema,
+      ChatOutgoingMediaEntitySchema,
+      ChatPendingInboundEntitySchema,
+      ChatRouteCacheEntitySchema,
+      ChatGroupEntitySchema,
+      ChatGroupMemberEntitySchema,
+      ChatGroupPendingCommitEntitySchema,
+      ChatBindingFenceEntitySchema,
+    ];
+    expect(schemas.map((schema) => schema.name).toSet(), {
+      'conversation',
+      'message',
+      'outbound',
+      'media',
+      'inbound',
+      'route',
+      'group',
+      'member',
+      'commit',
+      'fence',
+    });
+    for (final schema in schemas) {
+      expect(schema.idName, 'row_id');
+      for (final name in schema.properties.keys) {
+        expect(name, matches(RegExp(r'^[a-z]+_[a-z]+$')));
+      }
+    }
+    expect(
+      ChatOutgoingMediaEntitySchema.properties,
+      isNot(contains('pending_key')),
+    );
+    expect(
+      ChatGroupMemberEntitySchema.properties,
+      isNot(contains('member_key')),
+    );
+    expect(ChatGroupEntitySchema.properties, isNot(contains('member_count')));
+    final db = await ChatIsar.instance.db();
+    await db.writeTxn(() async {
+      for (final key in [
+        ('owner', 'a|b', 'c'),
+        ('owner', 'a', 'b|c'),
+        ('other', 'a|b', 'c'),
+      ]) {
+        await db.chatOutgoingMediaEntitys
+            .putByOwnerUserIdAttachmentIdRecipientUserId(
+              ChatOutgoingMediaEntity()
+                ..ownerUserId = key.$1
+                ..attachmentId = key.$2
+                ..recipientUserId = key.$3
+                ..conversationId = 'conversation'
+                ..fileName = 'file'
+                ..contentType = 'application/octet-stream'
+                ..byteSize = 1
+                ..createdAtMillis = 1,
+            );
+        await db.chatGroupMemberEntitys.putByOwnerUserIdGroupIdMemberUserId(
+          ChatGroupMemberEntity()
+            ..ownerUserId = key.$1
+            ..groupId = key.$2
+            ..memberUserId = key.$3
+            ..role = 'member',
+        );
+      }
+    });
+    expect(await db.chatOutgoingMediaEntitys.count(), 3);
+    expect(await db.chatGroupMemberEntitys.count(), 3);
+    await db.writeTxn(() async {
+      expect(
+        await db.chatOutgoingMediaEntitys
+            .deleteByOwnerUserIdAttachmentIdRecipientUserId(
+              'owner',
+              'a|b',
+              'c',
+            ),
+        isTrue,
+      );
+      expect(
+        await db.chatGroupMemberEntitys.deleteByOwnerUserIdGroupIdMemberUserId(
+          'owner',
+          'a|b',
+          'c',
+        ),
+        isTrue,
+      );
+    });
+    expect(await db.chatOutgoingMediaEntitys.count(), 2);
+    expect(await db.chatGroupMemberEntitys.count(), 2);
+    expect(
+      await db.chatOutgoingMediaEntitys
+          .getByOwnerUserIdAttachmentIdRecipientUserId('owner', 'a', 'b|c'),
+      isNotNull,
+    );
+    expect(
+      await db.chatGroupMemberEntitys.getByOwnerUserIdGroupIdMemberUserId(
+        'other',
+        'a|b',
+        'c',
+      ),
+      isNotNull,
+    );
+  });
+
   test(
     'Isar store persists outgoing, pending, and incoming Chat records',
     () async {
@@ -85,7 +191,6 @@ void main() {
         ownerUserId: _ownerUserId,
         message: message,
         messageBytes: message.writeToBuffer(),
-        reason: 'waiting for welcome',
       );
       expect(await store.pendingInboundCount(_ownerUserId), 1);
 
@@ -253,7 +358,6 @@ void main() {
         message: item,
         messageBytes: item.writeToBuffer(),
         recipientUserId: _bobUserId,
-        deliveryState: ChatMessageDeliveryState.queued,
       );
     }
 
@@ -291,7 +395,6 @@ void main() {
         message: message,
         messageBytes: message.writeToBuffer(),
         recipientUserId: _bobUserId,
-        deliveryState: ChatMessageDeliveryState.queued,
       );
     }
 
@@ -354,7 +457,6 @@ void main() {
         ownerUserId: _ownerUserId,
         message: targetMessage,
         messageBytes: targetMessage.writeToBuffer(),
-        reason: 'waiting',
       );
       await store.saveOutgoingMessage(
         bindingToken: bindingToken,
@@ -636,7 +738,6 @@ void main() {
       ownerUserId: _ownerUserId,
       message: message,
       messageBytes: message.writeToBuffer(),
-      reason: 'waiting',
     );
     await store.recordOutgoingMedia(
       bindingToken: bindingToken,

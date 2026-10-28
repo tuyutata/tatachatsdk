@@ -33,7 +33,7 @@ class MediaDescriptor extends $pb.GeneratedMessage {
     $core.String? attachmentGroupId,
     $core.List<$core.int>? attachmentWelcome,
     $core.Iterable<$core.String>? attachmentMemberIdentities,
-    $core.String? attachmentSenderMemberIdentity,
+    $core.String? senderIdentity,
     $core.int? attachmentChunkCount,
     $core.List<$core.int>? plainSha256,
     $fixnum.Int64? attachmentChatEpoch,
@@ -53,8 +53,7 @@ class MediaDescriptor extends $pb.GeneratedMessage {
     if (attachmentWelcome != null) result.attachmentWelcome = attachmentWelcome;
     if (attachmentMemberIdentities != null)
       result.attachmentMemberIdentities.addAll(attachmentMemberIdentities);
-    if (attachmentSenderMemberIdentity != null)
-      result.attachmentSenderMemberIdentity = attachmentSenderMemberIdentity;
+    if (senderIdentity != null) result.senderIdentity = senderIdentity;
     if (attachmentChunkCount != null)
       result.attachmentChunkCount = attachmentChunkCount;
     if (plainSha256 != null) result.plainSha256 = plainSha256;
@@ -95,7 +94,7 @@ class MediaDescriptor extends $pb.GeneratedMessage {
     ..a<$core.List<$core.int>>(
         13, _omitFieldNames ? '' : 'attachmentWelcome', $pb.PbFieldType.OY)
     ..pPS(14, _omitFieldNames ? '' : 'attachmentMemberIdentities')
-    ..aOS(15, _omitFieldNames ? '' : 'attachmentSenderMemberIdentity')
+    ..aOS(15, _omitFieldNames ? '' : 'senderIdentity')
     ..aI(16, _omitFieldNames ? '' : 'attachmentChunkCount',
         fieldType: $pb.PbFieldType.OU3)
     ..a<$core.List<$core.int>>(
@@ -236,14 +235,13 @@ class MediaDescriptor extends $pb.GeneratedMessage {
   $pb.PbList<$core.String> get attachmentMemberIdentities => $_getList(12);
 
   @$pb.TagNumber(15)
-  $core.String get attachmentSenderMemberIdentity => $_getSZ(13);
+  $core.String get senderIdentity => $_getSZ(13);
   @$pb.TagNumber(15)
-  set attachmentSenderMemberIdentity($core.String value) =>
-      $_setString(13, value);
+  set senderIdentity($core.String value) => $_setString(13, value);
   @$pb.TagNumber(15)
-  $core.bool hasAttachmentSenderMemberIdentity() => $_has(13);
+  $core.bool hasSenderIdentity() => $_has(13);
   @$pb.TagNumber(15)
-  void clearAttachmentSenderMemberIdentity() => $_clearField(15);
+  void clearSenderIdentity() => $_clearField(15);
 
   @$pb.TagNumber(16)
   $core.int get attachmentChunkCount => $_getIZ(14);

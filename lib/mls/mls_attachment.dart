@@ -375,7 +375,7 @@ class MlsAttachment {
       'chunk_count': count,
       'byte_size': size,
       'plain_sha256': content.plainSha256!,
-      'sender_member_identity': content.attachmentSenderMemberIdentity!,
+      'sender_member_identity': content.senderIdentity!,
       'member_identities': content.attachmentMemberIdentities!,
     });
     if (progress['terminal'] == true) throw StateError('附件接收链已终结，不能重新入组');
@@ -395,8 +395,7 @@ class MlsAttachment {
       );
       if (!joined.isApplied ||
           joined.kind != GroupInboundKind.welcome ||
-          joined.senderMemberIdentity !=
-              content.attachmentSenderMemberIdentity ||
+          joined.senderMemberIdentity != content.senderIdentity ||
           jsonEncode([...joined.memberIdentities!]..sort()) !=
               jsonEncode(content.attachmentMemberIdentities)) {
         throw StateError('附件Welcome合同不一致');
@@ -429,8 +428,7 @@ class MlsAttachment {
         );
         if (!decoded.isApplied ||
             decoded.kind != GroupInboundKind.application ||
-            decoded.senderMemberIdentity !=
-                content.attachmentSenderMemberIdentity ||
+            decoded.senderMemberIdentity != content.senderIdentity ||
             decoded.groupEpoch != 1 ||
             decoded.plaintext == null) {
           throw StateError('附件实际MLS块无效');
@@ -439,7 +437,7 @@ class MlsAttachment {
           decoded.plaintext!,
           group,
           content.attachmentId!,
-          content.attachmentSenderMemberIdentity!,
+          content.senderIdentity!,
           index,
           count,
           size,

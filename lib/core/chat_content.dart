@@ -23,7 +23,7 @@ final class ChatContent {
     this.attachmentGroupId,
     this.attachmentWelcome,
     this.attachmentMemberIdentities,
-    this.attachmentSenderMemberIdentity,
+    this.senderIdentity,
     this.attachmentChunkCount,
     this.plainSha256,
     this.cipherByteSize,
@@ -52,7 +52,7 @@ final class ChatContent {
     required String attachmentGroupId,
     required String attachmentWelcome,
     required List<String> attachmentMemberIdentities,
-    required String attachmentSenderMemberIdentity,
+    required String senderIdentity,
     required int attachmentChunkCount,
     required String plainSha256,
     required int cipherByteSize,
@@ -75,7 +75,7 @@ final class ChatContent {
     attachmentGroupId: attachmentGroupId,
     attachmentWelcome: attachmentWelcome,
     attachmentMemberIdentities: attachmentMemberIdentities,
-    attachmentSenderMemberIdentity: attachmentSenderMemberIdentity,
+    senderIdentity: senderIdentity,
     attachmentChunkCount: attachmentChunkCount,
     plainSha256: plainSha256,
     cipherByteSize: cipherByteSize,
@@ -98,7 +98,7 @@ final class ChatContent {
   final String? attachmentGroupId;
   final String? attachmentWelcome;
   final List<String>? attachmentMemberIdentities;
-  final String? attachmentSenderMemberIdentity;
+  final String? senderIdentity;
   final int? attachmentChunkCount;
   final String? plainSha256;
   final int? cipherByteSize;
@@ -143,8 +143,7 @@ final class ChatPayloadCodec {
         attachmentWelcome: _decodeWire(content.attachmentWelcome ?? ''),
         attachmentMemberIdentities:
             content.attachmentMemberIdentities ?? const [],
-        attachmentSenderMemberIdentity:
-            content.attachmentSenderMemberIdentity ?? '',
+        senderIdentity: content.senderIdentity ?? '',
         attachmentChunkCount: content.attachmentChunkCount ?? 0,
         plainSha256: _decodeHex(
           content.plainSha256 ?? '',
@@ -212,7 +211,7 @@ final class ChatPayloadCodec {
     attachmentGroupId: content.attachmentGroupId,
     attachmentWelcome: _encodeWire(content.attachmentWelcome),
     attachmentMemberIdentities: content.attachmentMemberIdentities,
-    attachmentSenderMemberIdentity: content.attachmentSenderMemberIdentity,
+    senderIdentity: content.senderIdentity,
     attachmentChunkCount: content.attachmentChunkCount,
     plainSha256: _encodeHex(content.plainSha256),
     cipherByteSize: content.cipherByteSize,

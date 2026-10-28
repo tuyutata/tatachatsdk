@@ -1559,8 +1559,9 @@ class ChatRuntimeCore {
     Future<Directory> Function()? documentsDirectoryProvider,
   }) {
     _processWipeRequested = true;
-    return _resolveWipeDocumentsRoot(documentsDirectoryProvider)
-        .then(_ChatCrossIsolateCoordinator.ensureWipePending);
+    return _resolveWipeDocumentsRoot(
+      documentsDirectoryProvider,
+    ).then(_ChatCrossIsolateCoordinator.ensureWipePending);
   }
 
   static Future<ChatPersistentWipeState> readPersistentAppDataWipeState({
@@ -2293,10 +2294,11 @@ class ChatRuntimeCore {
   ) {
     final key = '${context.bindingToken.accountId}|$conversationId';
     unawaited(
-      _runRuntimeOperation(() => _outboundDeliveryGate.run(key, delivery))
-          .catchError((Object _) {
-            // 静默后台投递失败不覆盖本地消息；队列事实仍在，下次重试继续发送。
-          }),
+      _runRuntimeOperation(
+        () => _outboundDeliveryGate.run(key, delivery),
+      ).catchError((Object _) {
+        // 静默后台投递失败不覆盖本地消息；队列事实仍在，下次重试继续发送。
+      }),
     );
   }
 
@@ -2998,7 +3000,7 @@ class ChatRuntimeCore {
           attachmentGroupId: d.groupId,
           attachmentWelcome: base64UrlEncode(d.welcome).replaceAll('=', ''),
           attachmentMemberIdentities: d.members,
-          attachmentSenderMemberIdentity: d.sender,
+          senderIdentity: d.sender,
           attachmentChunkCount: d.chunkCount,
           plainSha256: d.plainSha256,
           cipherByteSize: d.cipherByteSize,
@@ -3068,7 +3070,7 @@ class ChatRuntimeCore {
     final members = [...state.memberIdentities]..sort();
     if (state.epoch != content.attachmentChatEpoch ||
         jsonEncode(members) != jsonEncode(content.attachmentMemberIdentities) ||
-        content.attachmentSenderMemberIdentity !=
+        content.senderIdentity !=
             '${context.account.userId}:${context.deviceId}') {
       throw const _AttachmentAudienceChanged();
     }
@@ -3779,7 +3781,7 @@ class ChatRuntimeCore {
   List<String> _attachmentRecipientUserIds(ChatContent content) =>
       userIdsFromMemberIdentities(
         content.attachmentMemberIdentities!.where(
-          (member) => member != content.attachmentSenderMemberIdentity,
+          (member) => member != content.senderIdentity,
         ),
       );
 
@@ -3948,8 +3950,9 @@ class ChatRuntimeCore {
     if (!await uploaded.exists()) {
       throw StateError('Chat 附件密文仍在后台上传');
     }
-    if (!(await context.crypto.pendingMessageResults(pending.localMessageId))
-        .any((r) => (r['result'] as Map)['application_wire_hex'] is String)) {
+    if (!(await context.crypto.pendingMessageResults(
+      pending.localMessageId,
+    )).any((r) => (r['result'] as Map)['application_wire_hex'] is String)) {
       await _requireAttachmentAudience(
         context,
         pending.conversationId,
@@ -4050,8 +4053,9 @@ class ChatRuntimeCore {
         // 上传标记是远端成功真值，缓存清理留给会话删除统一收口。
       }
     }
-    if (!(await context.crypto.pendingMessageResults(pending.localMessageId))
-        .any((r) => (r['result'] as Map)['application_wire_hex'] is String)) {
+    if (!(await context.crypto.pendingMessageResults(
+      pending.localMessageId,
+    )).any((r) => (r['result'] as Map)['application_wire_hex'] is String)) {
       await _requireAttachmentAudience(
         context,
         pending.conversationId,
@@ -5209,8 +5213,9 @@ class ChatRuntimeCore {
         await _groupFlow(context).processIncomingGroupMessage(messageBytes),
       );
     } else {
-      final result = await _messageFlow(context)
-          .processIncomingMessageBytes(messageBytes);
+      final result = await _messageFlow(
+        context,
+      ).processIncomingMessageBytes(messageBytes);
       accepted.addAll(result.acceptedMessages);
       // Welcome 成功持久确认也可 ACK 自身；缓冲的 out_of_order 不能 ACK。
       if (result.accepted &&
@@ -5414,13 +5419,17 @@ class ChatRuntimeCore {
           request: request,
         );
         await requireCurrentAccount();
-        MlsAuthenticationRequest.validateExpiry(proof.expiresAtMillis);
+        MlsAuthenticationRequest.validateExpiry(
+          (proof.toJson()['expires_at']! as int),
+        );
         return proof;
       },
     );
     // 文件屏障退出仍有异步等待，必须在真正交付调用方前再次复核。
     await requireCurrentAccount();
-    MlsAuthenticationRequest.validateExpiry(proof.expiresAtMillis);
+    MlsAuthenticationRequest.validateExpiry(
+      (proof.toJson()['expires_at']! as int),
+    );
     return proof;
   });
 }

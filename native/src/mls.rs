@@ -82,7 +82,7 @@ enum IdentityRequest {
         state_store_dir: String,
         user_id: String,
         account_id: String,
-        binding_revision: u64,
+        bind_rev: u64,
         request: AuthenticationRequest,
     },
 }
@@ -91,9 +91,9 @@ enum IdentityRequest {
 #[serde(deny_unknown_fields)]
 struct AuthenticationRequest {
     service_origin: String,
-    challenge: String,
-    expires_at_millis: u64,
-    method: String,
+    nonce_id: String,
+    expires_at: u64,
+    http_method: String,
     request_target: String,
     body_hex: String,
 }
@@ -105,13 +105,13 @@ struct AuthenticationProof {
     device_id: String,
     public_key: String,
     account_id: String,
-    binding_revision: u64,
+    bind_rev: u64,
     service_origin: String,
-    challenge: String,
-    expires_at_millis: u64,
-    method: String,
+    nonce_id: String,
+    expires_at: u64,
+    http_method: String,
     request_target: String,
-    body_sha256: String,
+    body_hash: String,
     signature: String,
 }
 
@@ -276,14 +276,13 @@ fn identity_json(input: *const c_char) -> Result<String, String> {
     }
     if let IdentityRequest::SignAuthentication {
         account_id,
-        binding_revision,
+        bind_rev,
         request,
         ..
     } = &request
     {
         // 同一锁下只读已有身份，不写快照、不建立群、不推进epoch或ratchet。
-        let proof =
-            authentication_proof(&provider, &signer, account_id, *binding_revision, request)?;
+        let proof = authentication_proof(&provider, &signer, account_id, *bind_rev, request)?;
         return serde_json::to_string(&proof).map_err(|_| authentication_error());
     }
     serde_json::to_string(&provider.device)
@@ -457,7 +456,7 @@ fn authentication_proof(
     provider: &MlsProvider,
     signer: &SignatureKeyPair,
     account_id: &str,
-    binding_revision: u64,
+    bind_rev: u64,
     request: &AuthenticationRequest,
 ) -> Result<AuthenticationProof, String> {
     let public = authentication_hex(&provider.device.public_key)?;
@@ -465,16 +464,16 @@ fn authentication_proof(
         return Err(state_error(ERROR_STATE_INVALID, "MLS签名身份算法不符"));
     }
     authentication_hex(account_id)?;
-    authentication_hex(&request.challenge)?;
+    authentication_hex(&request.nonce_id)?;
     validate_authentication_origin(&request.service_origin)?;
     validate_authentication_target(&request.request_target)?;
     let now = now_millis()?;
-    if binding_revision > MAX_JSON_INTEGER
-        || request.expires_at_millis > MAX_JSON_INTEGER
-        || request.expires_at_millis <= now
-        || request.expires_at_millis - now > AUTHENTICATION_LIFETIME_MILLIS
+    if bind_rev > MAX_JSON_INTEGER
+        || request.expires_at > MAX_JSON_INTEGER
+        || request.expires_at <= now
+        || request.expires_at - now > AUTHENTICATION_LIFETIME_MILLIS
         || !matches!(
-            request.method.as_str(),
+            request.http_method.as_str(),
             "GET" | "HEAD" | "POST" | "PUT" | "PATCH" | "DELETE" | "OPTIONS"
         )
         || request.body_hex.len() > MAX_AUTHENTICATION_BODY_BYTES * 2
@@ -496,13 +495,13 @@ fn authentication_proof(
         device_id: provider.device.device_id.clone(),
         public_key: provider.device.public_key.clone(),
         account_id: account_id.into(),
-        binding_revision,
+        bind_rev,
         service_origin: request.service_origin.clone(),
-        challenge: request.challenge.clone(),
-        expires_at_millis: request.expires_at_millis,
-        method: request.method.clone(),
+        nonce_id: request.nonce_id.clone(),
+        expires_at: request.expires_at,
+        http_method: request.http_method.clone(),
         request_target: request.request_target.clone(),
-        body_sha256: format!("0x{}", hex::encode(hash)),
+        body_hash: format!("0x{}", hex::encode(hash)),
         signature: String::new(),
     };
     // 固定结构content由原生构造，外层SignContent使用OpenMLS的标准TLS编码。
@@ -523,7 +522,7 @@ fn authentication_proof(
         .map_err(|_| state_error(ERROR_STATE_INVALID, "MLS签名身份与公钥不匹配"))?;
     proof.signature = format!("0x{}", hex::encode(signature));
     // 签名完成后再次检查有效期，不能返回处理期间已经过期的证明。
-    if proof.expires_at_millis <= now_millis()? {
+    if proof.expires_at <= now_millis()? {
         return Err(authentication_error());
     }
     Ok(proof)
@@ -540,13 +539,13 @@ fn authentication_content(proof: &AuthenticationProof) -> Result<Vec<u8>, String
     text(&mut content, &proof.user_id)?;
     content.extend(authentication_hex(&format!("0x{}", proof.device_id))?);
     content.extend(authentication_hex(&proof.account_id)?);
-    content.extend(proof.binding_revision.to_be_bytes());
+    content.extend(proof.bind_rev.to_be_bytes());
     text(&mut content, &proof.service_origin)?;
-    content.extend(authentication_hex(&proof.challenge)?);
-    content.extend(proof.expires_at_millis.to_be_bytes());
-    text(&mut content, &proof.method)?;
+    content.extend(authentication_hex(&proof.nonce_id)?);
+    content.extend(proof.expires_at.to_be_bytes());
+    text(&mut content, &proof.http_method)?;
     text(&mut content, &proof.request_target)?;
-    content.extend(authentication_hex(&proof.body_sha256)?);
+    content.extend(authentication_hex(&proof.body_hash)?);
     Ok(content)
 }
 #[derive(Deserialize)]
@@ -2717,12 +2716,12 @@ mod tests {
     fn authentication_request(a: &Fixture) -> serde_json::Value {
         json!({
             "state_store_dir":a.dir, "user_id":a.user, "action":"sign_authentication",
-            "account_id":format!("0x{}", "11".repeat(32)), "binding_revision":1,
+            "account_id":format!("0x{}", "11".repeat(32)), "bind_rev":1,
             "request":{
                 "service_origin":"https://api.example.test",
-                "challenge":format!("0x{}", "22".repeat(32)),
-                "expires_at_millis":now_millis().unwrap() + 120_000,
-                "method":"POST", "request_target":"/auth/session?scope=chat",
+                "nonce_id":format!("0x{}", "22".repeat(32)),
+                "expires_at":now_millis().unwrap() + 120_000,
+                "http_method":"POST", "request_target":"/auth/session?scope=chat",
                 "body_hex":hex::encode(b"synthetic request")
             }
         })
@@ -2742,19 +2741,19 @@ mod tests {
             .unwrap();
         content.extend(bytes("device_id"));
         content.extend(bytes("account_id"));
-        content.extend(proof["binding_revision"].as_u64().unwrap().to_be_bytes());
+        content.extend(proof["bind_rev"].as_u64().unwrap().to_be_bytes());
         VLBytes::from(text("service_origin").as_bytes().to_vec())
             .tls_serialize(&mut content)
             .unwrap();
-        content.extend(bytes("challenge"));
-        content.extend(proof["expires_at_millis"].as_u64().unwrap().to_be_bytes());
-        VLBytes::from(text("method").as_bytes().to_vec())
+        content.extend(bytes("nonce_id"));
+        content.extend(proof["expires_at"].as_u64().unwrap().to_be_bytes());
+        VLBytes::from(text("http_method").as_bytes().to_vec())
             .tls_serialize(&mut content)
             .unwrap();
         VLBytes::from(text("request_target").as_bytes().to_vec())
             .tls_serialize(&mut content)
             .unwrap();
-        content.extend(bytes("body_sha256"));
+        content.extend(bytes("body_hash"));
         let encoded = SignContent::new(label, content.into())
             .tls_serialize_detached()
             .unwrap();
@@ -2786,10 +2785,7 @@ mod tests {
             .crypto()
             .hash(HashType::Sha2_256, b"synthetic request")
             .unwrap();
-        assert_eq!(
-            proof["body_sha256"],
-            format!("0x{}", hex::encode(body_hash))
-        );
+        assert_eq!(proof["body_hash"], format!("0x{}", hex::encode(body_hash)));
         assert!(proof.get("body_hex").is_none());
     }
 
@@ -2802,16 +2798,16 @@ mod tests {
             ("device_id", json!("33".repeat(32))),
             ("public_key", json!(format!("0x{}", "33".repeat(32)))),
             ("account_id", json!(format!("0x{}", "33".repeat(32)))),
-            ("binding_revision", json!(2)),
+            ("bind_rev", json!(2)),
             ("service_origin", json!("https://other.example.test")),
-            ("challenge", json!(format!("0x{}", "33".repeat(32)))),
+            ("nonce_id", json!(format!("0x{}", "33".repeat(32)))),
             (
-                "expires_at_millis",
-                json!(proof["expires_at_millis"].as_u64().unwrap() + 1),
+                "expires_at",
+                json!(proof["expires_at"].as_u64().unwrap() + 1),
             ),
-            ("method", json!("GET")),
+            ("http_method", json!("GET")),
             ("request_target", json!("/auth/other")),
-            ("body_sha256", json!(format!("0x{}", "33".repeat(32)))),
+            ("body_hash", json!(format!("0x{}", "33".repeat(32)))),
             ("signature", json!(format!("0x{}", "33".repeat(64)))),
         ] {
             let mut changed = proof.clone();
@@ -2856,10 +2852,10 @@ mod tests {
             ("request_target", json!("/path#fragment")),
             ("request_target", json!("/path%xx")),
             ("request_target", json!("/path\nheader")),
-            ("method", json!("post")),
-            ("challenge", json!("22".repeat(32))),
-            ("expires_at_millis", json!(0)),
-            ("expires_at_millis", json!(now_millis().unwrap() + 600_000)),
+            ("http_method", json!("post")),
+            ("nonce_id", json!("22".repeat(32))),
+            ("expires_at", json!(0)),
+            ("expires_at", json!(now_millis().unwrap() + 600_000)),
             ("body_hex", json!("0")),
             ("body_hex", json!("AB")),
             (
@@ -2876,8 +2872,8 @@ mod tests {
         }
         for (field, value) in [
             ("account_id", json!("11".repeat(32))),
-            ("binding_revision", json!(MAX_JSON_INTEGER + 1)),
-            ("binding_revision", json!(-1)),
+            ("bind_rev", json!(MAX_JSON_INTEGER + 1)),
+            ("bind_rev", json!(-1)),
             ("public_key", json!(format!("0x{}", "33".repeat(32)))),
             ("action", json!("sign")),
         ] {

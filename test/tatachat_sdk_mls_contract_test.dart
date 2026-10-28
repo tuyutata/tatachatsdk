@@ -100,9 +100,9 @@ void main() {
       request.toJson().keys,
       unorderedEquals([
         'service_origin',
-        'challenge',
-        'expires_at_millis',
-        'method',
+        'nonce_id',
+        'expires_at',
+        'http_method',
         'request_target',
         'body_hex',
       ]),
@@ -152,13 +152,13 @@ void main() {
       'device_id',
       'public_key',
       'account_id',
-      'binding_revision',
+      'bind_rev',
       'service_origin',
-      'challenge',
-      'expires_at_millis',
-      'method',
+      'nonce_id',
+      'expires_at',
+      'http_method',
       'request_target',
-      'body_sha256',
+      'body_hash',
       'signature',
       'private_key',
       'body_hex',
@@ -169,8 +169,7 @@ void main() {
         debugCallJson: (input) {
           final result = _nativeResponse(input);
           if (input['action'] == 'sign_authentication') {
-            result[field] =
-                field == 'binding_revision' || field == 'expires_at_millis'
+            result[field] = field == 'bind_rev' || field == 'expires_at'
                 ? 2
                 : 'synthetic invalid value';
           }
@@ -320,9 +319,9 @@ void main() {
     );
     addTearDown(runtime.close);
     final proof = await runtime.createMlsAuthenticationProof(_request());
-    expect(proof.userId, host.account.userId);
-    expect(proof.accountId, host.account.accountId);
-    expect(proof.bindingRevision, host.account.bindingRevision);
+    expect(proof.toJson()['user_id'], host.account.userId);
+    expect(proof.toJson()['account_id'], host.account.accountId);
+    expect(proof.toJson()['bind_rev'], host.account.bindingRevision);
     expect(actions, ['read', 'sign_authentication']);
     expect(host.forbiddenCalls, 0);
   });
@@ -437,9 +436,9 @@ MlsAuthenticationRequest _request({
   List<int> body = const [1, 2, 3],
 }) => MlsAuthenticationRequest(
   serviceOrigin: origin,
-  challenge: challenge ?? _hex(0x22),
-  expiresAtMillis: expiry ?? DateTime.now().millisecondsSinceEpoch + 120000,
-  method: method,
+  nonceId: challenge ?? _hex(0x22),
+  expiresAt: expiry ?? DateTime.now().millisecondsSinceEpoch + 120000,
+  httpMethod: method,
   requestTarget: target,
   bodyBytes: body,
 );
@@ -463,13 +462,13 @@ Map<String, dynamic> _nativeResponse(Map<String, Object?> input) {
   return {
     ...identity,
     'account_id': input['account_id'],
-    'binding_revision': input['binding_revision'],
+    'bind_rev': input['bind_rev'],
     'service_origin': request['service_origin'],
-    'challenge': request['challenge'],
-    'expires_at_millis': request['expires_at_millis'],
-    'method': request['method'],
+    'nonce_id': request['nonce_id'],
+    'expires_at': request['expires_at'],
+    'http_method': request['http_method'],
     'request_target': request['request_target'],
-    'body_sha256': '0x${crypto_hash.sha256.convert(body)}',
+    'body_hash': '0x${crypto_hash.sha256.convert(body)}',
     'signature': _hex(0x55, length: 64),
   };
 }

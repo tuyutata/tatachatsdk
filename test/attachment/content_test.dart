@@ -34,7 +34,7 @@ void main() {
         groupId ?? 'attachment:${senderIdentity ?? sender}:$attachmentId',
     attachmentWelcome: welcome,
     attachmentMemberIdentities: members ?? [sender, receiver],
-    attachmentSenderMemberIdentity: senderIdentity ?? sender,
+    senderIdentity: senderIdentity ?? sender,
     attachmentChunkCount:
         chunkCount ?? (byteSize + 1024 * 1024 - 1) ~/ (1024 * 1024),
     plainSha256: plainHash ?? List<int>.filled(32, 7),
@@ -69,7 +69,7 @@ void main() {
     expect(decoded.cipherByteSize, clearSize + 81920);
     expect(decoded.attachmentWelcome, [1, 2, 3]);
     expect(decoded.attachmentMemberIdentities, [sender, receiver]);
-    expect(decoded.attachmentSenderMemberIdentity, sender);
+    expect(decoded.senderIdentity, sender);
     expect(decoded.plainSha256, List<int>.filled(32, 7));
   });
 
@@ -99,9 +99,9 @@ void main() {
       cipherByteSize: 1024 + 4096,
     );
     expect(
-      MediaContentCodec.decode(MediaContentCodec.encode(atLimit))
-          .attachmentWelcome
-          .length,
+      MediaContentCodec.decode(
+        MediaContentCodec.encode(atLimit),
+      ).attachmentWelcome.length,
       48 * 1024,
     );
     for (final invalid in [

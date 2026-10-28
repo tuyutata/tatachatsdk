@@ -28,7 +28,6 @@ abstract interface class ChatFlowStore<TBindingToken> {
     required EncryptedMessage message,
     required List<int> messageBytes,
     required String recipientUserId,
-    required ChatMessageDeliveryState deliveryState,
   });
 
   Future<void> saveIncomingMessage({
@@ -54,7 +53,6 @@ abstract interface class ChatFlowStore<TBindingToken> {
     required String ownerUserId,
     required EncryptedMessage message,
     required List<int> messageBytes,
-    required String reason,
   });
 
   Future<List<EncryptedMessage>> takePendingInbound(
@@ -118,7 +116,7 @@ abstract interface class ChatFlowStore<TBindingToken> {
     required String currentAccountId,
     required String groupId,
     required String senderUserId,
-    required String senderDeviceId,
+
     required String logicalMessageId,
     required ChatMessageKind messageKind,
     required String payload,

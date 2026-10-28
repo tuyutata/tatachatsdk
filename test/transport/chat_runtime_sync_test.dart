@@ -393,7 +393,7 @@ ChatContent _media() => ChatContent.media(
   attachmentGroupId: MlsAttachment.groupId('user-a:$_device', 'attachment-a'),
   attachmentWelcome: 'AQ',
   attachmentMemberIdentities: ['user-a:$_device', 'user-b:${'b' * 64}'],
-  attachmentSenderMemberIdentity: 'user-a:$_device',
+  senderIdentity: 'user-a:$_device',
   attachmentChunkCount: 1,
   plainSha256: 'a' * 64,
   cipherByteSize: 2,
@@ -786,7 +786,8 @@ void main() {
       if (terminal == 'binding') {
         fixture.host.account = const ChatRuntimeAccount(
           hostIndex: 0,
-          bindingScope: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+          bindingScope:
+              '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
           userId: 'user-a',
           bindingRevision: 2,
           accountId: 'account-a',

@@ -7,9 +7,9 @@ import '../support/native_probe.dart';
 
 MlsAuthenticationRequest _authenticationRequest() => MlsAuthenticationRequest(
   serviceOrigin: 'https://api.example.test',
-  challenge: '0x${List.filled(32, '22').join()}',
-  expiresAtMillis: DateTime.now().millisecondsSinceEpoch + 120000,
-  method: 'POST',
+  nonceId: '0x${List.filled(32, '22').join()}',
+  expiresAt: DateTime.now().millisecondsSinceEpoch + 120000,
+  httpMethod: 'POST',
   requestTarget: '/auth/session?scope=chat',
   bodyBytes: [1, 2, 3],
 );
@@ -71,9 +71,9 @@ void main() {
       request: request,
     );
     expect(again.toJson(), proof.toJson());
-    expect(proof.userId, identity.userId);
-    expect(proof.deviceId, identity.deviceId);
-    expect(proof.publicKey, identity.publicKey);
+    expect(proof.toJson()['user_id'], identity.userId);
+    expect(proof.toJson()['device_id'], identity.deviceId);
+    expect(proof.toJson()['public_key'], identity.publicKey);
     expect(
       proof.toJson().keys,
       unorderedEquals([
@@ -81,17 +81,17 @@ void main() {
         'device_id',
         'public_key',
         'account_id',
-        'binding_revision',
+        'bind_rev',
         'service_origin',
-        'challenge',
-        'expires_at_millis',
-        'method',
+        'nonce_id',
+        'expires_at',
+        'http_method',
         'request_target',
-        'body_sha256',
+        'body_hash',
         'signature',
       ]),
     );
-    expect(proof.signature, matches(RegExp(r'^0x[0-9a-f]{128}$')));
+    expect(proof.toJson()['signature'], matches(RegExp(r'^0x[0-9a-f]{128}$')));
     expect(await snapshot.readAsBytes(), before);
     final wrongOwner = MlsStateStore(directory, ownerUserId: 'other');
     await expectLater(
@@ -152,7 +152,7 @@ void main() {
       bindingRevision: 1,
       request: _authenticationRequest(),
     );
-    expect(proof.deviceId, identity.deviceId);
+    expect(proof.toJson()['device_id'], identity.deviceId);
     expect(await snapshot.readAsBytes(), before);
   });
   test('空锁目录严格读取不生成身份，随后自动准备正常完成', () async {
@@ -176,8 +176,9 @@ void main() {
     final store = MlsStateStore(root, ownerUserId: 'phase-user');
     final first = await store.prepareIdentity();
     final before = await File('${root.path}/state.bin').readAsBytes();
-    await File('${root.path}/state.lock')
-        .writeAsString('initializing\n', flush: true);
+    await File(
+      '${root.path}/state.lock',
+    ).writeAsString('initializing\n', flush: true);
     expect((await store.prepareIdentity()).deviceId, first.deviceId);
     expect(await File('${root.path}/state.bin').readAsBytes(), before);
     await File('${root.path}/state.bin').delete();

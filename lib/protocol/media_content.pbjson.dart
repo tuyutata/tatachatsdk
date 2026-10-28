@@ -50,13 +50,7 @@ const MediaDescriptor$json = {
       '5': 9,
       '10': 'attachmentMemberIdentities'
     },
-    {
-      '1': 'attachment_sender_member_identity',
-      '3': 15,
-      '4': 1,
-      '5': 9,
-      '10': 'attachmentSenderMemberIdentity'
-    },
+    {'1': 'sender_identity', '3': 15, '4': 1, '5': 9, '10': 'senderIdentity'},
     {
       '1': 'attachment_chunk_count',
       '3': 16,
@@ -88,11 +82,11 @@ final $typed_data.Uint8List mediaDescriptorDescriptor = $convert.base64Decode(
     'NpemUSIwoNY2lwaGVyX3NoYTI1NhgLIAEoDFIMY2lwaGVyU2hhMjU2Ei4KE2F0dGFjaG1lbnRf'
     'Z3JvdXBfaWQYDCABKAlSEWF0dGFjaG1lbnRHcm91cElkEi0KEmF0dGFjaG1lbnRfd2VsY29tZR'
     'gNIAEoDFIRYXR0YWNobWVudFdlbGNvbWUSQAocYXR0YWNobWVudF9tZW1iZXJfaWRlbnRpdGll'
-    'cxgOIAMoCVIaYXR0YWNobWVudE1lbWJlcklkZW50aXRpZXMSSQohYXR0YWNobWVudF9zZW5kZX'
-    'JfbWVtYmVyX2lkZW50aXR5GA8gASgJUh5hdHRhY2htZW50U2VuZGVyTWVtYmVySWRlbnRpdHkS'
-    'NAoWYXR0YWNobWVudF9jaHVua19jb3VudBgQIAEoDVIUYXR0YWNobWVudENodW5rQ291bnQSIQ'
-    'oMcGxhaW5fc2hhMjU2GBEgASgMUgtwbGFpblNoYTI1NhIyChVhdHRhY2htZW50X2NoYXRfZXBv'
-    'Y2gYEiABKARSE2F0dGFjaG1lbnRDaGF0RXBvY2hKBAgJEAo=');
+    'cxgOIAMoCVIaYXR0YWNobWVudE1lbWJlcklkZW50aXRpZXMSJwoPc2VuZGVyX2lkZW50aXR5GA'
+    '8gASgJUg5zZW5kZXJJZGVudGl0eRI0ChZhdHRhY2htZW50X2NodW5rX2NvdW50GBAgASgNUhRh'
+    'dHRhY2htZW50Q2h1bmtDb3VudBIhCgxwbGFpbl9zaGEyNTYYESABKAxSC3BsYWluU2hhMjU2Ej'
+    'IKFWF0dGFjaG1lbnRfY2hhdF9lcG9jaBgSIAEoBFITYXR0YWNobWVudENoYXRFcG9jaEoECAkQ'
+    'Cg==');
 
 @$core.Deprecated('Use mediaPayloadDescriptor instead')
 const MediaPayload$json = {

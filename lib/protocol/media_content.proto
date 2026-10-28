@@ -18,7 +18,7 @@ message MediaDescriptor {
   string attachment_group_id = 12;
   bytes attachment_welcome = 13;
   repeated string attachment_member_identities = 14;
-  string attachment_sender_member_identity = 15;
+  string sender_identity = 15;
   uint32 attachment_chunk_count = 16;
   bytes plain_sha256 = 17;
   uint64 attachment_chat_epoch = 18;

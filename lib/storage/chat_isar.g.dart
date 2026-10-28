@@ -15,58 +15,54 @@ extension GetChatConversationEntityCollection on Isar {
 }
 
 const ChatConversationEntitySchema = CollectionSchema(
-  name: r'ChatConversationEntity',
-  id: 6241151859022060416,
+  name: r'conversation',
+  id: 407682453440200747,
   properties: {
-    r'accountId': PropertySchema(
+    r'account_id': PropertySchema(
       id: 0,
-      name: r'accountId',
+      name: r'account_id',
       type: IsarType.string,
     ),
-    r'bindingRevision': PropertySchema(
-      id: 1,
-      name: r'bindingRevision',
-      type: IsarType.long,
-    ),
-    r'conversationId': PropertySchema(
+    r'bind_rev': PropertySchema(id: 1, name: r'bind_rev', type: IsarType.long),
+    r'chat_kind': PropertySchema(
       id: 2,
-      name: r'conversationId',
+      name: r'chat_kind',
       type: IsarType.string,
     ),
-    r'conversationKind': PropertySchema(
+    r'chat_title': PropertySchema(
       id: 3,
-      name: r'conversationKind',
+      name: r'chat_title',
       type: IsarType.string,
     ),
-    r'lastDeliveryState': PropertySchema(
+    r'conversation_id': PropertySchema(
       id: 4,
-      name: r'lastDeliveryState',
+      name: r'conversation_id',
       type: IsarType.string,
     ),
-    r'lastMessageSummary': PropertySchema(
+    r'delivery_state': PropertySchema(
       id: 5,
-      name: r'lastMessageSummary',
+      name: r'delivery_state',
       type: IsarType.string,
     ),
-    r'lastUpdatedAtMillis': PropertySchema(
+    r'message_summary': PropertySchema(
       id: 6,
-      name: r'lastUpdatedAtMillis',
+      name: r'message_summary',
+      type: IsarType.string,
+    ),
+    r'owner_id': PropertySchema(
+      id: 7,
+      name: r'owner_id',
+      type: IsarType.string,
+    ),
+    r'peer_id': PropertySchema(id: 8, name: r'peer_id', type: IsarType.string),
+    r'unread_count': PropertySchema(
+      id: 9,
+      name: r'unread_count',
       type: IsarType.long,
     ),
-    r'ownerUserId': PropertySchema(
-      id: 7,
-      name: r'ownerUserId',
-      type: IsarType.string,
-    ),
-    r'peerUserId': PropertySchema(
-      id: 8,
-      name: r'peerUserId',
-      type: IsarType.string,
-    ),
-    r'title': PropertySchema(id: 9, name: r'title', type: IsarType.string),
-    r'unreadCount': PropertySchema(
+    r'updated_at': PropertySchema(
       id: 10,
-      name: r'unreadCount',
+      name: r'updated_at',
       type: IsarType.long,
     ),
   },
@@ -75,47 +71,47 @@ const ChatConversationEntitySchema = CollectionSchema(
   serialize: _chatConversationEntitySerialize,
   deserialize: _chatConversationEntityDeserialize,
   deserializeProp: _chatConversationEntityDeserializeProp,
-  idName: r'id',
+  idName: r'row_id',
   indexes: {
-    r'ownerUserId_conversationId': IndexSchema(
-      id: -1557975782428397721,
-      name: r'ownerUserId_conversationId',
+    r'owner_id_conversation_id': IndexSchema(
+      id: 55240996454853881,
+      name: r'owner_id_conversation_id',
       unique: true,
       replace: true,
       properties: [
         IndexPropertySchema(
-          name: r'ownerUserId',
+          name: r'owner_id',
           type: IndexType.hash,
           caseSensitive: true,
         ),
         IndexPropertySchema(
-          name: r'conversationId',
-          type: IndexType.hash,
-          caseSensitive: true,
-        ),
-      ],
-    ),
-    r'peerUserId': IndexSchema(
-      id: -8522531963780779589,
-      name: r'peerUserId',
-      unique: false,
-      replace: false,
-      properties: [
-        IndexPropertySchema(
-          name: r'peerUserId',
+          name: r'conversation_id',
           type: IndexType.hash,
           caseSensitive: true,
         ),
       ],
     ),
-    r'lastUpdatedAtMillis': IndexSchema(
-      id: 6170169168052042175,
-      name: r'lastUpdatedAtMillis',
+    r'peer_id': IndexSchema(
+      id: -1524088446866973519,
+      name: r'peer_id',
       unique: false,
       replace: false,
       properties: [
         IndexPropertySchema(
-          name: r'lastUpdatedAtMillis',
+          name: r'peer_id',
+          type: IndexType.hash,
+          caseSensitive: true,
+        ),
+      ],
+    ),
+    r'updated_at': IndexSchema(
+      id: -1449665799000962892,
+      name: r'updated_at',
+      unique: false,
+      replace: false,
+      properties: [
+        IndexPropertySchema(
+          name: r'updated_at',
           type: IndexType.value,
           caseSensitive: false,
         ),
@@ -138,18 +134,23 @@ int _chatConversationEntityEstimateSize(
 ) {
   var bytesCount = offsets.last;
   bytesCount += 3 + object.accountId.length * 3;
-  bytesCount += 3 + object.conversationId.length * 3;
   {
     final value = object.conversationKind;
     if (value != null) {
       bytesCount += 3 + value.length * 3;
     }
   }
+  {
+    final value = object.title;
+    if (value != null) {
+      bytesCount += 3 + value.length * 3;
+    }
+  }
+  bytesCount += 3 + object.conversationId.length * 3;
   bytesCount += 3 + object.lastDeliveryState.length * 3;
   bytesCount += 3 + object.lastMessageSummary.length * 3;
   bytesCount += 3 + object.ownerUserId.length * 3;
   bytesCount += 3 + object.peerUserId.length * 3;
-  bytesCount += 3 + object.title.length * 3;
   return bytesCount;
 }
 
@@ -161,15 +162,15 @@ void _chatConversationEntitySerialize(
 ) {
   writer.writeString(offsets[0], object.accountId);
   writer.writeLong(offsets[1], object.bindingRevision);
-  writer.writeString(offsets[2], object.conversationId);
-  writer.writeString(offsets[3], object.conversationKind);
-  writer.writeString(offsets[4], object.lastDeliveryState);
-  writer.writeString(offsets[5], object.lastMessageSummary);
-  writer.writeLong(offsets[6], object.lastUpdatedAtMillis);
+  writer.writeString(offsets[2], object.conversationKind);
+  writer.writeString(offsets[3], object.title);
+  writer.writeString(offsets[4], object.conversationId);
+  writer.writeString(offsets[5], object.lastDeliveryState);
+  writer.writeString(offsets[6], object.lastMessageSummary);
   writer.writeString(offsets[7], object.ownerUserId);
   writer.writeString(offsets[8], object.peerUserId);
-  writer.writeString(offsets[9], object.title);
-  writer.writeLong(offsets[10], object.unreadCount);
+  writer.writeLong(offsets[9], object.unreadCount);
+  writer.writeLong(offsets[10], object.updatedAtMillis);
 }
 
 ChatConversationEntity _chatConversationEntityDeserialize(
@@ -181,16 +182,16 @@ ChatConversationEntity _chatConversationEntityDeserialize(
   final object = ChatConversationEntity();
   object.accountId = reader.readString(offsets[0]);
   object.bindingRevision = reader.readLong(offsets[1]);
-  object.conversationId = reader.readString(offsets[2]);
-  object.conversationKind = reader.readStringOrNull(offsets[3]);
-  object.id = id;
-  object.lastDeliveryState = reader.readString(offsets[4]);
-  object.lastMessageSummary = reader.readString(offsets[5]);
-  object.lastUpdatedAtMillis = reader.readLong(offsets[6]);
+  object.conversationKind = reader.readStringOrNull(offsets[2]);
+  object.title = reader.readStringOrNull(offsets[3]);
+  object.conversationId = reader.readString(offsets[4]);
+  object.lastDeliveryState = reader.readString(offsets[5]);
+  object.lastMessageSummary = reader.readString(offsets[6]);
   object.ownerUserId = reader.readString(offsets[7]);
   object.peerUserId = reader.readString(offsets[8]);
-  object.title = reader.readString(offsets[9]);
-  object.unreadCount = reader.readLong(offsets[10]);
+  object.id = id;
+  object.unreadCount = reader.readLong(offsets[9]);
+  object.updatedAtMillis = reader.readLong(offsets[10]);
   return object;
 }
 
@@ -206,7 +207,7 @@ P _chatConversationEntityDeserializeProp<P>(
     case 1:
       return (reader.readLong(offset)) as P;
     case 2:
-      return (reader.readString(offset)) as P;
+      return (reader.readStringOrNull(offset)) as P;
     case 3:
       return (reader.readStringOrNull(offset)) as P;
     case 4:
@@ -214,13 +215,13 @@ P _chatConversationEntityDeserializeProp<P>(
     case 5:
       return (reader.readString(offset)) as P;
     case 6:
-      return (reader.readLong(offset)) as P;
+      return (reader.readString(offset)) as P;
     case 7:
       return (reader.readString(offset)) as P;
     case 8:
       return (reader.readString(offset)) as P;
     case 9:
-      return (reader.readString(offset)) as P;
+      return (reader.readLong(offset)) as P;
     case 10:
       return (reader.readLong(offset)) as P;
     default:
@@ -252,7 +253,7 @@ extension ChatConversationEntityByIndex
     String ownerUserId,
     String conversationId,
   ) {
-    return getByIndex(r'ownerUserId_conversationId', [
+    return getByIndex(r'owner_id_conversation_id', [
       ownerUserId,
       conversationId,
     ]);
@@ -262,7 +263,7 @@ extension ChatConversationEntityByIndex
     String ownerUserId,
     String conversationId,
   ) {
-    return getByIndexSync(r'ownerUserId_conversationId', [
+    return getByIndexSync(r'owner_id_conversation_id', [
       ownerUserId,
       conversationId,
     ]);
@@ -272,7 +273,7 @@ extension ChatConversationEntityByIndex
     String ownerUserId,
     String conversationId,
   ) {
-    return deleteByIndex(r'ownerUserId_conversationId', [
+    return deleteByIndex(r'owner_id_conversation_id', [
       ownerUserId,
       conversationId,
     ]);
@@ -282,7 +283,7 @@ extension ChatConversationEntityByIndex
     String ownerUserId,
     String conversationId,
   ) {
-    return deleteByIndexSync(r'ownerUserId_conversationId', [
+    return deleteByIndexSync(r'owner_id_conversation_id', [
       ownerUserId,
       conversationId,
     ]);
@@ -302,7 +303,7 @@ extension ChatConversationEntityByIndex
       values.add([ownerUserIdValues[i], conversationIdValues[i]]);
     }
 
-    return getAllByIndex(r'ownerUserId_conversationId', values);
+    return getAllByIndex(r'owner_id_conversation_id', values);
   }
 
   List<ChatConversationEntity?> getAllByOwnerUserIdConversationIdSync(
@@ -319,7 +320,7 @@ extension ChatConversationEntityByIndex
       values.add([ownerUserIdValues[i], conversationIdValues[i]]);
     }
 
-    return getAllByIndexSync(r'ownerUserId_conversationId', values);
+    return getAllByIndexSync(r'owner_id_conversation_id', values);
   }
 
   Future<int> deleteAllByOwnerUserIdConversationId(
@@ -336,7 +337,7 @@ extension ChatConversationEntityByIndex
       values.add([ownerUserIdValues[i], conversationIdValues[i]]);
     }
 
-    return deleteAllByIndex(r'ownerUserId_conversationId', values);
+    return deleteAllByIndex(r'owner_id_conversation_id', values);
   }
 
   int deleteAllByOwnerUserIdConversationIdSync(
@@ -353,11 +354,11 @@ extension ChatConversationEntityByIndex
       values.add([ownerUserIdValues[i], conversationIdValues[i]]);
     }
 
-    return deleteAllByIndexSync(r'ownerUserId_conversationId', values);
+    return deleteAllByIndexSync(r'owner_id_conversation_id', values);
   }
 
   Future<Id> putByOwnerUserIdConversationId(ChatConversationEntity object) {
-    return putByIndex(r'ownerUserId_conversationId', object);
+    return putByIndex(r'owner_id_conversation_id', object);
   }
 
   Id putByOwnerUserIdConversationIdSync(
@@ -365,7 +366,7 @@ extension ChatConversationEntityByIndex
     bool saveLinks = true,
   }) {
     return putByIndexSync(
-      r'ownerUserId_conversationId',
+      r'owner_id_conversation_id',
       object,
       saveLinks: saveLinks,
     );
@@ -374,7 +375,7 @@ extension ChatConversationEntityByIndex
   Future<List<Id>> putAllByOwnerUserIdConversationId(
     List<ChatConversationEntity> objects,
   ) {
-    return putAllByIndex(r'ownerUserId_conversationId', objects);
+    return putAllByIndex(r'owner_id_conversation_id', objects);
   }
 
   List<Id> putAllByOwnerUserIdConversationIdSync(
@@ -382,7 +383,7 @@ extension ChatConversationEntityByIndex
     bool saveLinks = true,
   }) {
     return putAllByIndexSync(
-      r'ownerUserId_conversationId',
+      r'owner_id_conversation_id',
       objects,
       saveLinks: saveLinks,
     );
@@ -399,10 +400,10 @@ extension ChatConversationEntityQueryWhereSort
   }
 
   QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterWhere>
-  anyLastUpdatedAtMillis() {
+  anyUpdatedAtMillis() {
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
-        const IndexWhereClause.any(indexName: r'lastUpdatedAtMillis'),
+        const IndexWhereClause.any(indexName: r'updated_at'),
       );
     });
   }
@@ -511,7 +512,7 @@ extension ChatConversationEntityQueryWhere
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         IndexWhereClause.equalTo(
-          indexName: r'ownerUserId_conversationId',
+          indexName: r'owner_id_conversation_id',
           value: [ownerUserId],
         ),
       );
@@ -529,7 +530,7 @@ extension ChatConversationEntityQueryWhere
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_conversationId',
+                indexName: r'owner_id_conversation_id',
                 lower: [],
                 upper: [ownerUserId],
                 includeUpper: false,
@@ -537,7 +538,7 @@ extension ChatConversationEntityQueryWhere
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_conversationId',
+                indexName: r'owner_id_conversation_id',
                 lower: [ownerUserId],
                 includeLower: false,
                 upper: [],
@@ -547,7 +548,7 @@ extension ChatConversationEntityQueryWhere
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_conversationId',
+                indexName: r'owner_id_conversation_id',
                 lower: [ownerUserId],
                 includeLower: false,
                 upper: [],
@@ -555,7 +556,7 @@ extension ChatConversationEntityQueryWhere
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_conversationId',
+                indexName: r'owner_id_conversation_id',
                 lower: [],
                 upper: [ownerUserId],
                 includeUpper: false,
@@ -574,7 +575,7 @@ extension ChatConversationEntityQueryWhere
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         IndexWhereClause.equalTo(
-          indexName: r'ownerUserId_conversationId',
+          indexName: r'owner_id_conversation_id',
           value: [ownerUserId, conversationId],
         ),
       );
@@ -595,7 +596,7 @@ extension ChatConversationEntityQueryWhere
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_conversationId',
+                indexName: r'owner_id_conversation_id',
                 lower: [ownerUserId],
                 upper: [ownerUserId, conversationId],
                 includeUpper: false,
@@ -603,7 +604,7 @@ extension ChatConversationEntityQueryWhere
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_conversationId',
+                indexName: r'owner_id_conversation_id',
                 lower: [ownerUserId, conversationId],
                 includeLower: false,
                 upper: [ownerUserId],
@@ -613,7 +614,7 @@ extension ChatConversationEntityQueryWhere
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_conversationId',
+                indexName: r'owner_id_conversation_id',
                 lower: [ownerUserId, conversationId],
                 includeLower: false,
                 upper: [ownerUserId],
@@ -621,7 +622,7 @@ extension ChatConversationEntityQueryWhere
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_conversationId',
+                indexName: r'owner_id_conversation_id',
                 lower: [ownerUserId],
                 upper: [ownerUserId, conversationId],
                 includeUpper: false,
@@ -639,7 +640,7 @@ extension ChatConversationEntityQueryWhere
   peerUserIdEqualTo(String peerUserId) {
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
-        IndexWhereClause.equalTo(indexName: r'peerUserId', value: [peerUserId]),
+        IndexWhereClause.equalTo(indexName: r'peer_id', value: [peerUserId]),
       );
     });
   }
@@ -655,7 +656,7 @@ extension ChatConversationEntityQueryWhere
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'peerUserId',
+                indexName: r'peer_id',
                 lower: [],
                 upper: [peerUserId],
                 includeUpper: false,
@@ -663,7 +664,7 @@ extension ChatConversationEntityQueryWhere
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'peerUserId',
+                indexName: r'peer_id',
                 lower: [peerUserId],
                 includeLower: false,
                 upper: [],
@@ -673,7 +674,7 @@ extension ChatConversationEntityQueryWhere
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'peerUserId',
+                indexName: r'peer_id',
                 lower: [peerUserId],
                 includeLower: false,
                 upper: [],
@@ -681,7 +682,7 @@ extension ChatConversationEntityQueryWhere
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'peerUserId',
+                indexName: r'peer_id',
                 lower: [],
                 upper: [peerUserId],
                 includeUpper: false,
@@ -696,12 +697,12 @@ extension ChatConversationEntityQueryWhere
     ChatConversationEntity,
     QAfterWhereClause
   >
-  lastUpdatedAtMillisEqualTo(int lastUpdatedAtMillis) {
+  updatedAtMillisEqualTo(int updatedAtMillis) {
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         IndexWhereClause.equalTo(
-          indexName: r'lastUpdatedAtMillis',
-          value: [lastUpdatedAtMillis],
+          indexName: r'updated_at',
+          value: [updatedAtMillis],
         ),
       );
     });
@@ -712,22 +713,22 @@ extension ChatConversationEntityQueryWhere
     ChatConversationEntity,
     QAfterWhereClause
   >
-  lastUpdatedAtMillisNotEqualTo(int lastUpdatedAtMillis) {
+  updatedAtMillisNotEqualTo(int updatedAtMillis) {
     return QueryBuilder.apply(this, (query) {
       if (query.whereSort == Sort.asc) {
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'lastUpdatedAtMillis',
+                indexName: r'updated_at',
                 lower: [],
-                upper: [lastUpdatedAtMillis],
+                upper: [updatedAtMillis],
                 includeUpper: false,
               ),
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'lastUpdatedAtMillis',
-                lower: [lastUpdatedAtMillis],
+                indexName: r'updated_at',
+                lower: [updatedAtMillis],
                 includeLower: false,
                 upper: [],
               ),
@@ -736,17 +737,17 @@ extension ChatConversationEntityQueryWhere
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'lastUpdatedAtMillis',
-                lower: [lastUpdatedAtMillis],
+                indexName: r'updated_at',
+                lower: [updatedAtMillis],
                 includeLower: false,
                 upper: [],
               ),
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'lastUpdatedAtMillis',
+                indexName: r'updated_at',
                 lower: [],
-                upper: [lastUpdatedAtMillis],
+                upper: [updatedAtMillis],
                 includeUpper: false,
               ),
             );
@@ -759,15 +760,12 @@ extension ChatConversationEntityQueryWhere
     ChatConversationEntity,
     QAfterWhereClause
   >
-  lastUpdatedAtMillisGreaterThan(
-    int lastUpdatedAtMillis, {
-    bool include = false,
-  }) {
+  updatedAtMillisGreaterThan(int updatedAtMillis, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         IndexWhereClause.between(
-          indexName: r'lastUpdatedAtMillis',
-          lower: [lastUpdatedAtMillis],
+          indexName: r'updated_at',
+          lower: [updatedAtMillis],
           includeLower: include,
           upper: [],
         ),
@@ -780,13 +778,13 @@ extension ChatConversationEntityQueryWhere
     ChatConversationEntity,
     QAfterWhereClause
   >
-  lastUpdatedAtMillisLessThan(int lastUpdatedAtMillis, {bool include = false}) {
+  updatedAtMillisLessThan(int updatedAtMillis, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         IndexWhereClause.between(
-          indexName: r'lastUpdatedAtMillis',
+          indexName: r'updated_at',
           lower: [],
-          upper: [lastUpdatedAtMillis],
+          upper: [updatedAtMillis],
           includeUpper: include,
         ),
       );
@@ -798,19 +796,19 @@ extension ChatConversationEntityQueryWhere
     ChatConversationEntity,
     QAfterWhereClause
   >
-  lastUpdatedAtMillisBetween(
-    int lowerLastUpdatedAtMillis,
-    int upperLastUpdatedAtMillis, {
+  updatedAtMillisBetween(
+    int lowerUpdatedAtMillis,
+    int upperUpdatedAtMillis, {
     bool includeLower = true,
     bool includeUpper = true,
   }) {
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         IndexWhereClause.between(
-          indexName: r'lastUpdatedAtMillis',
-          lower: [lowerLastUpdatedAtMillis],
+          indexName: r'updated_at',
+          lower: [lowerUpdatedAtMillis],
           includeLower: includeLower,
-          upper: [upperLastUpdatedAtMillis],
+          upper: [upperUpdatedAtMillis],
           includeUpper: includeUpper,
         ),
       );
@@ -834,7 +832,7 @@ extension ChatConversationEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.equalTo(
-          property: r'accountId',
+          property: r'account_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -856,7 +854,7 @@ extension ChatConversationEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'accountId',
+          property: r'account_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -878,7 +876,7 @@ extension ChatConversationEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'accountId',
+          property: r'account_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -901,7 +899,7 @@ extension ChatConversationEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'accountId',
+          property: r'account_id',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -921,7 +919,7 @@ extension ChatConversationEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.startsWith(
-          property: r'accountId',
+          property: r'account_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -938,7 +936,7 @@ extension ChatConversationEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.endsWith(
-          property: r'accountId',
+          property: r'account_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -955,7 +953,7 @@ extension ChatConversationEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.contains(
-          property: r'accountId',
+          property: r'account_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -972,7 +970,7 @@ extension ChatConversationEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.matches(
-          property: r'accountId',
+          property: r'account_id',
           wildcard: pattern,
           caseSensitive: caseSensitive,
         ),
@@ -988,7 +986,7 @@ extension ChatConversationEntityQueryFilter
   accountIdIsEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'accountId', value: ''),
+        FilterCondition.equalTo(property: r'account_id', value: ''),
       );
     });
   }
@@ -1001,7 +999,7 @@ extension ChatConversationEntityQueryFilter
   accountIdIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'accountId', value: ''),
+        FilterCondition.greaterThan(property: r'account_id', value: ''),
       );
     });
   }
@@ -1014,7 +1012,7 @@ extension ChatConversationEntityQueryFilter
   bindingRevisionEqualTo(int value) {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'bindingRevision', value: value),
+        FilterCondition.equalTo(property: r'bind_rev', value: value),
       );
     });
   }
@@ -1029,7 +1027,7 @@ extension ChatConversationEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'bindingRevision',
+          property: r'bind_rev',
           value: value,
         ),
       );
@@ -1046,7 +1044,7 @@ extension ChatConversationEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'bindingRevision',
+          property: r'bind_rev',
           value: value,
         ),
       );
@@ -1067,193 +1065,12 @@ extension ChatConversationEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'bindingRevision',
+          property: r'bind_rev',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
           includeUpper: includeUpper,
         ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatConversationEntity,
-    ChatConversationEntity,
-    QAfterFilterCondition
-  >
-  conversationIdEqualTo(String value, {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.equalTo(
-          property: r'conversationId',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatConversationEntity,
-    ChatConversationEntity,
-    QAfterFilterCondition
-  >
-  conversationIdGreaterThan(
-    String value, {
-    bool include = false,
-    bool caseSensitive = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.greaterThan(
-          include: include,
-          property: r'conversationId',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatConversationEntity,
-    ChatConversationEntity,
-    QAfterFilterCondition
-  >
-  conversationIdLessThan(
-    String value, {
-    bool include = false,
-    bool caseSensitive = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.lessThan(
-          include: include,
-          property: r'conversationId',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatConversationEntity,
-    ChatConversationEntity,
-    QAfterFilterCondition
-  >
-  conversationIdBetween(
-    String lower,
-    String upper, {
-    bool includeLower = true,
-    bool includeUpper = true,
-    bool caseSensitive = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.between(
-          property: r'conversationId',
-          lower: lower,
-          includeLower: includeLower,
-          upper: upper,
-          includeUpper: includeUpper,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatConversationEntity,
-    ChatConversationEntity,
-    QAfterFilterCondition
-  >
-  conversationIdStartsWith(String value, {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.startsWith(
-          property: r'conversationId',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatConversationEntity,
-    ChatConversationEntity,
-    QAfterFilterCondition
-  >
-  conversationIdEndsWith(String value, {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.endsWith(
-          property: r'conversationId',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatConversationEntity,
-    ChatConversationEntity,
-    QAfterFilterCondition
-  >
-  conversationIdContains(String value, {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.contains(
-          property: r'conversationId',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatConversationEntity,
-    ChatConversationEntity,
-    QAfterFilterCondition
-  >
-  conversationIdMatches(String pattern, {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.matches(
-          property: r'conversationId',
-          wildcard: pattern,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatConversationEntity,
-    ChatConversationEntity,
-    QAfterFilterCondition
-  >
-  conversationIdIsEmpty() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'conversationId', value: ''),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatConversationEntity,
-    ChatConversationEntity,
-    QAfterFilterCondition
-  >
-  conversationIdIsNotEmpty() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'conversationId', value: ''),
       );
     });
   }
@@ -1266,7 +1083,7 @@ extension ChatConversationEntityQueryFilter
   conversationKindIsNull() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        const FilterCondition.isNull(property: r'conversationKind'),
+        const FilterCondition.isNull(property: r'chat_kind'),
       );
     });
   }
@@ -1279,7 +1096,7 @@ extension ChatConversationEntityQueryFilter
   conversationKindIsNotNull() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        const FilterCondition.isNotNull(property: r'conversationKind'),
+        const FilterCondition.isNotNull(property: r'chat_kind'),
       );
     });
   }
@@ -1293,7 +1110,7 @@ extension ChatConversationEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.equalTo(
-          property: r'conversationKind',
+          property: r'chat_kind',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -1315,7 +1132,7 @@ extension ChatConversationEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'conversationKind',
+          property: r'chat_kind',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -1337,7 +1154,7 @@ extension ChatConversationEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'conversationKind',
+          property: r'chat_kind',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -1360,7 +1177,7 @@ extension ChatConversationEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'conversationKind',
+          property: r'chat_kind',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -1380,7 +1197,7 @@ extension ChatConversationEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.startsWith(
-          property: r'conversationKind',
+          property: r'chat_kind',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -1397,7 +1214,7 @@ extension ChatConversationEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.endsWith(
-          property: r'conversationKind',
+          property: r'chat_kind',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -1414,7 +1231,7 @@ extension ChatConversationEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.contains(
-          property: r'conversationKind',
+          property: r'chat_kind',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -1431,7 +1248,7 @@ extension ChatConversationEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.matches(
-          property: r'conversationKind',
+          property: r'chat_kind',
           wildcard: pattern,
           caseSensitive: caseSensitive,
         ),
@@ -1447,7 +1264,7 @@ extension ChatConversationEntityQueryFilter
   conversationKindIsEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'conversationKind', value: ''),
+        FilterCondition.equalTo(property: r'chat_kind', value: ''),
       );
     });
   }
@@ -1460,7 +1277,7 @@ extension ChatConversationEntityQueryFilter
   conversationKindIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'conversationKind', value: ''),
+        FilterCondition.greaterThan(property: r'chat_kind', value: ''),
       );
     });
   }
@@ -1470,10 +1287,10 @@ extension ChatConversationEntityQueryFilter
     ChatConversationEntity,
     QAfterFilterCondition
   >
-  idEqualTo(Id value) {
+  titleIsNull() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'id', value: value),
+        const FilterCondition.isNull(property: r'chat_title'),
       );
     });
   }
@@ -1483,13 +1300,48 @@ extension ChatConversationEntityQueryFilter
     ChatConversationEntity,
     QAfterFilterCondition
   >
-  idGreaterThan(Id value, {bool include = false}) {
+  titleIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        const FilterCondition.isNotNull(property: r'chat_title'),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatConversationEntity,
+    ChatConversationEntity,
+    QAfterFilterCondition
+  >
+  titleEqualTo(String? value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.equalTo(
+          property: r'chat_title',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatConversationEntity,
+    ChatConversationEntity,
+    QAfterFilterCondition
+  >
+  titleGreaterThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'id',
+          property: r'chat_title',
           value: value,
+          caseSensitive: caseSensitive,
         ),
       );
     });
@@ -1500,13 +1352,18 @@ extension ChatConversationEntityQueryFilter
     ChatConversationEntity,
     QAfterFilterCondition
   >
-  idLessThan(Id value, {bool include = false}) {
+  titleLessThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'id',
+          property: r'chat_title',
           value: value,
+          caseSensitive: caseSensitive,
         ),
       );
     });
@@ -1517,21 +1374,298 @@ extension ChatConversationEntityQueryFilter
     ChatConversationEntity,
     QAfterFilterCondition
   >
-  idBetween(
-    Id lower,
-    Id upper, {
+  titleBetween(
+    String? lower,
+    String? upper, {
     bool includeLower = true,
     bool includeUpper = true,
+    bool caseSensitive = true,
   }) {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'id',
+          property: r'chat_title',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
           includeUpper: includeUpper,
+          caseSensitive: caseSensitive,
         ),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatConversationEntity,
+    ChatConversationEntity,
+    QAfterFilterCondition
+  >
+  titleStartsWith(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.startsWith(
+          property: r'chat_title',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatConversationEntity,
+    ChatConversationEntity,
+    QAfterFilterCondition
+  >
+  titleEndsWith(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.endsWith(
+          property: r'chat_title',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatConversationEntity,
+    ChatConversationEntity,
+    QAfterFilterCondition
+  >
+  titleContains(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.contains(
+          property: r'chat_title',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatConversationEntity,
+    ChatConversationEntity,
+    QAfterFilterCondition
+  >
+  titleMatches(String pattern, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.matches(
+          property: r'chat_title',
+          wildcard: pattern,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatConversationEntity,
+    ChatConversationEntity,
+    QAfterFilterCondition
+  >
+  titleIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.equalTo(property: r'chat_title', value: ''),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatConversationEntity,
+    ChatConversationEntity,
+    QAfterFilterCondition
+  >
+  titleIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(property: r'chat_title', value: ''),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatConversationEntity,
+    ChatConversationEntity,
+    QAfterFilterCondition
+  >
+  conversationIdEqualTo(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.equalTo(
+          property: r'conversation_id',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatConversationEntity,
+    ChatConversationEntity,
+    QAfterFilterCondition
+  >
+  conversationIdGreaterThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(
+          include: include,
+          property: r'conversation_id',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatConversationEntity,
+    ChatConversationEntity,
+    QAfterFilterCondition
+  >
+  conversationIdLessThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.lessThan(
+          include: include,
+          property: r'conversation_id',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatConversationEntity,
+    ChatConversationEntity,
+    QAfterFilterCondition
+  >
+  conversationIdBetween(
+    String lower,
+    String upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.between(
+          property: r'conversation_id',
+          lower: lower,
+          includeLower: includeLower,
+          upper: upper,
+          includeUpper: includeUpper,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatConversationEntity,
+    ChatConversationEntity,
+    QAfterFilterCondition
+  >
+  conversationIdStartsWith(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.startsWith(
+          property: r'conversation_id',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatConversationEntity,
+    ChatConversationEntity,
+    QAfterFilterCondition
+  >
+  conversationIdEndsWith(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.endsWith(
+          property: r'conversation_id',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatConversationEntity,
+    ChatConversationEntity,
+    QAfterFilterCondition
+  >
+  conversationIdContains(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.contains(
+          property: r'conversation_id',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatConversationEntity,
+    ChatConversationEntity,
+    QAfterFilterCondition
+  >
+  conversationIdMatches(String pattern, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.matches(
+          property: r'conversation_id',
+          wildcard: pattern,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatConversationEntity,
+    ChatConversationEntity,
+    QAfterFilterCondition
+  >
+  conversationIdIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.equalTo(property: r'conversation_id', value: ''),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatConversationEntity,
+    ChatConversationEntity,
+    QAfterFilterCondition
+  >
+  conversationIdIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(property: r'conversation_id', value: ''),
       );
     });
   }
@@ -1545,7 +1679,7 @@ extension ChatConversationEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.equalTo(
-          property: r'lastDeliveryState',
+          property: r'delivery_state',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -1567,7 +1701,7 @@ extension ChatConversationEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'lastDeliveryState',
+          property: r'delivery_state',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -1589,7 +1723,7 @@ extension ChatConversationEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'lastDeliveryState',
+          property: r'delivery_state',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -1612,7 +1746,7 @@ extension ChatConversationEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'lastDeliveryState',
+          property: r'delivery_state',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -1632,7 +1766,7 @@ extension ChatConversationEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.startsWith(
-          property: r'lastDeliveryState',
+          property: r'delivery_state',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -1649,7 +1783,7 @@ extension ChatConversationEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.endsWith(
-          property: r'lastDeliveryState',
+          property: r'delivery_state',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -1666,7 +1800,7 @@ extension ChatConversationEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.contains(
-          property: r'lastDeliveryState',
+          property: r'delivery_state',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -1683,7 +1817,7 @@ extension ChatConversationEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.matches(
-          property: r'lastDeliveryState',
+          property: r'delivery_state',
           wildcard: pattern,
           caseSensitive: caseSensitive,
         ),
@@ -1699,7 +1833,7 @@ extension ChatConversationEntityQueryFilter
   lastDeliveryStateIsEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'lastDeliveryState', value: ''),
+        FilterCondition.equalTo(property: r'delivery_state', value: ''),
       );
     });
   }
@@ -1712,7 +1846,7 @@ extension ChatConversationEntityQueryFilter
   lastDeliveryStateIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'lastDeliveryState', value: ''),
+        FilterCondition.greaterThan(property: r'delivery_state', value: ''),
       );
     });
   }
@@ -1726,7 +1860,7 @@ extension ChatConversationEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.equalTo(
-          property: r'lastMessageSummary',
+          property: r'message_summary',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -1748,7 +1882,7 @@ extension ChatConversationEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'lastMessageSummary',
+          property: r'message_summary',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -1770,7 +1904,7 @@ extension ChatConversationEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'lastMessageSummary',
+          property: r'message_summary',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -1793,7 +1927,7 @@ extension ChatConversationEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'lastMessageSummary',
+          property: r'message_summary',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -1813,7 +1947,7 @@ extension ChatConversationEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.startsWith(
-          property: r'lastMessageSummary',
+          property: r'message_summary',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -1830,7 +1964,7 @@ extension ChatConversationEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.endsWith(
-          property: r'lastMessageSummary',
+          property: r'message_summary',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -1847,7 +1981,7 @@ extension ChatConversationEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.contains(
-          property: r'lastMessageSummary',
+          property: r'message_summary',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -1864,7 +1998,7 @@ extension ChatConversationEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.matches(
-          property: r'lastMessageSummary',
+          property: r'message_summary',
           wildcard: pattern,
           caseSensitive: caseSensitive,
         ),
@@ -1880,7 +2014,7 @@ extension ChatConversationEntityQueryFilter
   lastMessageSummaryIsEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'lastMessageSummary', value: ''),
+        FilterCondition.equalTo(property: r'message_summary', value: ''),
       );
     });
   }
@@ -1893,78 +2027,7 @@ extension ChatConversationEntityQueryFilter
   lastMessageSummaryIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'lastMessageSummary', value: ''),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatConversationEntity,
-    ChatConversationEntity,
-    QAfterFilterCondition
-  >
-  lastUpdatedAtMillisEqualTo(int value) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'lastUpdatedAtMillis', value: value),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatConversationEntity,
-    ChatConversationEntity,
-    QAfterFilterCondition
-  >
-  lastUpdatedAtMillisGreaterThan(int value, {bool include = false}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.greaterThan(
-          include: include,
-          property: r'lastUpdatedAtMillis',
-          value: value,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatConversationEntity,
-    ChatConversationEntity,
-    QAfterFilterCondition
-  >
-  lastUpdatedAtMillisLessThan(int value, {bool include = false}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.lessThan(
-          include: include,
-          property: r'lastUpdatedAtMillis',
-          value: value,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatConversationEntity,
-    ChatConversationEntity,
-    QAfterFilterCondition
-  >
-  lastUpdatedAtMillisBetween(
-    int lower,
-    int upper, {
-    bool includeLower = true,
-    bool includeUpper = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.between(
-          property: r'lastUpdatedAtMillis',
-          lower: lower,
-          includeLower: includeLower,
-          upper: upper,
-          includeUpper: includeUpper,
-        ),
+        FilterCondition.greaterThan(property: r'message_summary', value: ''),
       );
     });
   }
@@ -1978,7 +2041,7 @@ extension ChatConversationEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.equalTo(
-          property: r'ownerUserId',
+          property: r'owner_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -2000,7 +2063,7 @@ extension ChatConversationEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'ownerUserId',
+          property: r'owner_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -2022,7 +2085,7 @@ extension ChatConversationEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'ownerUserId',
+          property: r'owner_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -2045,7 +2108,7 @@ extension ChatConversationEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'ownerUserId',
+          property: r'owner_id',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -2065,7 +2128,7 @@ extension ChatConversationEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.startsWith(
-          property: r'ownerUserId',
+          property: r'owner_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -2082,7 +2145,7 @@ extension ChatConversationEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.endsWith(
-          property: r'ownerUserId',
+          property: r'owner_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -2099,7 +2162,7 @@ extension ChatConversationEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.contains(
-          property: r'ownerUserId',
+          property: r'owner_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -2116,7 +2179,7 @@ extension ChatConversationEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.matches(
-          property: r'ownerUserId',
+          property: r'owner_id',
           wildcard: pattern,
           caseSensitive: caseSensitive,
         ),
@@ -2132,7 +2195,7 @@ extension ChatConversationEntityQueryFilter
   ownerUserIdIsEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'ownerUserId', value: ''),
+        FilterCondition.equalTo(property: r'owner_id', value: ''),
       );
     });
   }
@@ -2145,7 +2208,7 @@ extension ChatConversationEntityQueryFilter
   ownerUserIdIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'ownerUserId', value: ''),
+        FilterCondition.greaterThan(property: r'owner_id', value: ''),
       );
     });
   }
@@ -2159,7 +2222,7 @@ extension ChatConversationEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.equalTo(
-          property: r'peerUserId',
+          property: r'peer_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -2181,7 +2244,7 @@ extension ChatConversationEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'peerUserId',
+          property: r'peer_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -2203,7 +2266,7 @@ extension ChatConversationEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'peerUserId',
+          property: r'peer_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -2226,7 +2289,7 @@ extension ChatConversationEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'peerUserId',
+          property: r'peer_id',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -2246,7 +2309,7 @@ extension ChatConversationEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.startsWith(
-          property: r'peerUserId',
+          property: r'peer_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -2263,7 +2326,7 @@ extension ChatConversationEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.endsWith(
-          property: r'peerUserId',
+          property: r'peer_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -2280,7 +2343,7 @@ extension ChatConversationEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.contains(
-          property: r'peerUserId',
+          property: r'peer_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -2297,7 +2360,7 @@ extension ChatConversationEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.matches(
-          property: r'peerUserId',
+          property: r'peer_id',
           wildcard: pattern,
           caseSensitive: caseSensitive,
         ),
@@ -2313,7 +2376,7 @@ extension ChatConversationEntityQueryFilter
   peerUserIdIsEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'peerUserId', value: ''),
+        FilterCondition.equalTo(property: r'peer_id', value: ''),
       );
     });
   }
@@ -2326,7 +2389,7 @@ extension ChatConversationEntityQueryFilter
   peerUserIdIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'peerUserId', value: ''),
+        FilterCondition.greaterThan(property: r'peer_id', value: ''),
       );
     });
   }
@@ -2336,14 +2399,10 @@ extension ChatConversationEntityQueryFilter
     ChatConversationEntity,
     QAfterFilterCondition
   >
-  titleEqualTo(String value, {bool caseSensitive = true}) {
+  idEqualTo(Id value) {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(
-          property: r'title',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
+        FilterCondition.equalTo(property: r'row_id', value: value),
       );
     });
   }
@@ -2353,18 +2412,13 @@ extension ChatConversationEntityQueryFilter
     ChatConversationEntity,
     QAfterFilterCondition
   >
-  titleGreaterThan(
-    String value, {
-    bool include = false,
-    bool caseSensitive = true,
-  }) {
+  idGreaterThan(Id value, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'title',
+          property: r'row_id',
           value: value,
-          caseSensitive: caseSensitive,
         ),
       );
     });
@@ -2375,18 +2429,13 @@ extension ChatConversationEntityQueryFilter
     ChatConversationEntity,
     QAfterFilterCondition
   >
-  titleLessThan(
-    String value, {
-    bool include = false,
-    bool caseSensitive = true,
-  }) {
+  idLessThan(Id value, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'title',
+          property: r'row_id',
           value: value,
-          caseSensitive: caseSensitive,
         ),
       );
     });
@@ -2397,117 +2446,21 @@ extension ChatConversationEntityQueryFilter
     ChatConversationEntity,
     QAfterFilterCondition
   >
-  titleBetween(
-    String lower,
-    String upper, {
+  idBetween(
+    Id lower,
+    Id upper, {
     bool includeLower = true,
     bool includeUpper = true,
-    bool caseSensitive = true,
   }) {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'title',
+          property: r'row_id',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
           includeUpper: includeUpper,
-          caseSensitive: caseSensitive,
         ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatConversationEntity,
-    ChatConversationEntity,
-    QAfterFilterCondition
-  >
-  titleStartsWith(String value, {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.startsWith(
-          property: r'title',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatConversationEntity,
-    ChatConversationEntity,
-    QAfterFilterCondition
-  >
-  titleEndsWith(String value, {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.endsWith(
-          property: r'title',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatConversationEntity,
-    ChatConversationEntity,
-    QAfterFilterCondition
-  >
-  titleContains(String value, {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.contains(
-          property: r'title',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatConversationEntity,
-    ChatConversationEntity,
-    QAfterFilterCondition
-  >
-  titleMatches(String pattern, {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.matches(
-          property: r'title',
-          wildcard: pattern,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatConversationEntity,
-    ChatConversationEntity,
-    QAfterFilterCondition
-  >
-  titleIsEmpty() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'title', value: ''),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatConversationEntity,
-    ChatConversationEntity,
-    QAfterFilterCondition
-  >
-  titleIsNotEmpty() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'title', value: ''),
       );
     });
   }
@@ -2520,7 +2473,7 @@ extension ChatConversationEntityQueryFilter
   unreadCountEqualTo(int value) {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'unreadCount', value: value),
+        FilterCondition.equalTo(property: r'unread_count', value: value),
       );
     });
   }
@@ -2535,7 +2488,7 @@ extension ChatConversationEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'unreadCount',
+          property: r'unread_count',
           value: value,
         ),
       );
@@ -2552,7 +2505,7 @@ extension ChatConversationEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'unreadCount',
+          property: r'unread_count',
           value: value,
         ),
       );
@@ -2573,7 +2526,78 @@ extension ChatConversationEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'unreadCount',
+          property: r'unread_count',
+          lower: lower,
+          includeLower: includeLower,
+          upper: upper,
+          includeUpper: includeUpper,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatConversationEntity,
+    ChatConversationEntity,
+    QAfterFilterCondition
+  >
+  updatedAtMillisEqualTo(int value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.equalTo(property: r'updated_at', value: value),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatConversationEntity,
+    ChatConversationEntity,
+    QAfterFilterCondition
+  >
+  updatedAtMillisGreaterThan(int value, {bool include = false}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(
+          include: include,
+          property: r'updated_at',
+          value: value,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatConversationEntity,
+    ChatConversationEntity,
+    QAfterFilterCondition
+  >
+  updatedAtMillisLessThan(int value, {bool include = false}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.lessThan(
+          include: include,
+          property: r'updated_at',
+          value: value,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatConversationEntity,
+    ChatConversationEntity,
+    QAfterFilterCondition
+  >
+  updatedAtMillisBetween(
+    int lower,
+    int upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.between(
+          property: r'updated_at',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -2605,154 +2629,154 @@ extension ChatConversationEntityQuerySortBy
   QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
   sortByAccountId() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'accountId', Sort.asc);
+      return query.addSortBy(r'account_id', Sort.asc);
     });
   }
 
   QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
   sortByAccountIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'accountId', Sort.desc);
+      return query.addSortBy(r'account_id', Sort.desc);
     });
   }
 
   QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
   sortByBindingRevision() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'bindingRevision', Sort.asc);
+      return query.addSortBy(r'bind_rev', Sort.asc);
     });
   }
 
   QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
   sortByBindingRevisionDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'bindingRevision', Sort.desc);
-    });
-  }
-
-  QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
-  sortByConversationId() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'conversationId', Sort.asc);
-    });
-  }
-
-  QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
-  sortByConversationIdDesc() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'conversationId', Sort.desc);
+      return query.addSortBy(r'bind_rev', Sort.desc);
     });
   }
 
   QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
   sortByConversationKind() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'conversationKind', Sort.asc);
+      return query.addSortBy(r'chat_kind', Sort.asc);
     });
   }
 
   QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
   sortByConversationKindDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'conversationKind', Sort.desc);
-    });
-  }
-
-  QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
-  sortByLastDeliveryState() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'lastDeliveryState', Sort.asc);
-    });
-  }
-
-  QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
-  sortByLastDeliveryStateDesc() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'lastDeliveryState', Sort.desc);
-    });
-  }
-
-  QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
-  sortByLastMessageSummary() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'lastMessageSummary', Sort.asc);
-    });
-  }
-
-  QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
-  sortByLastMessageSummaryDesc() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'lastMessageSummary', Sort.desc);
-    });
-  }
-
-  QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
-  sortByLastUpdatedAtMillis() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'lastUpdatedAtMillis', Sort.asc);
-    });
-  }
-
-  QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
-  sortByLastUpdatedAtMillisDesc() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'lastUpdatedAtMillis', Sort.desc);
-    });
-  }
-
-  QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
-  sortByOwnerUserId() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'ownerUserId', Sort.asc);
-    });
-  }
-
-  QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
-  sortByOwnerUserIdDesc() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'ownerUserId', Sort.desc);
-    });
-  }
-
-  QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
-  sortByPeerUserId() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'peerUserId', Sort.asc);
-    });
-  }
-
-  QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
-  sortByPeerUserIdDesc() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'peerUserId', Sort.desc);
+      return query.addSortBy(r'chat_kind', Sort.desc);
     });
   }
 
   QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
   sortByTitle() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'title', Sort.asc);
+      return query.addSortBy(r'chat_title', Sort.asc);
     });
   }
 
   QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
   sortByTitleDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'title', Sort.desc);
+      return query.addSortBy(r'chat_title', Sort.desc);
+    });
+  }
+
+  QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
+  sortByConversationId() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'conversation_id', Sort.asc);
+    });
+  }
+
+  QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
+  sortByConversationIdDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'conversation_id', Sort.desc);
+    });
+  }
+
+  QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
+  sortByLastDeliveryState() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'delivery_state', Sort.asc);
+    });
+  }
+
+  QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
+  sortByLastDeliveryStateDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'delivery_state', Sort.desc);
+    });
+  }
+
+  QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
+  sortByLastMessageSummary() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'message_summary', Sort.asc);
+    });
+  }
+
+  QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
+  sortByLastMessageSummaryDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'message_summary', Sort.desc);
+    });
+  }
+
+  QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
+  sortByOwnerUserId() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'owner_id', Sort.asc);
+    });
+  }
+
+  QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
+  sortByOwnerUserIdDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'owner_id', Sort.desc);
+    });
+  }
+
+  QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
+  sortByPeerUserId() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'peer_id', Sort.asc);
+    });
+  }
+
+  QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
+  sortByPeerUserIdDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'peer_id', Sort.desc);
     });
   }
 
   QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
   sortByUnreadCount() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'unreadCount', Sort.asc);
+      return query.addSortBy(r'unread_count', Sort.asc);
     });
   }
 
   QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
   sortByUnreadCountDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'unreadCount', Sort.desc);
+      return query.addSortBy(r'unread_count', Sort.desc);
+    });
+  }
+
+  QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
+  sortByUpdatedAtMillis() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'updated_at', Sort.asc);
+    });
+  }
+
+  QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
+  sortByUpdatedAtMillisDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'updated_at', Sort.desc);
     });
   }
 }
@@ -2767,168 +2791,168 @@ extension ChatConversationEntityQuerySortThenBy
   QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
   thenByAccountId() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'accountId', Sort.asc);
+      return query.addSortBy(r'account_id', Sort.asc);
     });
   }
 
   QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
   thenByAccountIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'accountId', Sort.desc);
+      return query.addSortBy(r'account_id', Sort.desc);
     });
   }
 
   QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
   thenByBindingRevision() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'bindingRevision', Sort.asc);
+      return query.addSortBy(r'bind_rev', Sort.asc);
     });
   }
 
   QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
   thenByBindingRevisionDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'bindingRevision', Sort.desc);
-    });
-  }
-
-  QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
-  thenByConversationId() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'conversationId', Sort.asc);
-    });
-  }
-
-  QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
-  thenByConversationIdDesc() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'conversationId', Sort.desc);
+      return query.addSortBy(r'bind_rev', Sort.desc);
     });
   }
 
   QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
   thenByConversationKind() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'conversationKind', Sort.asc);
+      return query.addSortBy(r'chat_kind', Sort.asc);
     });
   }
 
   QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
   thenByConversationKindDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'conversationKind', Sort.desc);
-    });
-  }
-
-  QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
-  thenById() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'id', Sort.asc);
-    });
-  }
-
-  QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
-  thenByIdDesc() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'id', Sort.desc);
-    });
-  }
-
-  QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
-  thenByLastDeliveryState() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'lastDeliveryState', Sort.asc);
-    });
-  }
-
-  QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
-  thenByLastDeliveryStateDesc() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'lastDeliveryState', Sort.desc);
-    });
-  }
-
-  QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
-  thenByLastMessageSummary() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'lastMessageSummary', Sort.asc);
-    });
-  }
-
-  QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
-  thenByLastMessageSummaryDesc() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'lastMessageSummary', Sort.desc);
-    });
-  }
-
-  QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
-  thenByLastUpdatedAtMillis() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'lastUpdatedAtMillis', Sort.asc);
-    });
-  }
-
-  QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
-  thenByLastUpdatedAtMillisDesc() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'lastUpdatedAtMillis', Sort.desc);
-    });
-  }
-
-  QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
-  thenByOwnerUserId() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'ownerUserId', Sort.asc);
-    });
-  }
-
-  QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
-  thenByOwnerUserIdDesc() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'ownerUserId', Sort.desc);
-    });
-  }
-
-  QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
-  thenByPeerUserId() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'peerUserId', Sort.asc);
-    });
-  }
-
-  QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
-  thenByPeerUserIdDesc() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'peerUserId', Sort.desc);
+      return query.addSortBy(r'chat_kind', Sort.desc);
     });
   }
 
   QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
   thenByTitle() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'title', Sort.asc);
+      return query.addSortBy(r'chat_title', Sort.asc);
     });
   }
 
   QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
   thenByTitleDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'title', Sort.desc);
+      return query.addSortBy(r'chat_title', Sort.desc);
+    });
+  }
+
+  QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
+  thenByConversationId() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'conversation_id', Sort.asc);
+    });
+  }
+
+  QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
+  thenByConversationIdDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'conversation_id', Sort.desc);
+    });
+  }
+
+  QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
+  thenByLastDeliveryState() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'delivery_state', Sort.asc);
+    });
+  }
+
+  QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
+  thenByLastDeliveryStateDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'delivery_state', Sort.desc);
+    });
+  }
+
+  QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
+  thenByLastMessageSummary() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'message_summary', Sort.asc);
+    });
+  }
+
+  QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
+  thenByLastMessageSummaryDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'message_summary', Sort.desc);
+    });
+  }
+
+  QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
+  thenByOwnerUserId() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'owner_id', Sort.asc);
+    });
+  }
+
+  QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
+  thenByOwnerUserIdDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'owner_id', Sort.desc);
+    });
+  }
+
+  QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
+  thenByPeerUserId() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'peer_id', Sort.asc);
+    });
+  }
+
+  QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
+  thenByPeerUserIdDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'peer_id', Sort.desc);
+    });
+  }
+
+  QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
+  thenById() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'row_id', Sort.asc);
+    });
+  }
+
+  QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
+  thenByIdDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'row_id', Sort.desc);
     });
   }
 
   QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
   thenByUnreadCount() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'unreadCount', Sort.asc);
+      return query.addSortBy(r'unread_count', Sort.asc);
     });
   }
 
   QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
   thenByUnreadCountDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'unreadCount', Sort.desc);
+      return query.addSortBy(r'unread_count', Sort.desc);
+    });
+  }
+
+  QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
+  thenByUpdatedAtMillis() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'updated_at', Sort.asc);
+    });
+  }
+
+  QueryBuilder<ChatConversationEntity, ChatConversationEntity, QAfterSortBy>
+  thenByUpdatedAtMillisDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'updated_at', Sort.desc);
     });
   }
 }
@@ -2938,14 +2962,28 @@ extension ChatConversationEntityQueryWhereDistinct
   QueryBuilder<ChatConversationEntity, ChatConversationEntity, QDistinct>
   distinctByAccountId({bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'accountId', caseSensitive: caseSensitive);
+      return query.addDistinctBy(r'account_id', caseSensitive: caseSensitive);
     });
   }
 
   QueryBuilder<ChatConversationEntity, ChatConversationEntity, QDistinct>
   distinctByBindingRevision() {
     return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'bindingRevision');
+      return query.addDistinctBy(r'bind_rev');
+    });
+  }
+
+  QueryBuilder<ChatConversationEntity, ChatConversationEntity, QDistinct>
+  distinctByConversationKind({bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'chat_kind', caseSensitive: caseSensitive);
+    });
+  }
+
+  QueryBuilder<ChatConversationEntity, ChatConversationEntity, QDistinct>
+  distinctByTitle({bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'chat_title', caseSensitive: caseSensitive);
     });
   }
 
@@ -2953,17 +2991,7 @@ extension ChatConversationEntityQueryWhereDistinct
   distinctByConversationId({bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(
-        r'conversationId',
-        caseSensitive: caseSensitive,
-      );
-    });
-  }
-
-  QueryBuilder<ChatConversationEntity, ChatConversationEntity, QDistinct>
-  distinctByConversationKind({bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(
-        r'conversationKind',
+        r'conversation_id',
         caseSensitive: caseSensitive,
       );
     });
@@ -2973,7 +3001,7 @@ extension ChatConversationEntityQueryWhereDistinct
   distinctByLastDeliveryState({bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(
-        r'lastDeliveryState',
+        r'delivery_state',
         caseSensitive: caseSensitive,
       );
     });
@@ -2983,44 +3011,37 @@ extension ChatConversationEntityQueryWhereDistinct
   distinctByLastMessageSummary({bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(
-        r'lastMessageSummary',
+        r'message_summary',
         caseSensitive: caseSensitive,
       );
     });
   }
 
   QueryBuilder<ChatConversationEntity, ChatConversationEntity, QDistinct>
-  distinctByLastUpdatedAtMillis() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'lastUpdatedAtMillis');
-    });
-  }
-
-  QueryBuilder<ChatConversationEntity, ChatConversationEntity, QDistinct>
   distinctByOwnerUserId({bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'ownerUserId', caseSensitive: caseSensitive);
+      return query.addDistinctBy(r'owner_id', caseSensitive: caseSensitive);
     });
   }
 
   QueryBuilder<ChatConversationEntity, ChatConversationEntity, QDistinct>
   distinctByPeerUserId({bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'peerUserId', caseSensitive: caseSensitive);
-    });
-  }
-
-  QueryBuilder<ChatConversationEntity, ChatConversationEntity, QDistinct>
-  distinctByTitle({bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'title', caseSensitive: caseSensitive);
+      return query.addDistinctBy(r'peer_id', caseSensitive: caseSensitive);
     });
   }
 
   QueryBuilder<ChatConversationEntity, ChatConversationEntity, QDistinct>
   distinctByUnreadCount() {
     return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'unreadCount');
+      return query.addDistinctBy(r'unread_count');
+    });
+  }
+
+  QueryBuilder<ChatConversationEntity, ChatConversationEntity, QDistinct>
+  distinctByUpdatedAtMillis() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'updated_at');
     });
   }
 }
@@ -3034,84 +3055,84 @@ extension ChatConversationEntityQueryProperty
         > {
   QueryBuilder<ChatConversationEntity, int, QQueryOperations> idProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'id');
+      return query.addPropertyName(r'row_id');
     });
   }
 
   QueryBuilder<ChatConversationEntity, String, QQueryOperations>
   accountIdProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'accountId');
+      return query.addPropertyName(r'account_id');
     });
   }
 
   QueryBuilder<ChatConversationEntity, int, QQueryOperations>
   bindingRevisionProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'bindingRevision');
-    });
-  }
-
-  QueryBuilder<ChatConversationEntity, String, QQueryOperations>
-  conversationIdProperty() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'conversationId');
+      return query.addPropertyName(r'bind_rev');
     });
   }
 
   QueryBuilder<ChatConversationEntity, String?, QQueryOperations>
   conversationKindProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'conversationKind');
+      return query.addPropertyName(r'chat_kind');
+    });
+  }
+
+  QueryBuilder<ChatConversationEntity, String?, QQueryOperations>
+  titleProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'chat_title');
+    });
+  }
+
+  QueryBuilder<ChatConversationEntity, String, QQueryOperations>
+  conversationIdProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'conversation_id');
     });
   }
 
   QueryBuilder<ChatConversationEntity, String, QQueryOperations>
   lastDeliveryStateProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'lastDeliveryState');
+      return query.addPropertyName(r'delivery_state');
     });
   }
 
   QueryBuilder<ChatConversationEntity, String, QQueryOperations>
   lastMessageSummaryProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'lastMessageSummary');
-    });
-  }
-
-  QueryBuilder<ChatConversationEntity, int, QQueryOperations>
-  lastUpdatedAtMillisProperty() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'lastUpdatedAtMillis');
+      return query.addPropertyName(r'message_summary');
     });
   }
 
   QueryBuilder<ChatConversationEntity, String, QQueryOperations>
   ownerUserIdProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'ownerUserId');
+      return query.addPropertyName(r'owner_id');
     });
   }
 
   QueryBuilder<ChatConversationEntity, String, QQueryOperations>
   peerUserIdProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'peerUserId');
-    });
-  }
-
-  QueryBuilder<ChatConversationEntity, String, QQueryOperations>
-  titleProperty() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'title');
+      return query.addPropertyName(r'peer_id');
     });
   }
 
   QueryBuilder<ChatConversationEntity, int, QQueryOperations>
   unreadCountProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'unreadCount');
+      return query.addPropertyName(r'unread_count');
+    });
+  }
+
+  QueryBuilder<ChatConversationEntity, int, QQueryOperations>
+  updatedAtMillisProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'updated_at');
     });
   }
 }
@@ -3124,82 +3145,73 @@ extension GetChatMessageEntityCollection on Isar {
 }
 
 const ChatMessageEntitySchema = CollectionSchema(
-  name: r'ChatMessageEntity',
-  id: 8398983736130033389,
+  name: r'message',
+  id: 800701444045231354,
   properties: {
-    r'accountId': PropertySchema(
+    r'account_id': PropertySchema(
       id: 0,
-      name: r'accountId',
+      name: r'account_id',
       type: IsarType.string,
     ),
-    r'bindingRevision': PropertySchema(
-      id: 1,
-      name: r'bindingRevision',
-      type: IsarType.long,
-    ),
-    r'conversationId': PropertySchema(
+    r'bind_rev': PropertySchema(id: 1, name: r'bind_rev', type: IsarType.long),
+    r'conversation_id': PropertySchema(
       id: 2,
-      name: r'conversationId',
+      name: r'conversation_id',
       type: IsarType.string,
     ),
-    r'createdAtMillis': PropertySchema(
+    r'created_at': PropertySchema(
       id: 3,
-      name: r'createdAtMillis',
+      name: r'created_at',
       type: IsarType.long,
     ),
-    r'deliveryState': PropertySchema(
+    r'delivery_state': PropertySchema(
       id: 4,
-      name: r'deliveryState',
+      name: r'delivery_state',
       type: IsarType.string,
     ),
-    r'direction': PropertySchema(
+    r'message_bytes': PropertySchema(
       id: 5,
-      name: r'direction',
+      name: r'message_bytes',
       type: IsarType.string,
     ),
-    r'messageBytesHex': PropertySchema(
+    r'message_direction': PropertySchema(
       id: 6,
-      name: r'messageBytesHex',
+      name: r'message_direction',
       type: IsarType.string,
     ),
-    r'messageId': PropertySchema(
+    r'message_id': PropertySchema(
       id: 7,
-      name: r'messageId',
+      name: r'message_id',
       type: IsarType.string,
     ),
-    r'messageKind': PropertySchema(
+    r'message_kind': PropertySchema(
       id: 8,
-      name: r'messageKind',
+      name: r'message_kind',
       type: IsarType.string,
     ),
-    r'ownerUserId': PropertySchema(
+    r'owner_id': PropertySchema(
       id: 9,
-      name: r'ownerUserId',
+      name: r'owner_id',
       type: IsarType.string,
     ),
-    r'payloadJson': PropertySchema(
+    r'payload_json': PropertySchema(
       id: 10,
-      name: r'payloadJson',
+      name: r'payload_json',
       type: IsarType.string,
     ),
-    r'recipientUserId': PropertySchema(
+    r'recipient_id': PropertySchema(
       id: 11,
-      name: r'recipientUserId',
+      name: r'recipient_id',
       type: IsarType.string,
     ),
-    r'searchTokens': PropertySchema(
+    r'search_tokens': PropertySchema(
       id: 12,
-      name: r'searchTokens',
+      name: r'search_tokens',
       type: IsarType.stringList,
     ),
-    r'senderDeviceId': PropertySchema(
+    r'sender_id': PropertySchema(
       id: 13,
-      name: r'senderDeviceId',
-      type: IsarType.string,
-    ),
-    r'senderUserId': PropertySchema(
-      id: 14,
-      name: r'senderUserId',
+      name: r'sender_id',
       type: IsarType.string,
     ),
   },
@@ -3208,60 +3220,60 @@ const ChatMessageEntitySchema = CollectionSchema(
   serialize: _chatMessageEntitySerialize,
   deserialize: _chatMessageEntityDeserialize,
   deserializeProp: _chatMessageEntityDeserializeProp,
-  idName: r'id',
+  idName: r'row_id',
   indexes: {
-    r'ownerUserId_messageId': IndexSchema(
-      id: 6423036073976843555,
-      name: r'ownerUserId_messageId',
+    r'owner_id_message_id': IndexSchema(
+      id: -5137609912169235308,
+      name: r'owner_id_message_id',
       unique: true,
       replace: true,
       properties: [
         IndexPropertySchema(
-          name: r'ownerUserId',
+          name: r'owner_id',
           type: IndexType.hash,
           caseSensitive: true,
         ),
         IndexPropertySchema(
-          name: r'messageId',
-          type: IndexType.hash,
-          caseSensitive: true,
-        ),
-      ],
-    ),
-    r'conversationId': IndexSchema(
-      id: 2945908346256754300,
-      name: r'conversationId',
-      unique: false,
-      replace: false,
-      properties: [
-        IndexPropertySchema(
-          name: r'conversationId',
+          name: r'message_id',
           type: IndexType.hash,
           caseSensitive: true,
         ),
       ],
     ),
-    r'searchTokens': IndexSchema(
-      id: 2062148741461982474,
-      name: r'searchTokens',
+    r'conversation_id': IndexSchema(
+      id: -4048954474591270722,
+      name: r'conversation_id',
       unique: false,
       replace: false,
       properties: [
         IndexPropertySchema(
-          name: r'searchTokens',
+          name: r'conversation_id',
+          type: IndexType.hash,
+          caseSensitive: true,
+        ),
+      ],
+    ),
+    r'search_tokens': IndexSchema(
+      id: 1806093144852795780,
+      name: r'search_tokens',
+      unique: false,
+      replace: false,
+      properties: [
+        IndexPropertySchema(
+          name: r'search_tokens',
           type: IndexType.value,
           caseSensitive: true,
         ),
       ],
     ),
-    r'createdAtMillis': IndexSchema(
-      id: -2739706252225730577,
-      name: r'createdAtMillis',
+    r'created_at': IndexSchema(
+      id: 6296488693525790031,
+      name: r'created_at',
       unique: false,
       replace: false,
       properties: [
         IndexPropertySchema(
-          name: r'createdAtMillis',
+          name: r'created_at',
           type: IndexType.value,
           caseSensitive: false,
         ),
@@ -3286,8 +3298,8 @@ int _chatMessageEntityEstimateSize(
   bytesCount += 3 + object.accountId.length * 3;
   bytesCount += 3 + object.conversationId.length * 3;
   bytesCount += 3 + object.deliveryState.length * 3;
-  bytesCount += 3 + object.direction.length * 3;
   bytesCount += 3 + object.messageBytesHex.length * 3;
+  bytesCount += 3 + object.direction.length * 3;
   bytesCount += 3 + object.messageId.length * 3;
   bytesCount += 3 + object.messageKind.length * 3;
   bytesCount += 3 + object.ownerUserId.length * 3;
@@ -3305,7 +3317,6 @@ int _chatMessageEntityEstimateSize(
       bytesCount += value.length * 3;
     }
   }
-  bytesCount += 3 + object.senderDeviceId.length * 3;
   bytesCount += 3 + object.senderUserId.length * 3;
   return bytesCount;
 }
@@ -3321,16 +3332,15 @@ void _chatMessageEntitySerialize(
   writer.writeString(offsets[2], object.conversationId);
   writer.writeLong(offsets[3], object.createdAtMillis);
   writer.writeString(offsets[4], object.deliveryState);
-  writer.writeString(offsets[5], object.direction);
-  writer.writeString(offsets[6], object.messageBytesHex);
+  writer.writeString(offsets[5], object.messageBytesHex);
+  writer.writeString(offsets[6], object.direction);
   writer.writeString(offsets[7], object.messageId);
   writer.writeString(offsets[8], object.messageKind);
   writer.writeString(offsets[9], object.ownerUserId);
   writer.writeString(offsets[10], object.payloadJson);
   writer.writeString(offsets[11], object.recipientUserId);
   writer.writeStringList(offsets[12], object.searchTokens);
-  writer.writeString(offsets[13], object.senderDeviceId);
-  writer.writeString(offsets[14], object.senderUserId);
+  writer.writeString(offsets[13], object.senderUserId);
 }
 
 ChatMessageEntity _chatMessageEntityDeserialize(
@@ -3345,17 +3355,16 @@ ChatMessageEntity _chatMessageEntityDeserialize(
   object.conversationId = reader.readString(offsets[2]);
   object.createdAtMillis = reader.readLong(offsets[3]);
   object.deliveryState = reader.readString(offsets[4]);
-  object.direction = reader.readString(offsets[5]);
-  object.id = id;
-  object.messageBytesHex = reader.readString(offsets[6]);
+  object.messageBytesHex = reader.readString(offsets[5]);
+  object.direction = reader.readString(offsets[6]);
   object.messageId = reader.readString(offsets[7]);
   object.messageKind = reader.readString(offsets[8]);
   object.ownerUserId = reader.readString(offsets[9]);
   object.payloadJson = reader.readStringOrNull(offsets[10]);
   object.recipientUserId = reader.readString(offsets[11]);
+  object.id = id;
   object.searchTokens = reader.readStringList(offsets[12]) ?? [];
-  object.senderDeviceId = reader.readString(offsets[13]);
-  object.senderUserId = reader.readString(offsets[14]);
+  object.senderUserId = reader.readString(offsets[13]);
   return object;
 }
 
@@ -3394,8 +3403,6 @@ P _chatMessageEntityDeserializeProp<P>(
       return (reader.readStringList(offset) ?? []) as P;
     case 13:
       return (reader.readString(offset)) as P;
-    case 14:
-      return (reader.readString(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
   }
@@ -3424,28 +3431,25 @@ extension ChatMessageEntityByIndex on IsarCollection<ChatMessageEntity> {
     String ownerUserId,
     String messageId,
   ) {
-    return getByIndex(r'ownerUserId_messageId', [ownerUserId, messageId]);
+    return getByIndex(r'owner_id_message_id', [ownerUserId, messageId]);
   }
 
   ChatMessageEntity? getByOwnerUserIdMessageIdSync(
     String ownerUserId,
     String messageId,
   ) {
-    return getByIndexSync(r'ownerUserId_messageId', [ownerUserId, messageId]);
+    return getByIndexSync(r'owner_id_message_id', [ownerUserId, messageId]);
   }
 
   Future<bool> deleteByOwnerUserIdMessageId(
     String ownerUserId,
     String messageId,
   ) {
-    return deleteByIndex(r'ownerUserId_messageId', [ownerUserId, messageId]);
+    return deleteByIndex(r'owner_id_message_id', [ownerUserId, messageId]);
   }
 
   bool deleteByOwnerUserIdMessageIdSync(String ownerUserId, String messageId) {
-    return deleteByIndexSync(r'ownerUserId_messageId', [
-      ownerUserId,
-      messageId,
-    ]);
+    return deleteByIndexSync(r'owner_id_message_id', [ownerUserId, messageId]);
   }
 
   Future<List<ChatMessageEntity?>> getAllByOwnerUserIdMessageId(
@@ -3462,7 +3466,7 @@ extension ChatMessageEntityByIndex on IsarCollection<ChatMessageEntity> {
       values.add([ownerUserIdValues[i], messageIdValues[i]]);
     }
 
-    return getAllByIndex(r'ownerUserId_messageId', values);
+    return getAllByIndex(r'owner_id_message_id', values);
   }
 
   List<ChatMessageEntity?> getAllByOwnerUserIdMessageIdSync(
@@ -3479,7 +3483,7 @@ extension ChatMessageEntityByIndex on IsarCollection<ChatMessageEntity> {
       values.add([ownerUserIdValues[i], messageIdValues[i]]);
     }
 
-    return getAllByIndexSync(r'ownerUserId_messageId', values);
+    return getAllByIndexSync(r'owner_id_message_id', values);
   }
 
   Future<int> deleteAllByOwnerUserIdMessageId(
@@ -3496,7 +3500,7 @@ extension ChatMessageEntityByIndex on IsarCollection<ChatMessageEntity> {
       values.add([ownerUserIdValues[i], messageIdValues[i]]);
     }
 
-    return deleteAllByIndex(r'ownerUserId_messageId', values);
+    return deleteAllByIndex(r'owner_id_message_id', values);
   }
 
   int deleteAllByOwnerUserIdMessageIdSync(
@@ -3513,28 +3517,24 @@ extension ChatMessageEntityByIndex on IsarCollection<ChatMessageEntity> {
       values.add([ownerUserIdValues[i], messageIdValues[i]]);
     }
 
-    return deleteAllByIndexSync(r'ownerUserId_messageId', values);
+    return deleteAllByIndexSync(r'owner_id_message_id', values);
   }
 
   Future<Id> putByOwnerUserIdMessageId(ChatMessageEntity object) {
-    return putByIndex(r'ownerUserId_messageId', object);
+    return putByIndex(r'owner_id_message_id', object);
   }
 
   Id putByOwnerUserIdMessageIdSync(
     ChatMessageEntity object, {
     bool saveLinks = true,
   }) {
-    return putByIndexSync(
-      r'ownerUserId_messageId',
-      object,
-      saveLinks: saveLinks,
-    );
+    return putByIndexSync(r'owner_id_message_id', object, saveLinks: saveLinks);
   }
 
   Future<List<Id>> putAllByOwnerUserIdMessageId(
     List<ChatMessageEntity> objects,
   ) {
-    return putAllByIndex(r'ownerUserId_messageId', objects);
+    return putAllByIndex(r'owner_id_message_id', objects);
   }
 
   List<Id> putAllByOwnerUserIdMessageIdSync(
@@ -3542,7 +3542,7 @@ extension ChatMessageEntityByIndex on IsarCollection<ChatMessageEntity> {
     bool saveLinks = true,
   }) {
     return putAllByIndexSync(
-      r'ownerUserId_messageId',
+      r'owner_id_message_id',
       objects,
       saveLinks: saveLinks,
     );
@@ -3561,7 +3561,7 @@ extension ChatMessageEntityQueryWhereSort
   anySearchTokensElement() {
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
-        const IndexWhereClause.any(indexName: r'searchTokens'),
+        const IndexWhereClause.any(indexName: r'search_tokens'),
       );
     });
   }
@@ -3570,7 +3570,7 @@ extension ChatMessageEntityQueryWhereSort
   anyCreatedAtMillis() {
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
-        const IndexWhereClause.any(indexName: r'createdAtMillis'),
+        const IndexWhereClause.any(indexName: r'created_at'),
       );
     });
   }
@@ -3650,7 +3650,7 @@ extension ChatMessageEntityQueryWhere
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         IndexWhereClause.equalTo(
-          indexName: r'ownerUserId_messageId',
+          indexName: r'owner_id_message_id',
           value: [ownerUserId],
         ),
       );
@@ -3664,7 +3664,7 @@ extension ChatMessageEntityQueryWhere
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_messageId',
+                indexName: r'owner_id_message_id',
                 lower: [],
                 upper: [ownerUserId],
                 includeUpper: false,
@@ -3672,7 +3672,7 @@ extension ChatMessageEntityQueryWhere
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_messageId',
+                indexName: r'owner_id_message_id',
                 lower: [ownerUserId],
                 includeLower: false,
                 upper: [],
@@ -3682,7 +3682,7 @@ extension ChatMessageEntityQueryWhere
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_messageId',
+                indexName: r'owner_id_message_id',
                 lower: [ownerUserId],
                 includeLower: false,
                 upper: [],
@@ -3690,7 +3690,7 @@ extension ChatMessageEntityQueryWhere
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_messageId',
+                indexName: r'owner_id_message_id',
                 lower: [],
                 upper: [ownerUserId],
                 includeUpper: false,
@@ -3705,7 +3705,7 @@ extension ChatMessageEntityQueryWhere
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         IndexWhereClause.equalTo(
-          indexName: r'ownerUserId_messageId',
+          indexName: r'owner_id_message_id',
           value: [ownerUserId, messageId],
         ),
       );
@@ -3719,7 +3719,7 @@ extension ChatMessageEntityQueryWhere
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_messageId',
+                indexName: r'owner_id_message_id',
                 lower: [ownerUserId],
                 upper: [ownerUserId, messageId],
                 includeUpper: false,
@@ -3727,7 +3727,7 @@ extension ChatMessageEntityQueryWhere
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_messageId',
+                indexName: r'owner_id_message_id',
                 lower: [ownerUserId, messageId],
                 includeLower: false,
                 upper: [ownerUserId],
@@ -3737,7 +3737,7 @@ extension ChatMessageEntityQueryWhere
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_messageId',
+                indexName: r'owner_id_message_id',
                 lower: [ownerUserId, messageId],
                 includeLower: false,
                 upper: [ownerUserId],
@@ -3745,7 +3745,7 @@ extension ChatMessageEntityQueryWhere
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_messageId',
+                indexName: r'owner_id_message_id',
                 lower: [ownerUserId],
                 upper: [ownerUserId, messageId],
                 includeUpper: false,
@@ -3760,7 +3760,7 @@ extension ChatMessageEntityQueryWhere
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         IndexWhereClause.equalTo(
-          indexName: r'conversationId',
+          indexName: r'conversation_id',
           value: [conversationId],
         ),
       );
@@ -3774,7 +3774,7 @@ extension ChatMessageEntityQueryWhere
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'conversationId',
+                indexName: r'conversation_id',
                 lower: [],
                 upper: [conversationId],
                 includeUpper: false,
@@ -3782,7 +3782,7 @@ extension ChatMessageEntityQueryWhere
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'conversationId',
+                indexName: r'conversation_id',
                 lower: [conversationId],
                 includeLower: false,
                 upper: [],
@@ -3792,7 +3792,7 @@ extension ChatMessageEntityQueryWhere
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'conversationId',
+                indexName: r'conversation_id',
                 lower: [conversationId],
                 includeLower: false,
                 upper: [],
@@ -3800,7 +3800,7 @@ extension ChatMessageEntityQueryWhere
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'conversationId',
+                indexName: r'conversation_id',
                 lower: [],
                 upper: [conversationId],
                 includeUpper: false,
@@ -3815,7 +3815,7 @@ extension ChatMessageEntityQueryWhere
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         IndexWhereClause.equalTo(
-          indexName: r'searchTokens',
+          indexName: r'search_tokens',
           value: [searchTokensElement],
         ),
       );
@@ -3829,7 +3829,7 @@ extension ChatMessageEntityQueryWhere
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'searchTokens',
+                indexName: r'search_tokens',
                 lower: [],
                 upper: [searchTokensElement],
                 includeUpper: false,
@@ -3837,7 +3837,7 @@ extension ChatMessageEntityQueryWhere
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'searchTokens',
+                indexName: r'search_tokens',
                 lower: [searchTokensElement],
                 includeLower: false,
                 upper: [],
@@ -3847,7 +3847,7 @@ extension ChatMessageEntityQueryWhere
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'searchTokens',
+                indexName: r'search_tokens',
                 lower: [searchTokensElement],
                 includeLower: false,
                 upper: [],
@@ -3855,7 +3855,7 @@ extension ChatMessageEntityQueryWhere
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'searchTokens',
+                indexName: r'search_tokens',
                 lower: [],
                 upper: [searchTokensElement],
                 includeUpper: false,
@@ -3873,7 +3873,7 @@ extension ChatMessageEntityQueryWhere
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         IndexWhereClause.between(
-          indexName: r'searchTokens',
+          indexName: r'search_tokens',
           lower: [searchTokensElement],
           includeLower: include,
           upper: [],
@@ -3890,7 +3890,7 @@ extension ChatMessageEntityQueryWhere
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         IndexWhereClause.between(
-          indexName: r'searchTokens',
+          indexName: r'search_tokens',
           lower: [],
           upper: [searchTokensElement],
           includeUpper: include,
@@ -3909,7 +3909,7 @@ extension ChatMessageEntityQueryWhere
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         IndexWhereClause.between(
-          indexName: r'searchTokens',
+          indexName: r'search_tokens',
           lower: [lowerSearchTokensElement],
           includeLower: includeLower,
           upper: [upperSearchTokensElement],
@@ -3924,7 +3924,7 @@ extension ChatMessageEntityQueryWhere
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         IndexWhereClause.between(
-          indexName: r'searchTokens',
+          indexName: r'search_tokens',
           lower: [SearchTokensElementPrefix],
           upper: ['$SearchTokensElementPrefix\u{FFFFF}'],
         ),
@@ -3936,7 +3936,7 @@ extension ChatMessageEntityQueryWhere
   searchTokensElementIsEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
-        IndexWhereClause.equalTo(indexName: r'searchTokens', value: ['']),
+        IndexWhereClause.equalTo(indexName: r'search_tokens', value: ['']),
       );
     });
   }
@@ -3948,13 +3948,13 @@ extension ChatMessageEntityQueryWhere
         return query
             .addWhereClause(
               IndexWhereClause.lessThan(
-                indexName: r'searchTokens',
+                indexName: r'search_tokens',
                 upper: [''],
               ),
             )
             .addWhereClause(
               IndexWhereClause.greaterThan(
-                indexName: r'searchTokens',
+                indexName: r'search_tokens',
                 lower: [''],
               ),
             );
@@ -3962,13 +3962,13 @@ extension ChatMessageEntityQueryWhere
         return query
             .addWhereClause(
               IndexWhereClause.greaterThan(
-                indexName: r'searchTokens',
+                indexName: r'search_tokens',
                 lower: [''],
               ),
             )
             .addWhereClause(
               IndexWhereClause.lessThan(
-                indexName: r'searchTokens',
+                indexName: r'search_tokens',
                 upper: [''],
               ),
             );
@@ -3981,7 +3981,7 @@ extension ChatMessageEntityQueryWhere
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         IndexWhereClause.equalTo(
-          indexName: r'createdAtMillis',
+          indexName: r'created_at',
           value: [createdAtMillis],
         ),
       );
@@ -3995,7 +3995,7 @@ extension ChatMessageEntityQueryWhere
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'createdAtMillis',
+                indexName: r'created_at',
                 lower: [],
                 upper: [createdAtMillis],
                 includeUpper: false,
@@ -4003,7 +4003,7 @@ extension ChatMessageEntityQueryWhere
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'createdAtMillis',
+                indexName: r'created_at',
                 lower: [createdAtMillis],
                 includeLower: false,
                 upper: [],
@@ -4013,7 +4013,7 @@ extension ChatMessageEntityQueryWhere
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'createdAtMillis',
+                indexName: r'created_at',
                 lower: [createdAtMillis],
                 includeLower: false,
                 upper: [],
@@ -4021,7 +4021,7 @@ extension ChatMessageEntityQueryWhere
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'createdAtMillis',
+                indexName: r'created_at',
                 lower: [],
                 upper: [createdAtMillis],
                 includeUpper: false,
@@ -4036,7 +4036,7 @@ extension ChatMessageEntityQueryWhere
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         IndexWhereClause.between(
-          indexName: r'createdAtMillis',
+          indexName: r'created_at',
           lower: [createdAtMillis],
           includeLower: include,
           upper: [],
@@ -4050,7 +4050,7 @@ extension ChatMessageEntityQueryWhere
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         IndexWhereClause.between(
-          indexName: r'createdAtMillis',
+          indexName: r'created_at',
           lower: [],
           upper: [createdAtMillis],
           includeUpper: include,
@@ -4069,7 +4069,7 @@ extension ChatMessageEntityQueryWhere
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         IndexWhereClause.between(
-          indexName: r'createdAtMillis',
+          indexName: r'created_at',
           lower: [lowerCreatedAtMillis],
           includeLower: includeLower,
           upper: [upperCreatedAtMillis],
@@ -4087,7 +4087,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.equalTo(
-          property: r'accountId',
+          property: r'account_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -4105,7 +4105,7 @@ extension ChatMessageEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'accountId',
+          property: r'account_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -4123,7 +4123,7 @@ extension ChatMessageEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'accountId',
+          property: r'account_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -4142,7 +4142,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'accountId',
+          property: r'account_id',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -4158,7 +4158,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.startsWith(
-          property: r'accountId',
+          property: r'account_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -4171,7 +4171,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.endsWith(
-          property: r'accountId',
+          property: r'account_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -4184,7 +4184,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.contains(
-          property: r'accountId',
+          property: r'account_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -4197,7 +4197,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.matches(
-          property: r'accountId',
+          property: r'account_id',
           wildcard: pattern,
           caseSensitive: caseSensitive,
         ),
@@ -4209,7 +4209,7 @@ extension ChatMessageEntityQueryFilter
   accountIdIsEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'accountId', value: ''),
+        FilterCondition.equalTo(property: r'account_id', value: ''),
       );
     });
   }
@@ -4218,7 +4218,7 @@ extension ChatMessageEntityQueryFilter
   accountIdIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'accountId', value: ''),
+        FilterCondition.greaterThan(property: r'account_id', value: ''),
       );
     });
   }
@@ -4227,7 +4227,7 @@ extension ChatMessageEntityQueryFilter
   bindingRevisionEqualTo(int value) {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'bindingRevision', value: value),
+        FilterCondition.equalTo(property: r'bind_rev', value: value),
       );
     });
   }
@@ -4238,7 +4238,7 @@ extension ChatMessageEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'bindingRevision',
+          property: r'bind_rev',
           value: value,
         ),
       );
@@ -4251,7 +4251,7 @@ extension ChatMessageEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'bindingRevision',
+          property: r'bind_rev',
           value: value,
         ),
       );
@@ -4268,7 +4268,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'bindingRevision',
+          property: r'bind_rev',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -4283,7 +4283,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.equalTo(
-          property: r'conversationId',
+          property: r'conversation_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -4301,7 +4301,7 @@ extension ChatMessageEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'conversationId',
+          property: r'conversation_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -4319,7 +4319,7 @@ extension ChatMessageEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'conversationId',
+          property: r'conversation_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -4338,7 +4338,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'conversationId',
+          property: r'conversation_id',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -4354,7 +4354,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.startsWith(
-          property: r'conversationId',
+          property: r'conversation_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -4367,7 +4367,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.endsWith(
-          property: r'conversationId',
+          property: r'conversation_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -4380,7 +4380,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.contains(
-          property: r'conversationId',
+          property: r'conversation_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -4393,7 +4393,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.matches(
-          property: r'conversationId',
+          property: r'conversation_id',
           wildcard: pattern,
           caseSensitive: caseSensitive,
         ),
@@ -4405,7 +4405,7 @@ extension ChatMessageEntityQueryFilter
   conversationIdIsEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'conversationId', value: ''),
+        FilterCondition.equalTo(property: r'conversation_id', value: ''),
       );
     });
   }
@@ -4414,7 +4414,7 @@ extension ChatMessageEntityQueryFilter
   conversationIdIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'conversationId', value: ''),
+        FilterCondition.greaterThan(property: r'conversation_id', value: ''),
       );
     });
   }
@@ -4423,7 +4423,7 @@ extension ChatMessageEntityQueryFilter
   createdAtMillisEqualTo(int value) {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'createdAtMillis', value: value),
+        FilterCondition.equalTo(property: r'created_at', value: value),
       );
     });
   }
@@ -4434,7 +4434,7 @@ extension ChatMessageEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'createdAtMillis',
+          property: r'created_at',
           value: value,
         ),
       );
@@ -4447,7 +4447,7 @@ extension ChatMessageEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'createdAtMillis',
+          property: r'created_at',
           value: value,
         ),
       );
@@ -4464,7 +4464,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'createdAtMillis',
+          property: r'created_at',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -4479,7 +4479,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.equalTo(
-          property: r'deliveryState',
+          property: r'delivery_state',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -4497,7 +4497,7 @@ extension ChatMessageEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'deliveryState',
+          property: r'delivery_state',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -4515,7 +4515,7 @@ extension ChatMessageEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'deliveryState',
+          property: r'delivery_state',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -4534,7 +4534,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'deliveryState',
+          property: r'delivery_state',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -4550,7 +4550,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.startsWith(
-          property: r'deliveryState',
+          property: r'delivery_state',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -4563,7 +4563,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.endsWith(
-          property: r'deliveryState',
+          property: r'delivery_state',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -4576,7 +4576,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.contains(
-          property: r'deliveryState',
+          property: r'delivery_state',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -4589,7 +4589,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.matches(
-          property: r'deliveryState',
+          property: r'delivery_state',
           wildcard: pattern,
           caseSensitive: caseSensitive,
         ),
@@ -4601,7 +4601,7 @@ extension ChatMessageEntityQueryFilter
   deliveryStateIsEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'deliveryState', value: ''),
+        FilterCondition.equalTo(property: r'delivery_state', value: ''),
       );
     });
   }
@@ -4610,203 +4610,7 @@ extension ChatMessageEntityQueryFilter
   deliveryStateIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'deliveryState', value: ''),
-      );
-    });
-  }
-
-  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterFilterCondition>
-  directionEqualTo(String value, {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.equalTo(
-          property: r'direction',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterFilterCondition>
-  directionGreaterThan(
-    String value, {
-    bool include = false,
-    bool caseSensitive = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.greaterThan(
-          include: include,
-          property: r'direction',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterFilterCondition>
-  directionLessThan(
-    String value, {
-    bool include = false,
-    bool caseSensitive = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.lessThan(
-          include: include,
-          property: r'direction',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterFilterCondition>
-  directionBetween(
-    String lower,
-    String upper, {
-    bool includeLower = true,
-    bool includeUpper = true,
-    bool caseSensitive = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.between(
-          property: r'direction',
-          lower: lower,
-          includeLower: includeLower,
-          upper: upper,
-          includeUpper: includeUpper,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterFilterCondition>
-  directionStartsWith(String value, {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.startsWith(
-          property: r'direction',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterFilterCondition>
-  directionEndsWith(String value, {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.endsWith(
-          property: r'direction',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterFilterCondition>
-  directionContains(String value, {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.contains(
-          property: r'direction',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterFilterCondition>
-  directionMatches(String pattern, {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.matches(
-          property: r'direction',
-          wildcard: pattern,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterFilterCondition>
-  directionIsEmpty() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'direction', value: ''),
-      );
-    });
-  }
-
-  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterFilterCondition>
-  directionIsNotEmpty() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'direction', value: ''),
-      );
-    });
-  }
-
-  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterFilterCondition>
-  idEqualTo(Id value) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'id', value: value),
-      );
-    });
-  }
-
-  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterFilterCondition>
-  idGreaterThan(Id value, {bool include = false}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.greaterThan(
-          include: include,
-          property: r'id',
-          value: value,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterFilterCondition>
-  idLessThan(Id value, {bool include = false}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.lessThan(
-          include: include,
-          property: r'id',
-          value: value,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterFilterCondition>
-  idBetween(
-    Id lower,
-    Id upper, {
-    bool includeLower = true,
-    bool includeUpper = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.between(
-          property: r'id',
-          lower: lower,
-          includeLower: includeLower,
-          upper: upper,
-          includeUpper: includeUpper,
-        ),
+        FilterCondition.greaterThan(property: r'delivery_state', value: ''),
       );
     });
   }
@@ -4816,7 +4620,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.equalTo(
-          property: r'messageBytesHex',
+          property: r'message_bytes',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -4834,7 +4638,7 @@ extension ChatMessageEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'messageBytesHex',
+          property: r'message_bytes',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -4852,7 +4656,7 @@ extension ChatMessageEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'messageBytesHex',
+          property: r'message_bytes',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -4871,7 +4675,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'messageBytesHex',
+          property: r'message_bytes',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -4887,7 +4691,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.startsWith(
-          property: r'messageBytesHex',
+          property: r'message_bytes',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -4900,7 +4704,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.endsWith(
-          property: r'messageBytesHex',
+          property: r'message_bytes',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -4913,7 +4717,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.contains(
-          property: r'messageBytesHex',
+          property: r'message_bytes',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -4926,7 +4730,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.matches(
-          property: r'messageBytesHex',
+          property: r'message_bytes',
           wildcard: pattern,
           caseSensitive: caseSensitive,
         ),
@@ -4938,7 +4742,7 @@ extension ChatMessageEntityQueryFilter
   messageBytesHexIsEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'messageBytesHex', value: ''),
+        FilterCondition.equalTo(property: r'message_bytes', value: ''),
       );
     });
   }
@@ -4947,7 +4751,148 @@ extension ChatMessageEntityQueryFilter
   messageBytesHexIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'messageBytesHex', value: ''),
+        FilterCondition.greaterThan(property: r'message_bytes', value: ''),
+      );
+    });
+  }
+
+  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterFilterCondition>
+  directionEqualTo(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.equalTo(
+          property: r'message_direction',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterFilterCondition>
+  directionGreaterThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(
+          include: include,
+          property: r'message_direction',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterFilterCondition>
+  directionLessThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.lessThan(
+          include: include,
+          property: r'message_direction',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterFilterCondition>
+  directionBetween(
+    String lower,
+    String upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.between(
+          property: r'message_direction',
+          lower: lower,
+          includeLower: includeLower,
+          upper: upper,
+          includeUpper: includeUpper,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterFilterCondition>
+  directionStartsWith(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.startsWith(
+          property: r'message_direction',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterFilterCondition>
+  directionEndsWith(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.endsWith(
+          property: r'message_direction',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterFilterCondition>
+  directionContains(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.contains(
+          property: r'message_direction',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterFilterCondition>
+  directionMatches(String pattern, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.matches(
+          property: r'message_direction',
+          wildcard: pattern,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterFilterCondition>
+  directionIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.equalTo(property: r'message_direction', value: ''),
+      );
+    });
+  }
+
+  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterFilterCondition>
+  directionIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(property: r'message_direction', value: ''),
       );
     });
   }
@@ -4957,7 +4902,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.equalTo(
-          property: r'messageId',
+          property: r'message_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -4975,7 +4920,7 @@ extension ChatMessageEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'messageId',
+          property: r'message_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -4993,7 +4938,7 @@ extension ChatMessageEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'messageId',
+          property: r'message_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -5012,7 +4957,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'messageId',
+          property: r'message_id',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -5028,7 +4973,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.startsWith(
-          property: r'messageId',
+          property: r'message_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -5041,7 +4986,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.endsWith(
-          property: r'messageId',
+          property: r'message_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -5054,7 +4999,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.contains(
-          property: r'messageId',
+          property: r'message_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -5067,7 +5012,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.matches(
-          property: r'messageId',
+          property: r'message_id',
           wildcard: pattern,
           caseSensitive: caseSensitive,
         ),
@@ -5079,7 +5024,7 @@ extension ChatMessageEntityQueryFilter
   messageIdIsEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'messageId', value: ''),
+        FilterCondition.equalTo(property: r'message_id', value: ''),
       );
     });
   }
@@ -5088,7 +5033,7 @@ extension ChatMessageEntityQueryFilter
   messageIdIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'messageId', value: ''),
+        FilterCondition.greaterThan(property: r'message_id', value: ''),
       );
     });
   }
@@ -5098,7 +5043,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.equalTo(
-          property: r'messageKind',
+          property: r'message_kind',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -5116,7 +5061,7 @@ extension ChatMessageEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'messageKind',
+          property: r'message_kind',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -5134,7 +5079,7 @@ extension ChatMessageEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'messageKind',
+          property: r'message_kind',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -5153,7 +5098,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'messageKind',
+          property: r'message_kind',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -5169,7 +5114,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.startsWith(
-          property: r'messageKind',
+          property: r'message_kind',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -5182,7 +5127,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.endsWith(
-          property: r'messageKind',
+          property: r'message_kind',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -5195,7 +5140,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.contains(
-          property: r'messageKind',
+          property: r'message_kind',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -5208,7 +5153,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.matches(
-          property: r'messageKind',
+          property: r'message_kind',
           wildcard: pattern,
           caseSensitive: caseSensitive,
         ),
@@ -5220,7 +5165,7 @@ extension ChatMessageEntityQueryFilter
   messageKindIsEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'messageKind', value: ''),
+        FilterCondition.equalTo(property: r'message_kind', value: ''),
       );
     });
   }
@@ -5229,7 +5174,7 @@ extension ChatMessageEntityQueryFilter
   messageKindIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'messageKind', value: ''),
+        FilterCondition.greaterThan(property: r'message_kind', value: ''),
       );
     });
   }
@@ -5239,7 +5184,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.equalTo(
-          property: r'ownerUserId',
+          property: r'owner_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -5257,7 +5202,7 @@ extension ChatMessageEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'ownerUserId',
+          property: r'owner_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -5275,7 +5220,7 @@ extension ChatMessageEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'ownerUserId',
+          property: r'owner_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -5294,7 +5239,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'ownerUserId',
+          property: r'owner_id',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -5310,7 +5255,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.startsWith(
-          property: r'ownerUserId',
+          property: r'owner_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -5323,7 +5268,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.endsWith(
-          property: r'ownerUserId',
+          property: r'owner_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -5336,7 +5281,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.contains(
-          property: r'ownerUserId',
+          property: r'owner_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -5349,7 +5294,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.matches(
-          property: r'ownerUserId',
+          property: r'owner_id',
           wildcard: pattern,
           caseSensitive: caseSensitive,
         ),
@@ -5361,7 +5306,7 @@ extension ChatMessageEntityQueryFilter
   ownerUserIdIsEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'ownerUserId', value: ''),
+        FilterCondition.equalTo(property: r'owner_id', value: ''),
       );
     });
   }
@@ -5370,7 +5315,7 @@ extension ChatMessageEntityQueryFilter
   ownerUserIdIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'ownerUserId', value: ''),
+        FilterCondition.greaterThan(property: r'owner_id', value: ''),
       );
     });
   }
@@ -5379,7 +5324,7 @@ extension ChatMessageEntityQueryFilter
   payloadJsonIsNull() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        const FilterCondition.isNull(property: r'payloadJson'),
+        const FilterCondition.isNull(property: r'payload_json'),
       );
     });
   }
@@ -5388,7 +5333,7 @@ extension ChatMessageEntityQueryFilter
   payloadJsonIsNotNull() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        const FilterCondition.isNotNull(property: r'payloadJson'),
+        const FilterCondition.isNotNull(property: r'payload_json'),
       );
     });
   }
@@ -5398,7 +5343,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.equalTo(
-          property: r'payloadJson',
+          property: r'payload_json',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -5416,7 +5361,7 @@ extension ChatMessageEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'payloadJson',
+          property: r'payload_json',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -5434,7 +5379,7 @@ extension ChatMessageEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'payloadJson',
+          property: r'payload_json',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -5453,7 +5398,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'payloadJson',
+          property: r'payload_json',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -5469,7 +5414,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.startsWith(
-          property: r'payloadJson',
+          property: r'payload_json',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -5482,7 +5427,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.endsWith(
-          property: r'payloadJson',
+          property: r'payload_json',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -5495,7 +5440,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.contains(
-          property: r'payloadJson',
+          property: r'payload_json',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -5508,7 +5453,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.matches(
-          property: r'payloadJson',
+          property: r'payload_json',
           wildcard: pattern,
           caseSensitive: caseSensitive,
         ),
@@ -5520,7 +5465,7 @@ extension ChatMessageEntityQueryFilter
   payloadJsonIsEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'payloadJson', value: ''),
+        FilterCondition.equalTo(property: r'payload_json', value: ''),
       );
     });
   }
@@ -5529,7 +5474,7 @@ extension ChatMessageEntityQueryFilter
   payloadJsonIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'payloadJson', value: ''),
+        FilterCondition.greaterThan(property: r'payload_json', value: ''),
       );
     });
   }
@@ -5539,7 +5484,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.equalTo(
-          property: r'recipientUserId',
+          property: r'recipient_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -5557,7 +5502,7 @@ extension ChatMessageEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'recipientUserId',
+          property: r'recipient_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -5575,7 +5520,7 @@ extension ChatMessageEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'recipientUserId',
+          property: r'recipient_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -5594,7 +5539,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'recipientUserId',
+          property: r'recipient_id',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -5610,7 +5555,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.startsWith(
-          property: r'recipientUserId',
+          property: r'recipient_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -5623,7 +5568,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.endsWith(
-          property: r'recipientUserId',
+          property: r'recipient_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -5636,7 +5581,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.contains(
-          property: r'recipientUserId',
+          property: r'recipient_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -5649,7 +5594,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.matches(
-          property: r'recipientUserId',
+          property: r'recipient_id',
           wildcard: pattern,
           caseSensitive: caseSensitive,
         ),
@@ -5661,7 +5606,7 @@ extension ChatMessageEntityQueryFilter
   recipientUserIdIsEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'recipientUserId', value: ''),
+        FilterCondition.equalTo(property: r'recipient_id', value: ''),
       );
     });
   }
@@ -5670,7 +5615,62 @@ extension ChatMessageEntityQueryFilter
   recipientUserIdIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'recipientUserId', value: ''),
+        FilterCondition.greaterThan(property: r'recipient_id', value: ''),
+      );
+    });
+  }
+
+  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterFilterCondition>
+  idEqualTo(Id value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.equalTo(property: r'row_id', value: value),
+      );
+    });
+  }
+
+  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterFilterCondition>
+  idGreaterThan(Id value, {bool include = false}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(
+          include: include,
+          property: r'row_id',
+          value: value,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterFilterCondition>
+  idLessThan(Id value, {bool include = false}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.lessThan(
+          include: include,
+          property: r'row_id',
+          value: value,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterFilterCondition>
+  idBetween(
+    Id lower,
+    Id upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.between(
+          property: r'row_id',
+          lower: lower,
+          includeLower: includeLower,
+          upper: upper,
+          includeUpper: includeUpper,
+        ),
       );
     });
   }
@@ -5680,7 +5680,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.equalTo(
-          property: r'searchTokens',
+          property: r'search_tokens',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -5698,7 +5698,7 @@ extension ChatMessageEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'searchTokens',
+          property: r'search_tokens',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -5716,7 +5716,7 @@ extension ChatMessageEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'searchTokens',
+          property: r'search_tokens',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -5735,7 +5735,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'searchTokens',
+          property: r'search_tokens',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -5751,7 +5751,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.startsWith(
-          property: r'searchTokens',
+          property: r'search_tokens',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -5764,7 +5764,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.endsWith(
-          property: r'searchTokens',
+          property: r'search_tokens',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -5777,7 +5777,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.contains(
-          property: r'searchTokens',
+          property: r'search_tokens',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -5790,7 +5790,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.matches(
-          property: r'searchTokens',
+          property: r'search_tokens',
           wildcard: pattern,
           caseSensitive: caseSensitive,
         ),
@@ -5802,7 +5802,7 @@ extension ChatMessageEntityQueryFilter
   searchTokensElementIsEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'searchTokens', value: ''),
+        FilterCondition.equalTo(property: r'search_tokens', value: ''),
       );
     });
   }
@@ -5811,7 +5811,7 @@ extension ChatMessageEntityQueryFilter
   searchTokensElementIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'searchTokens', value: ''),
+        FilterCondition.greaterThan(property: r'search_tokens', value: ''),
       );
     });
   }
@@ -5819,35 +5819,35 @@ extension ChatMessageEntityQueryFilter
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterFilterCondition>
   searchTokensLengthEqualTo(int length) {
     return QueryBuilder.apply(this, (query) {
-      return query.listLength(r'searchTokens', length, true, length, true);
+      return query.listLength(r'search_tokens', length, true, length, true);
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterFilterCondition>
   searchTokensIsEmpty() {
     return QueryBuilder.apply(this, (query) {
-      return query.listLength(r'searchTokens', 0, true, 0, true);
+      return query.listLength(r'search_tokens', 0, true, 0, true);
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterFilterCondition>
   searchTokensIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
-      return query.listLength(r'searchTokens', 0, false, 999999, true);
+      return query.listLength(r'search_tokens', 0, false, 999999, true);
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterFilterCondition>
   searchTokensLengthLessThan(int length, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
-      return query.listLength(r'searchTokens', 0, true, length, include);
+      return query.listLength(r'search_tokens', 0, true, length, include);
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterFilterCondition>
   searchTokensLengthGreaterThan(int length, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
-      return query.listLength(r'searchTokens', length, include, 999999, true);
+      return query.listLength(r'search_tokens', length, include, 999999, true);
     });
   }
 
@@ -5860,7 +5860,7 @@ extension ChatMessageEntityQueryFilter
   }) {
     return QueryBuilder.apply(this, (query) {
       return query.listLength(
-        r'searchTokens',
+        r'search_tokens',
         lower,
         includeLower,
         upper,
@@ -5870,152 +5870,11 @@ extension ChatMessageEntityQueryFilter
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterFilterCondition>
-  senderDeviceIdEqualTo(String value, {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.equalTo(
-          property: r'senderDeviceId',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterFilterCondition>
-  senderDeviceIdGreaterThan(
-    String value, {
-    bool include = false,
-    bool caseSensitive = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.greaterThan(
-          include: include,
-          property: r'senderDeviceId',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterFilterCondition>
-  senderDeviceIdLessThan(
-    String value, {
-    bool include = false,
-    bool caseSensitive = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.lessThan(
-          include: include,
-          property: r'senderDeviceId',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterFilterCondition>
-  senderDeviceIdBetween(
-    String lower,
-    String upper, {
-    bool includeLower = true,
-    bool includeUpper = true,
-    bool caseSensitive = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.between(
-          property: r'senderDeviceId',
-          lower: lower,
-          includeLower: includeLower,
-          upper: upper,
-          includeUpper: includeUpper,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterFilterCondition>
-  senderDeviceIdStartsWith(String value, {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.startsWith(
-          property: r'senderDeviceId',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterFilterCondition>
-  senderDeviceIdEndsWith(String value, {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.endsWith(
-          property: r'senderDeviceId',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterFilterCondition>
-  senderDeviceIdContains(String value, {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.contains(
-          property: r'senderDeviceId',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterFilterCondition>
-  senderDeviceIdMatches(String pattern, {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.matches(
-          property: r'senderDeviceId',
-          wildcard: pattern,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterFilterCondition>
-  senderDeviceIdIsEmpty() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'senderDeviceId', value: ''),
-      );
-    });
-  }
-
-  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterFilterCondition>
-  senderDeviceIdIsNotEmpty() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'senderDeviceId', value: ''),
-      );
-    });
-  }
-
-  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterFilterCondition>
   senderUserIdEqualTo(String value, {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.equalTo(
-          property: r'senderUserId',
+          property: r'sender_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -6033,7 +5892,7 @@ extension ChatMessageEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'senderUserId',
+          property: r'sender_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -6051,7 +5910,7 @@ extension ChatMessageEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'senderUserId',
+          property: r'sender_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -6070,7 +5929,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'senderUserId',
+          property: r'sender_id',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -6086,7 +5945,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.startsWith(
-          property: r'senderUserId',
+          property: r'sender_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -6099,7 +5958,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.endsWith(
-          property: r'senderUserId',
+          property: r'sender_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -6112,7 +5971,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.contains(
-          property: r'senderUserId',
+          property: r'sender_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -6125,7 +5984,7 @@ extension ChatMessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.matches(
-          property: r'senderUserId',
+          property: r'sender_id',
           wildcard: pattern,
           caseSensitive: caseSensitive,
         ),
@@ -6137,7 +5996,7 @@ extension ChatMessageEntityQueryFilter
   senderUserIdIsEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'senderUserId', value: ''),
+        FilterCondition.equalTo(property: r'sender_id', value: ''),
       );
     });
   }
@@ -6146,7 +6005,7 @@ extension ChatMessageEntityQueryFilter
   senderUserIdIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'senderUserId', value: ''),
+        FilterCondition.greaterThan(property: r'sender_id', value: ''),
       );
     });
   }
@@ -6163,196 +6022,182 @@ extension ChatMessageEntityQuerySortBy
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
   sortByAccountId() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'accountId', Sort.asc);
+      return query.addSortBy(r'account_id', Sort.asc);
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
   sortByAccountIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'accountId', Sort.desc);
+      return query.addSortBy(r'account_id', Sort.desc);
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
   sortByBindingRevision() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'bindingRevision', Sort.asc);
+      return query.addSortBy(r'bind_rev', Sort.asc);
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
   sortByBindingRevisionDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'bindingRevision', Sort.desc);
+      return query.addSortBy(r'bind_rev', Sort.desc);
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
   sortByConversationId() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'conversationId', Sort.asc);
+      return query.addSortBy(r'conversation_id', Sort.asc);
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
   sortByConversationIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'conversationId', Sort.desc);
+      return query.addSortBy(r'conversation_id', Sort.desc);
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
   sortByCreatedAtMillis() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'createdAtMillis', Sort.asc);
+      return query.addSortBy(r'created_at', Sort.asc);
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
   sortByCreatedAtMillisDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'createdAtMillis', Sort.desc);
+      return query.addSortBy(r'created_at', Sort.desc);
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
   sortByDeliveryState() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'deliveryState', Sort.asc);
+      return query.addSortBy(r'delivery_state', Sort.asc);
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
   sortByDeliveryStateDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'deliveryState', Sort.desc);
-    });
-  }
-
-  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
-  sortByDirection() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'direction', Sort.asc);
-    });
-  }
-
-  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
-  sortByDirectionDesc() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'direction', Sort.desc);
+      return query.addSortBy(r'delivery_state', Sort.desc);
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
   sortByMessageBytesHex() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'messageBytesHex', Sort.asc);
+      return query.addSortBy(r'message_bytes', Sort.asc);
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
   sortByMessageBytesHexDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'messageBytesHex', Sort.desc);
+      return query.addSortBy(r'message_bytes', Sort.desc);
+    });
+  }
+
+  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
+  sortByDirection() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'message_direction', Sort.asc);
+    });
+  }
+
+  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
+  sortByDirectionDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'message_direction', Sort.desc);
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
   sortByMessageId() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'messageId', Sort.asc);
+      return query.addSortBy(r'message_id', Sort.asc);
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
   sortByMessageIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'messageId', Sort.desc);
+      return query.addSortBy(r'message_id', Sort.desc);
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
   sortByMessageKind() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'messageKind', Sort.asc);
+      return query.addSortBy(r'message_kind', Sort.asc);
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
   sortByMessageKindDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'messageKind', Sort.desc);
+      return query.addSortBy(r'message_kind', Sort.desc);
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
   sortByOwnerUserId() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'ownerUserId', Sort.asc);
+      return query.addSortBy(r'owner_id', Sort.asc);
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
   sortByOwnerUserIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'ownerUserId', Sort.desc);
+      return query.addSortBy(r'owner_id', Sort.desc);
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
   sortByPayloadJson() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'payloadJson', Sort.asc);
+      return query.addSortBy(r'payload_json', Sort.asc);
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
   sortByPayloadJsonDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'payloadJson', Sort.desc);
+      return query.addSortBy(r'payload_json', Sort.desc);
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
   sortByRecipientUserId() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'recipientUserId', Sort.asc);
+      return query.addSortBy(r'recipient_id', Sort.asc);
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
   sortByRecipientUserIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'recipientUserId', Sort.desc);
-    });
-  }
-
-  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
-  sortBySenderDeviceId() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'senderDeviceId', Sort.asc);
-    });
-  }
-
-  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
-  sortBySenderDeviceIdDesc() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'senderDeviceId', Sort.desc);
+      return query.addSortBy(r'recipient_id', Sort.desc);
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
   sortBySenderUserId() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'senderUserId', Sort.asc);
+      return query.addSortBy(r'sender_id', Sort.asc);
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
   sortBySenderUserIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'senderUserId', Sort.desc);
+      return query.addSortBy(r'sender_id', Sort.desc);
     });
   }
 }
@@ -6362,209 +6207,195 @@ extension ChatMessageEntityQuerySortThenBy
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
   thenByAccountId() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'accountId', Sort.asc);
+      return query.addSortBy(r'account_id', Sort.asc);
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
   thenByAccountIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'accountId', Sort.desc);
+      return query.addSortBy(r'account_id', Sort.desc);
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
   thenByBindingRevision() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'bindingRevision', Sort.asc);
+      return query.addSortBy(r'bind_rev', Sort.asc);
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
   thenByBindingRevisionDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'bindingRevision', Sort.desc);
+      return query.addSortBy(r'bind_rev', Sort.desc);
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
   thenByConversationId() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'conversationId', Sort.asc);
+      return query.addSortBy(r'conversation_id', Sort.asc);
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
   thenByConversationIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'conversationId', Sort.desc);
+      return query.addSortBy(r'conversation_id', Sort.desc);
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
   thenByCreatedAtMillis() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'createdAtMillis', Sort.asc);
+      return query.addSortBy(r'created_at', Sort.asc);
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
   thenByCreatedAtMillisDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'createdAtMillis', Sort.desc);
+      return query.addSortBy(r'created_at', Sort.desc);
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
   thenByDeliveryState() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'deliveryState', Sort.asc);
+      return query.addSortBy(r'delivery_state', Sort.asc);
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
   thenByDeliveryStateDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'deliveryState', Sort.desc);
-    });
-  }
-
-  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
-  thenByDirection() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'direction', Sort.asc);
-    });
-  }
-
-  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
-  thenByDirectionDesc() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'direction', Sort.desc);
-    });
-  }
-
-  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy> thenById() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'id', Sort.asc);
-    });
-  }
-
-  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
-  thenByIdDesc() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'id', Sort.desc);
+      return query.addSortBy(r'delivery_state', Sort.desc);
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
   thenByMessageBytesHex() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'messageBytesHex', Sort.asc);
+      return query.addSortBy(r'message_bytes', Sort.asc);
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
   thenByMessageBytesHexDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'messageBytesHex', Sort.desc);
+      return query.addSortBy(r'message_bytes', Sort.desc);
+    });
+  }
+
+  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
+  thenByDirection() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'message_direction', Sort.asc);
+    });
+  }
+
+  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
+  thenByDirectionDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'message_direction', Sort.desc);
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
   thenByMessageId() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'messageId', Sort.asc);
+      return query.addSortBy(r'message_id', Sort.asc);
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
   thenByMessageIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'messageId', Sort.desc);
+      return query.addSortBy(r'message_id', Sort.desc);
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
   thenByMessageKind() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'messageKind', Sort.asc);
+      return query.addSortBy(r'message_kind', Sort.asc);
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
   thenByMessageKindDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'messageKind', Sort.desc);
+      return query.addSortBy(r'message_kind', Sort.desc);
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
   thenByOwnerUserId() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'ownerUserId', Sort.asc);
+      return query.addSortBy(r'owner_id', Sort.asc);
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
   thenByOwnerUserIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'ownerUserId', Sort.desc);
+      return query.addSortBy(r'owner_id', Sort.desc);
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
   thenByPayloadJson() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'payloadJson', Sort.asc);
+      return query.addSortBy(r'payload_json', Sort.asc);
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
   thenByPayloadJsonDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'payloadJson', Sort.desc);
+      return query.addSortBy(r'payload_json', Sort.desc);
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
   thenByRecipientUserId() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'recipientUserId', Sort.asc);
+      return query.addSortBy(r'recipient_id', Sort.asc);
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
   thenByRecipientUserIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'recipientUserId', Sort.desc);
+      return query.addSortBy(r'recipient_id', Sort.desc);
+    });
+  }
+
+  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy> thenById() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'row_id', Sort.asc);
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
-  thenBySenderDeviceId() {
+  thenByIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'senderDeviceId', Sort.asc);
-    });
-  }
-
-  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
-  thenBySenderDeviceIdDesc() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'senderDeviceId', Sort.desc);
+      return query.addSortBy(r'row_id', Sort.desc);
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
   thenBySenderUserId() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'senderUserId', Sort.asc);
+      return query.addSortBy(r'sender_id', Sort.asc);
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QAfterSortBy>
   thenBySenderUserIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'senderUserId', Sort.desc);
+      return query.addSortBy(r'sender_id', Sort.desc);
     });
   }
 }
@@ -6574,14 +6405,14 @@ extension ChatMessageEntityQueryWhereDistinct
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QDistinct>
   distinctByAccountId({bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'accountId', caseSensitive: caseSensitive);
+      return query.addDistinctBy(r'account_id', caseSensitive: caseSensitive);
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QDistinct>
   distinctByBindingRevision() {
     return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'bindingRevision');
+      return query.addDistinctBy(r'bind_rev');
     });
   }
 
@@ -6589,7 +6420,7 @@ extension ChatMessageEntityQueryWhereDistinct
   distinctByConversationId({bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(
-        r'conversationId',
+        r'conversation_id',
         caseSensitive: caseSensitive,
       );
     });
@@ -6598,7 +6429,7 @@ extension ChatMessageEntityQueryWhereDistinct
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QDistinct>
   distinctByCreatedAtMillis() {
     return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'createdAtMillis');
+      return query.addDistinctBy(r'created_at');
     });
   }
 
@@ -6606,7 +6437,17 @@ extension ChatMessageEntityQueryWhereDistinct
   distinctByDeliveryState({bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(
-        r'deliveryState',
+        r'delivery_state',
+        caseSensitive: caseSensitive,
+      );
+    });
+  }
+
+  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QDistinct>
+  distinctByMessageBytesHex({bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(
+        r'message_bytes',
         caseSensitive: caseSensitive,
       );
     });
@@ -6615,15 +6456,8 @@ extension ChatMessageEntityQueryWhereDistinct
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QDistinct>
   distinctByDirection({bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'direction', caseSensitive: caseSensitive);
-    });
-  }
-
-  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QDistinct>
-  distinctByMessageBytesHex({bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(
-        r'messageBytesHex',
+        r'message_direction',
         caseSensitive: caseSensitive,
       );
     });
@@ -6632,62 +6466,49 @@ extension ChatMessageEntityQueryWhereDistinct
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QDistinct>
   distinctByMessageId({bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'messageId', caseSensitive: caseSensitive);
+      return query.addDistinctBy(r'message_id', caseSensitive: caseSensitive);
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QDistinct>
   distinctByMessageKind({bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'messageKind', caseSensitive: caseSensitive);
+      return query.addDistinctBy(r'message_kind', caseSensitive: caseSensitive);
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QDistinct>
   distinctByOwnerUserId({bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'ownerUserId', caseSensitive: caseSensitive);
+      return query.addDistinctBy(r'owner_id', caseSensitive: caseSensitive);
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QDistinct>
   distinctByPayloadJson({bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'payloadJson', caseSensitive: caseSensitive);
+      return query.addDistinctBy(r'payload_json', caseSensitive: caseSensitive);
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QDistinct>
   distinctByRecipientUserId({bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(
-        r'recipientUserId',
-        caseSensitive: caseSensitive,
-      );
+      return query.addDistinctBy(r'recipient_id', caseSensitive: caseSensitive);
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QDistinct>
   distinctBySearchTokens() {
     return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'searchTokens');
-    });
-  }
-
-  QueryBuilder<ChatMessageEntity, ChatMessageEntity, QDistinct>
-  distinctBySenderDeviceId({bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(
-        r'senderDeviceId',
-        caseSensitive: caseSensitive,
-      );
+      return query.addDistinctBy(r'search_tokens');
     });
   }
 
   QueryBuilder<ChatMessageEntity, ChatMessageEntity, QDistinct>
   distinctBySenderUserId({bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'senderUserId', caseSensitive: caseSensitive);
+      return query.addDistinctBy(r'sender_id', caseSensitive: caseSensitive);
     });
   }
 }
@@ -6696,112 +6517,105 @@ extension ChatMessageEntityQueryProperty
     on QueryBuilder<ChatMessageEntity, ChatMessageEntity, QQueryProperty> {
   QueryBuilder<ChatMessageEntity, int, QQueryOperations> idProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'id');
+      return query.addPropertyName(r'row_id');
     });
   }
 
   QueryBuilder<ChatMessageEntity, String, QQueryOperations>
   accountIdProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'accountId');
+      return query.addPropertyName(r'account_id');
     });
   }
 
   QueryBuilder<ChatMessageEntity, int, QQueryOperations>
   bindingRevisionProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'bindingRevision');
+      return query.addPropertyName(r'bind_rev');
     });
   }
 
   QueryBuilder<ChatMessageEntity, String, QQueryOperations>
   conversationIdProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'conversationId');
+      return query.addPropertyName(r'conversation_id');
     });
   }
 
   QueryBuilder<ChatMessageEntity, int, QQueryOperations>
   createdAtMillisProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'createdAtMillis');
+      return query.addPropertyName(r'created_at');
     });
   }
 
   QueryBuilder<ChatMessageEntity, String, QQueryOperations>
   deliveryStateProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'deliveryState');
-    });
-  }
-
-  QueryBuilder<ChatMessageEntity, String, QQueryOperations>
-  directionProperty() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'direction');
+      return query.addPropertyName(r'delivery_state');
     });
   }
 
   QueryBuilder<ChatMessageEntity, String, QQueryOperations>
   messageBytesHexProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'messageBytesHex');
+      return query.addPropertyName(r'message_bytes');
+    });
+  }
+
+  QueryBuilder<ChatMessageEntity, String, QQueryOperations>
+  directionProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'message_direction');
     });
   }
 
   QueryBuilder<ChatMessageEntity, String, QQueryOperations>
   messageIdProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'messageId');
+      return query.addPropertyName(r'message_id');
     });
   }
 
   QueryBuilder<ChatMessageEntity, String, QQueryOperations>
   messageKindProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'messageKind');
+      return query.addPropertyName(r'message_kind');
     });
   }
 
   QueryBuilder<ChatMessageEntity, String, QQueryOperations>
   ownerUserIdProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'ownerUserId');
+      return query.addPropertyName(r'owner_id');
     });
   }
 
   QueryBuilder<ChatMessageEntity, String?, QQueryOperations>
   payloadJsonProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'payloadJson');
+      return query.addPropertyName(r'payload_json');
     });
   }
 
   QueryBuilder<ChatMessageEntity, String, QQueryOperations>
   recipientUserIdProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'recipientUserId');
+      return query.addPropertyName(r'recipient_id');
     });
   }
 
   QueryBuilder<ChatMessageEntity, List<String>, QQueryOperations>
   searchTokensProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'searchTokens');
-    });
-  }
-
-  QueryBuilder<ChatMessageEntity, String, QQueryOperations>
-  senderDeviceIdProperty() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'senderDeviceId');
+      return query.addPropertyName(r'search_tokens');
     });
   }
 
   QueryBuilder<ChatMessageEntity, String, QQueryOperations>
   senderUserIdProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'senderUserId');
+      return query.addPropertyName(r'sender_id');
     });
   }
 }
@@ -6815,52 +6629,37 @@ extension GetChatOutboundQueueEntityCollection on Isar {
 }
 
 const ChatOutboundQueueEntitySchema = CollectionSchema(
-  name: r'ChatOutboundQueueEntity',
-  id: -4338550964144627327,
+  name: r'outbound',
+  id: 9201902700275338765,
   properties: {
-    r'attemptCount': PropertySchema(
+    r'conversation_id': PropertySchema(
       id: 0,
-      name: r'attemptCount',
-      type: IsarType.long,
+      name: r'conversation_id',
+      type: IsarType.string,
     ),
-    r'conversationId': PropertySchema(
+    r'message_bytes': PropertySchema(
       id: 1,
-      name: r'conversationId',
+      name: r'message_bytes',
       type: IsarType.string,
     ),
-    r'deliveryState': PropertySchema(
+    r'message_id': PropertySchema(
       id: 2,
-      name: r'deliveryState',
+      name: r'message_id',
       type: IsarType.string,
     ),
-    r'lastError': PropertySchema(
+    r'owner_id': PropertySchema(
       id: 3,
-      name: r'lastError',
+      name: r'owner_id',
       type: IsarType.string,
     ),
-    r'messageBytesHex': PropertySchema(
+    r'recipient_id': PropertySchema(
       id: 4,
-      name: r'messageBytesHex',
+      name: r'recipient_id',
       type: IsarType.string,
     ),
-    r'messageId': PropertySchema(
+    r'updated_at': PropertySchema(
       id: 5,
-      name: r'messageId',
-      type: IsarType.string,
-    ),
-    r'ownerUserId': PropertySchema(
-      id: 6,
-      name: r'ownerUserId',
-      type: IsarType.string,
-    ),
-    r'recipientUserId': PropertySchema(
-      id: 7,
-      name: r'recipientUserId',
-      type: IsarType.string,
-    ),
-    r'updatedAtMillis': PropertySchema(
-      id: 8,
-      name: r'updatedAtMillis',
+      name: r'updated_at',
       type: IsarType.long,
     ),
   },
@@ -6869,47 +6668,47 @@ const ChatOutboundQueueEntitySchema = CollectionSchema(
   serialize: _chatOutboundQueueEntitySerialize,
   deserialize: _chatOutboundQueueEntityDeserialize,
   deserializeProp: _chatOutboundQueueEntityDeserializeProp,
-  idName: r'id',
+  idName: r'row_id',
   indexes: {
-    r'ownerUserId_messageId': IndexSchema(
-      id: 6423036073976843555,
-      name: r'ownerUserId_messageId',
+    r'owner_id_message_id': IndexSchema(
+      id: -5137609912169235308,
+      name: r'owner_id_message_id',
       unique: true,
       replace: true,
       properties: [
         IndexPropertySchema(
-          name: r'ownerUserId',
+          name: r'owner_id',
           type: IndexType.hash,
           caseSensitive: true,
         ),
         IndexPropertySchema(
-          name: r'messageId',
-          type: IndexType.hash,
-          caseSensitive: true,
-        ),
-      ],
-    ),
-    r'conversationId': IndexSchema(
-      id: 2945908346256754300,
-      name: r'conversationId',
-      unique: false,
-      replace: false,
-      properties: [
-        IndexPropertySchema(
-          name: r'conversationId',
+          name: r'message_id',
           type: IndexType.hash,
           caseSensitive: true,
         ),
       ],
     ),
-    r'updatedAtMillis': IndexSchema(
-      id: -5245432295617068179,
-      name: r'updatedAtMillis',
+    r'conversation_id': IndexSchema(
+      id: -4048954474591270722,
+      name: r'conversation_id',
       unique: false,
       replace: false,
       properties: [
         IndexPropertySchema(
-          name: r'updatedAtMillis',
+          name: r'conversation_id',
+          type: IndexType.hash,
+          caseSensitive: true,
+        ),
+      ],
+    ),
+    r'updated_at': IndexSchema(
+      id: -1449665799000962892,
+      name: r'updated_at',
+      unique: false,
+      replace: false,
+      properties: [
+        IndexPropertySchema(
+          name: r'updated_at',
           type: IndexType.value,
           caseSensitive: false,
         ),
@@ -6932,13 +6731,6 @@ int _chatOutboundQueueEntityEstimateSize(
 ) {
   var bytesCount = offsets.last;
   bytesCount += 3 + object.conversationId.length * 3;
-  bytesCount += 3 + object.deliveryState.length * 3;
-  {
-    final value = object.lastError;
-    if (value != null) {
-      bytesCount += 3 + value.length * 3;
-    }
-  }
   bytesCount += 3 + object.messageBytesHex.length * 3;
   bytesCount += 3 + object.messageId.length * 3;
   bytesCount += 3 + object.ownerUserId.length * 3;
@@ -6952,15 +6744,12 @@ void _chatOutboundQueueEntitySerialize(
   List<int> offsets,
   Map<Type, List<int>> allOffsets,
 ) {
-  writer.writeLong(offsets[0], object.attemptCount);
-  writer.writeString(offsets[1], object.conversationId);
-  writer.writeString(offsets[2], object.deliveryState);
-  writer.writeString(offsets[3], object.lastError);
-  writer.writeString(offsets[4], object.messageBytesHex);
-  writer.writeString(offsets[5], object.messageId);
-  writer.writeString(offsets[6], object.ownerUserId);
-  writer.writeString(offsets[7], object.recipientUserId);
-  writer.writeLong(offsets[8], object.updatedAtMillis);
+  writer.writeString(offsets[0], object.conversationId);
+  writer.writeString(offsets[1], object.messageBytesHex);
+  writer.writeString(offsets[2], object.messageId);
+  writer.writeString(offsets[3], object.ownerUserId);
+  writer.writeString(offsets[4], object.recipientUserId);
+  writer.writeLong(offsets[5], object.updatedAtMillis);
 }
 
 ChatOutboundQueueEntity _chatOutboundQueueEntityDeserialize(
@@ -6970,16 +6759,13 @@ ChatOutboundQueueEntity _chatOutboundQueueEntityDeserialize(
   Map<Type, List<int>> allOffsets,
 ) {
   final object = ChatOutboundQueueEntity();
-  object.attemptCount = reader.readLong(offsets[0]);
-  object.conversationId = reader.readString(offsets[1]);
-  object.deliveryState = reader.readString(offsets[2]);
+  object.conversationId = reader.readString(offsets[0]);
+  object.messageBytesHex = reader.readString(offsets[1]);
+  object.messageId = reader.readString(offsets[2]);
+  object.ownerUserId = reader.readString(offsets[3]);
+  object.recipientUserId = reader.readString(offsets[4]);
   object.id = id;
-  object.lastError = reader.readStringOrNull(offsets[3]);
-  object.messageBytesHex = reader.readString(offsets[4]);
-  object.messageId = reader.readString(offsets[5]);
-  object.ownerUserId = reader.readString(offsets[6]);
-  object.recipientUserId = reader.readString(offsets[7]);
-  object.updatedAtMillis = reader.readLong(offsets[8]);
+  object.updatedAtMillis = reader.readLong(offsets[5]);
   return object;
 }
 
@@ -6991,22 +6777,16 @@ P _chatOutboundQueueEntityDeserializeProp<P>(
 ) {
   switch (propertyId) {
     case 0:
-      return (reader.readLong(offset)) as P;
+      return (reader.readString(offset)) as P;
     case 1:
       return (reader.readString(offset)) as P;
     case 2:
       return (reader.readString(offset)) as P;
     case 3:
-      return (reader.readStringOrNull(offset)) as P;
+      return (reader.readString(offset)) as P;
     case 4:
       return (reader.readString(offset)) as P;
     case 5:
-      return (reader.readString(offset)) as P;
-    case 6:
-      return (reader.readString(offset)) as P;
-    case 7:
-      return (reader.readString(offset)) as P;
-    case 8:
       return (reader.readLong(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
@@ -7037,28 +6817,25 @@ extension ChatOutboundQueueEntityByIndex
     String ownerUserId,
     String messageId,
   ) {
-    return getByIndex(r'ownerUserId_messageId', [ownerUserId, messageId]);
+    return getByIndex(r'owner_id_message_id', [ownerUserId, messageId]);
   }
 
   ChatOutboundQueueEntity? getByOwnerUserIdMessageIdSync(
     String ownerUserId,
     String messageId,
   ) {
-    return getByIndexSync(r'ownerUserId_messageId', [ownerUserId, messageId]);
+    return getByIndexSync(r'owner_id_message_id', [ownerUserId, messageId]);
   }
 
   Future<bool> deleteByOwnerUserIdMessageId(
     String ownerUserId,
     String messageId,
   ) {
-    return deleteByIndex(r'ownerUserId_messageId', [ownerUserId, messageId]);
+    return deleteByIndex(r'owner_id_message_id', [ownerUserId, messageId]);
   }
 
   bool deleteByOwnerUserIdMessageIdSync(String ownerUserId, String messageId) {
-    return deleteByIndexSync(r'ownerUserId_messageId', [
-      ownerUserId,
-      messageId,
-    ]);
+    return deleteByIndexSync(r'owner_id_message_id', [ownerUserId, messageId]);
   }
 
   Future<List<ChatOutboundQueueEntity?>> getAllByOwnerUserIdMessageId(
@@ -7075,7 +6852,7 @@ extension ChatOutboundQueueEntityByIndex
       values.add([ownerUserIdValues[i], messageIdValues[i]]);
     }
 
-    return getAllByIndex(r'ownerUserId_messageId', values);
+    return getAllByIndex(r'owner_id_message_id', values);
   }
 
   List<ChatOutboundQueueEntity?> getAllByOwnerUserIdMessageIdSync(
@@ -7092,7 +6869,7 @@ extension ChatOutboundQueueEntityByIndex
       values.add([ownerUserIdValues[i], messageIdValues[i]]);
     }
 
-    return getAllByIndexSync(r'ownerUserId_messageId', values);
+    return getAllByIndexSync(r'owner_id_message_id', values);
   }
 
   Future<int> deleteAllByOwnerUserIdMessageId(
@@ -7109,7 +6886,7 @@ extension ChatOutboundQueueEntityByIndex
       values.add([ownerUserIdValues[i], messageIdValues[i]]);
     }
 
-    return deleteAllByIndex(r'ownerUserId_messageId', values);
+    return deleteAllByIndex(r'owner_id_message_id', values);
   }
 
   int deleteAllByOwnerUserIdMessageIdSync(
@@ -7126,28 +6903,24 @@ extension ChatOutboundQueueEntityByIndex
       values.add([ownerUserIdValues[i], messageIdValues[i]]);
     }
 
-    return deleteAllByIndexSync(r'ownerUserId_messageId', values);
+    return deleteAllByIndexSync(r'owner_id_message_id', values);
   }
 
   Future<Id> putByOwnerUserIdMessageId(ChatOutboundQueueEntity object) {
-    return putByIndex(r'ownerUserId_messageId', object);
+    return putByIndex(r'owner_id_message_id', object);
   }
 
   Id putByOwnerUserIdMessageIdSync(
     ChatOutboundQueueEntity object, {
     bool saveLinks = true,
   }) {
-    return putByIndexSync(
-      r'ownerUserId_messageId',
-      object,
-      saveLinks: saveLinks,
-    );
+    return putByIndexSync(r'owner_id_message_id', object, saveLinks: saveLinks);
   }
 
   Future<List<Id>> putAllByOwnerUserIdMessageId(
     List<ChatOutboundQueueEntity> objects,
   ) {
-    return putAllByIndex(r'ownerUserId_messageId', objects);
+    return putAllByIndex(r'owner_id_message_id', objects);
   }
 
   List<Id> putAllByOwnerUserIdMessageIdSync(
@@ -7155,7 +6928,7 @@ extension ChatOutboundQueueEntityByIndex
     bool saveLinks = true,
   }) {
     return putAllByIndexSync(
-      r'ownerUserId_messageId',
+      r'owner_id_message_id',
       objects,
       saveLinks: saveLinks,
     );
@@ -7175,7 +6948,7 @@ extension ChatOutboundQueueEntityQueryWhereSort
   anyUpdatedAtMillis() {
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
-        const IndexWhereClause.any(indexName: r'updatedAtMillis'),
+        const IndexWhereClause.any(indexName: r'updated_at'),
       );
     });
   }
@@ -7284,7 +7057,7 @@ extension ChatOutboundQueueEntityQueryWhere
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         IndexWhereClause.equalTo(
-          indexName: r'ownerUserId_messageId',
+          indexName: r'owner_id_message_id',
           value: [ownerUserId],
         ),
       );
@@ -7302,7 +7075,7 @@ extension ChatOutboundQueueEntityQueryWhere
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_messageId',
+                indexName: r'owner_id_message_id',
                 lower: [],
                 upper: [ownerUserId],
                 includeUpper: false,
@@ -7310,7 +7083,7 @@ extension ChatOutboundQueueEntityQueryWhere
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_messageId',
+                indexName: r'owner_id_message_id',
                 lower: [ownerUserId],
                 includeLower: false,
                 upper: [],
@@ -7320,7 +7093,7 @@ extension ChatOutboundQueueEntityQueryWhere
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_messageId',
+                indexName: r'owner_id_message_id',
                 lower: [ownerUserId],
                 includeLower: false,
                 upper: [],
@@ -7328,7 +7101,7 @@ extension ChatOutboundQueueEntityQueryWhere
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_messageId',
+                indexName: r'owner_id_message_id',
                 lower: [],
                 upper: [ownerUserId],
                 includeUpper: false,
@@ -7347,7 +7120,7 @@ extension ChatOutboundQueueEntityQueryWhere
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         IndexWhereClause.equalTo(
-          indexName: r'ownerUserId_messageId',
+          indexName: r'owner_id_message_id',
           value: [ownerUserId, messageId],
         ),
       );
@@ -7365,7 +7138,7 @@ extension ChatOutboundQueueEntityQueryWhere
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_messageId',
+                indexName: r'owner_id_message_id',
                 lower: [ownerUserId],
                 upper: [ownerUserId, messageId],
                 includeUpper: false,
@@ -7373,7 +7146,7 @@ extension ChatOutboundQueueEntityQueryWhere
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_messageId',
+                indexName: r'owner_id_message_id',
                 lower: [ownerUserId, messageId],
                 includeLower: false,
                 upper: [ownerUserId],
@@ -7383,7 +7156,7 @@ extension ChatOutboundQueueEntityQueryWhere
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_messageId',
+                indexName: r'owner_id_message_id',
                 lower: [ownerUserId, messageId],
                 includeLower: false,
                 upper: [ownerUserId],
@@ -7391,7 +7164,7 @@ extension ChatOutboundQueueEntityQueryWhere
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_messageId',
+                indexName: r'owner_id_message_id',
                 lower: [ownerUserId],
                 upper: [ownerUserId, messageId],
                 includeUpper: false,
@@ -7410,7 +7183,7 @@ extension ChatOutboundQueueEntityQueryWhere
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         IndexWhereClause.equalTo(
-          indexName: r'conversationId',
+          indexName: r'conversation_id',
           value: [conversationId],
         ),
       );
@@ -7428,7 +7201,7 @@ extension ChatOutboundQueueEntityQueryWhere
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'conversationId',
+                indexName: r'conversation_id',
                 lower: [],
                 upper: [conversationId],
                 includeUpper: false,
@@ -7436,7 +7209,7 @@ extension ChatOutboundQueueEntityQueryWhere
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'conversationId',
+                indexName: r'conversation_id',
                 lower: [conversationId],
                 includeLower: false,
                 upper: [],
@@ -7446,7 +7219,7 @@ extension ChatOutboundQueueEntityQueryWhere
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'conversationId',
+                indexName: r'conversation_id',
                 lower: [conversationId],
                 includeLower: false,
                 upper: [],
@@ -7454,7 +7227,7 @@ extension ChatOutboundQueueEntityQueryWhere
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'conversationId',
+                indexName: r'conversation_id',
                 lower: [],
                 upper: [conversationId],
                 includeUpper: false,
@@ -7473,7 +7246,7 @@ extension ChatOutboundQueueEntityQueryWhere
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         IndexWhereClause.equalTo(
-          indexName: r'updatedAtMillis',
+          indexName: r'updated_at',
           value: [updatedAtMillis],
         ),
       );
@@ -7491,7 +7264,7 @@ extension ChatOutboundQueueEntityQueryWhere
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'updatedAtMillis',
+                indexName: r'updated_at',
                 lower: [],
                 upper: [updatedAtMillis],
                 includeUpper: false,
@@ -7499,7 +7272,7 @@ extension ChatOutboundQueueEntityQueryWhere
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'updatedAtMillis',
+                indexName: r'updated_at',
                 lower: [updatedAtMillis],
                 includeLower: false,
                 upper: [],
@@ -7509,7 +7282,7 @@ extension ChatOutboundQueueEntityQueryWhere
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'updatedAtMillis',
+                indexName: r'updated_at',
                 lower: [updatedAtMillis],
                 includeLower: false,
                 upper: [],
@@ -7517,7 +7290,7 @@ extension ChatOutboundQueueEntityQueryWhere
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'updatedAtMillis',
+                indexName: r'updated_at',
                 lower: [],
                 upper: [updatedAtMillis],
                 includeUpper: false,
@@ -7536,7 +7309,7 @@ extension ChatOutboundQueueEntityQueryWhere
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         IndexWhereClause.between(
-          indexName: r'updatedAtMillis',
+          indexName: r'updated_at',
           lower: [updatedAtMillis],
           includeLower: include,
           upper: [],
@@ -7554,7 +7327,7 @@ extension ChatOutboundQueueEntityQueryWhere
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         IndexWhereClause.between(
-          indexName: r'updatedAtMillis',
+          indexName: r'updated_at',
           lower: [],
           upper: [updatedAtMillis],
           includeUpper: include,
@@ -7577,7 +7350,7 @@ extension ChatOutboundQueueEntityQueryWhere
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         IndexWhereClause.between(
-          indexName: r'updatedAtMillis',
+          indexName: r'updated_at',
           lower: [lowerUpdatedAtMillis],
           includeLower: includeLower,
           upper: [upperUpdatedAtMillis],
@@ -7600,82 +7373,11 @@ extension ChatOutboundQueueEntityQueryFilter
     ChatOutboundQueueEntity,
     QAfterFilterCondition
   >
-  attemptCountEqualTo(int value) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'attemptCount', value: value),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatOutboundQueueEntity,
-    ChatOutboundQueueEntity,
-    QAfterFilterCondition
-  >
-  attemptCountGreaterThan(int value, {bool include = false}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.greaterThan(
-          include: include,
-          property: r'attemptCount',
-          value: value,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatOutboundQueueEntity,
-    ChatOutboundQueueEntity,
-    QAfterFilterCondition
-  >
-  attemptCountLessThan(int value, {bool include = false}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.lessThan(
-          include: include,
-          property: r'attemptCount',
-          value: value,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatOutboundQueueEntity,
-    ChatOutboundQueueEntity,
-    QAfterFilterCondition
-  >
-  attemptCountBetween(
-    int lower,
-    int upper, {
-    bool includeLower = true,
-    bool includeUpper = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.between(
-          property: r'attemptCount',
-          lower: lower,
-          includeLower: includeLower,
-          upper: upper,
-          includeUpper: includeUpper,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatOutboundQueueEntity,
-    ChatOutboundQueueEntity,
-    QAfterFilterCondition
-  >
   conversationIdEqualTo(String value, {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.equalTo(
-          property: r'conversationId',
+          property: r'conversation_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -7697,7 +7399,7 @@ extension ChatOutboundQueueEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'conversationId',
+          property: r'conversation_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -7719,7 +7421,7 @@ extension ChatOutboundQueueEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'conversationId',
+          property: r'conversation_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -7742,7 +7444,7 @@ extension ChatOutboundQueueEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'conversationId',
+          property: r'conversation_id',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -7762,7 +7464,7 @@ extension ChatOutboundQueueEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.startsWith(
-          property: r'conversationId',
+          property: r'conversation_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -7779,7 +7481,7 @@ extension ChatOutboundQueueEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.endsWith(
-          property: r'conversationId',
+          property: r'conversation_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -7796,7 +7498,7 @@ extension ChatOutboundQueueEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.contains(
-          property: r'conversationId',
+          property: r'conversation_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -7813,7 +7515,7 @@ extension ChatOutboundQueueEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.matches(
-          property: r'conversationId',
+          property: r'conversation_id',
           wildcard: pattern,
           caseSensitive: caseSensitive,
         ),
@@ -7829,7 +7531,7 @@ extension ChatOutboundQueueEntityQueryFilter
   conversationIdIsEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'conversationId', value: ''),
+        FilterCondition.equalTo(property: r'conversation_id', value: ''),
       );
     });
   }
@@ -7842,466 +7544,7 @@ extension ChatOutboundQueueEntityQueryFilter
   conversationIdIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'conversationId', value: ''),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatOutboundQueueEntity,
-    ChatOutboundQueueEntity,
-    QAfterFilterCondition
-  >
-  deliveryStateEqualTo(String value, {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.equalTo(
-          property: r'deliveryState',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatOutboundQueueEntity,
-    ChatOutboundQueueEntity,
-    QAfterFilterCondition
-  >
-  deliveryStateGreaterThan(
-    String value, {
-    bool include = false,
-    bool caseSensitive = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.greaterThan(
-          include: include,
-          property: r'deliveryState',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatOutboundQueueEntity,
-    ChatOutboundQueueEntity,
-    QAfterFilterCondition
-  >
-  deliveryStateLessThan(
-    String value, {
-    bool include = false,
-    bool caseSensitive = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.lessThan(
-          include: include,
-          property: r'deliveryState',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatOutboundQueueEntity,
-    ChatOutboundQueueEntity,
-    QAfterFilterCondition
-  >
-  deliveryStateBetween(
-    String lower,
-    String upper, {
-    bool includeLower = true,
-    bool includeUpper = true,
-    bool caseSensitive = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.between(
-          property: r'deliveryState',
-          lower: lower,
-          includeLower: includeLower,
-          upper: upper,
-          includeUpper: includeUpper,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatOutboundQueueEntity,
-    ChatOutboundQueueEntity,
-    QAfterFilterCondition
-  >
-  deliveryStateStartsWith(String value, {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.startsWith(
-          property: r'deliveryState',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatOutboundQueueEntity,
-    ChatOutboundQueueEntity,
-    QAfterFilterCondition
-  >
-  deliveryStateEndsWith(String value, {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.endsWith(
-          property: r'deliveryState',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatOutboundQueueEntity,
-    ChatOutboundQueueEntity,
-    QAfterFilterCondition
-  >
-  deliveryStateContains(String value, {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.contains(
-          property: r'deliveryState',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatOutboundQueueEntity,
-    ChatOutboundQueueEntity,
-    QAfterFilterCondition
-  >
-  deliveryStateMatches(String pattern, {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.matches(
-          property: r'deliveryState',
-          wildcard: pattern,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatOutboundQueueEntity,
-    ChatOutboundQueueEntity,
-    QAfterFilterCondition
-  >
-  deliveryStateIsEmpty() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'deliveryState', value: ''),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatOutboundQueueEntity,
-    ChatOutboundQueueEntity,
-    QAfterFilterCondition
-  >
-  deliveryStateIsNotEmpty() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'deliveryState', value: ''),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatOutboundQueueEntity,
-    ChatOutboundQueueEntity,
-    QAfterFilterCondition
-  >
-  idEqualTo(Id value) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'id', value: value),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatOutboundQueueEntity,
-    ChatOutboundQueueEntity,
-    QAfterFilterCondition
-  >
-  idGreaterThan(Id value, {bool include = false}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.greaterThan(
-          include: include,
-          property: r'id',
-          value: value,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatOutboundQueueEntity,
-    ChatOutboundQueueEntity,
-    QAfterFilterCondition
-  >
-  idLessThan(Id value, {bool include = false}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.lessThan(
-          include: include,
-          property: r'id',
-          value: value,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatOutboundQueueEntity,
-    ChatOutboundQueueEntity,
-    QAfterFilterCondition
-  >
-  idBetween(
-    Id lower,
-    Id upper, {
-    bool includeLower = true,
-    bool includeUpper = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.between(
-          property: r'id',
-          lower: lower,
-          includeLower: includeLower,
-          upper: upper,
-          includeUpper: includeUpper,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatOutboundQueueEntity,
-    ChatOutboundQueueEntity,
-    QAfterFilterCondition
-  >
-  lastErrorIsNull() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        const FilterCondition.isNull(property: r'lastError'),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatOutboundQueueEntity,
-    ChatOutboundQueueEntity,
-    QAfterFilterCondition
-  >
-  lastErrorIsNotNull() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        const FilterCondition.isNotNull(property: r'lastError'),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatOutboundQueueEntity,
-    ChatOutboundQueueEntity,
-    QAfterFilterCondition
-  >
-  lastErrorEqualTo(String? value, {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.equalTo(
-          property: r'lastError',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatOutboundQueueEntity,
-    ChatOutboundQueueEntity,
-    QAfterFilterCondition
-  >
-  lastErrorGreaterThan(
-    String? value, {
-    bool include = false,
-    bool caseSensitive = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.greaterThan(
-          include: include,
-          property: r'lastError',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatOutboundQueueEntity,
-    ChatOutboundQueueEntity,
-    QAfterFilterCondition
-  >
-  lastErrorLessThan(
-    String? value, {
-    bool include = false,
-    bool caseSensitive = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.lessThan(
-          include: include,
-          property: r'lastError',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatOutboundQueueEntity,
-    ChatOutboundQueueEntity,
-    QAfterFilterCondition
-  >
-  lastErrorBetween(
-    String? lower,
-    String? upper, {
-    bool includeLower = true,
-    bool includeUpper = true,
-    bool caseSensitive = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.between(
-          property: r'lastError',
-          lower: lower,
-          includeLower: includeLower,
-          upper: upper,
-          includeUpper: includeUpper,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatOutboundQueueEntity,
-    ChatOutboundQueueEntity,
-    QAfterFilterCondition
-  >
-  lastErrorStartsWith(String value, {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.startsWith(
-          property: r'lastError',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatOutboundQueueEntity,
-    ChatOutboundQueueEntity,
-    QAfterFilterCondition
-  >
-  lastErrorEndsWith(String value, {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.endsWith(
-          property: r'lastError',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatOutboundQueueEntity,
-    ChatOutboundQueueEntity,
-    QAfterFilterCondition
-  >
-  lastErrorContains(String value, {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.contains(
-          property: r'lastError',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatOutboundQueueEntity,
-    ChatOutboundQueueEntity,
-    QAfterFilterCondition
-  >
-  lastErrorMatches(String pattern, {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.matches(
-          property: r'lastError',
-          wildcard: pattern,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatOutboundQueueEntity,
-    ChatOutboundQueueEntity,
-    QAfterFilterCondition
-  >
-  lastErrorIsEmpty() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'lastError', value: ''),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatOutboundQueueEntity,
-    ChatOutboundQueueEntity,
-    QAfterFilterCondition
-  >
-  lastErrorIsNotEmpty() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'lastError', value: ''),
+        FilterCondition.greaterThan(property: r'conversation_id', value: ''),
       );
     });
   }
@@ -8315,7 +7558,7 @@ extension ChatOutboundQueueEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.equalTo(
-          property: r'messageBytesHex',
+          property: r'message_bytes',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -8337,7 +7580,7 @@ extension ChatOutboundQueueEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'messageBytesHex',
+          property: r'message_bytes',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -8359,7 +7602,7 @@ extension ChatOutboundQueueEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'messageBytesHex',
+          property: r'message_bytes',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -8382,7 +7625,7 @@ extension ChatOutboundQueueEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'messageBytesHex',
+          property: r'message_bytes',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -8402,7 +7645,7 @@ extension ChatOutboundQueueEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.startsWith(
-          property: r'messageBytesHex',
+          property: r'message_bytes',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -8419,7 +7662,7 @@ extension ChatOutboundQueueEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.endsWith(
-          property: r'messageBytesHex',
+          property: r'message_bytes',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -8436,7 +7679,7 @@ extension ChatOutboundQueueEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.contains(
-          property: r'messageBytesHex',
+          property: r'message_bytes',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -8453,7 +7696,7 @@ extension ChatOutboundQueueEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.matches(
-          property: r'messageBytesHex',
+          property: r'message_bytes',
           wildcard: pattern,
           caseSensitive: caseSensitive,
         ),
@@ -8469,7 +7712,7 @@ extension ChatOutboundQueueEntityQueryFilter
   messageBytesHexIsEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'messageBytesHex', value: ''),
+        FilterCondition.equalTo(property: r'message_bytes', value: ''),
       );
     });
   }
@@ -8482,7 +7725,7 @@ extension ChatOutboundQueueEntityQueryFilter
   messageBytesHexIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'messageBytesHex', value: ''),
+        FilterCondition.greaterThan(property: r'message_bytes', value: ''),
       );
     });
   }
@@ -8496,7 +7739,7 @@ extension ChatOutboundQueueEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.equalTo(
-          property: r'messageId',
+          property: r'message_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -8518,7 +7761,7 @@ extension ChatOutboundQueueEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'messageId',
+          property: r'message_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -8540,7 +7783,7 @@ extension ChatOutboundQueueEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'messageId',
+          property: r'message_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -8563,7 +7806,7 @@ extension ChatOutboundQueueEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'messageId',
+          property: r'message_id',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -8583,7 +7826,7 @@ extension ChatOutboundQueueEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.startsWith(
-          property: r'messageId',
+          property: r'message_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -8600,7 +7843,7 @@ extension ChatOutboundQueueEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.endsWith(
-          property: r'messageId',
+          property: r'message_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -8617,7 +7860,7 @@ extension ChatOutboundQueueEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.contains(
-          property: r'messageId',
+          property: r'message_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -8634,7 +7877,7 @@ extension ChatOutboundQueueEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.matches(
-          property: r'messageId',
+          property: r'message_id',
           wildcard: pattern,
           caseSensitive: caseSensitive,
         ),
@@ -8650,7 +7893,7 @@ extension ChatOutboundQueueEntityQueryFilter
   messageIdIsEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'messageId', value: ''),
+        FilterCondition.equalTo(property: r'message_id', value: ''),
       );
     });
   }
@@ -8663,7 +7906,7 @@ extension ChatOutboundQueueEntityQueryFilter
   messageIdIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'messageId', value: ''),
+        FilterCondition.greaterThan(property: r'message_id', value: ''),
       );
     });
   }
@@ -8677,7 +7920,7 @@ extension ChatOutboundQueueEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.equalTo(
-          property: r'ownerUserId',
+          property: r'owner_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -8699,7 +7942,7 @@ extension ChatOutboundQueueEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'ownerUserId',
+          property: r'owner_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -8721,7 +7964,7 @@ extension ChatOutboundQueueEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'ownerUserId',
+          property: r'owner_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -8744,7 +7987,7 @@ extension ChatOutboundQueueEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'ownerUserId',
+          property: r'owner_id',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -8764,7 +8007,7 @@ extension ChatOutboundQueueEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.startsWith(
-          property: r'ownerUserId',
+          property: r'owner_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -8781,7 +8024,7 @@ extension ChatOutboundQueueEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.endsWith(
-          property: r'ownerUserId',
+          property: r'owner_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -8798,7 +8041,7 @@ extension ChatOutboundQueueEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.contains(
-          property: r'ownerUserId',
+          property: r'owner_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -8815,7 +8058,7 @@ extension ChatOutboundQueueEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.matches(
-          property: r'ownerUserId',
+          property: r'owner_id',
           wildcard: pattern,
           caseSensitive: caseSensitive,
         ),
@@ -8831,7 +8074,7 @@ extension ChatOutboundQueueEntityQueryFilter
   ownerUserIdIsEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'ownerUserId', value: ''),
+        FilterCondition.equalTo(property: r'owner_id', value: ''),
       );
     });
   }
@@ -8844,7 +8087,7 @@ extension ChatOutboundQueueEntityQueryFilter
   ownerUserIdIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'ownerUserId', value: ''),
+        FilterCondition.greaterThan(property: r'owner_id', value: ''),
       );
     });
   }
@@ -8858,7 +8101,7 @@ extension ChatOutboundQueueEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.equalTo(
-          property: r'recipientUserId',
+          property: r'recipient_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -8880,7 +8123,7 @@ extension ChatOutboundQueueEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'recipientUserId',
+          property: r'recipient_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -8902,7 +8145,7 @@ extension ChatOutboundQueueEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'recipientUserId',
+          property: r'recipient_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -8925,7 +8168,7 @@ extension ChatOutboundQueueEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'recipientUserId',
+          property: r'recipient_id',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -8945,7 +8188,7 @@ extension ChatOutboundQueueEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.startsWith(
-          property: r'recipientUserId',
+          property: r'recipient_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -8962,7 +8205,7 @@ extension ChatOutboundQueueEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.endsWith(
-          property: r'recipientUserId',
+          property: r'recipient_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -8979,7 +8222,7 @@ extension ChatOutboundQueueEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.contains(
-          property: r'recipientUserId',
+          property: r'recipient_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -8996,7 +8239,7 @@ extension ChatOutboundQueueEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.matches(
-          property: r'recipientUserId',
+          property: r'recipient_id',
           wildcard: pattern,
           caseSensitive: caseSensitive,
         ),
@@ -9012,7 +8255,7 @@ extension ChatOutboundQueueEntityQueryFilter
   recipientUserIdIsEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'recipientUserId', value: ''),
+        FilterCondition.equalTo(property: r'recipient_id', value: ''),
       );
     });
   }
@@ -9025,7 +8268,78 @@ extension ChatOutboundQueueEntityQueryFilter
   recipientUserIdIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'recipientUserId', value: ''),
+        FilterCondition.greaterThan(property: r'recipient_id', value: ''),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatOutboundQueueEntity,
+    ChatOutboundQueueEntity,
+    QAfterFilterCondition
+  >
+  idEqualTo(Id value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.equalTo(property: r'row_id', value: value),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatOutboundQueueEntity,
+    ChatOutboundQueueEntity,
+    QAfterFilterCondition
+  >
+  idGreaterThan(Id value, {bool include = false}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(
+          include: include,
+          property: r'row_id',
+          value: value,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatOutboundQueueEntity,
+    ChatOutboundQueueEntity,
+    QAfterFilterCondition
+  >
+  idLessThan(Id value, {bool include = false}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.lessThan(
+          include: include,
+          property: r'row_id',
+          value: value,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatOutboundQueueEntity,
+    ChatOutboundQueueEntity,
+    QAfterFilterCondition
+  >
+  idBetween(
+    Id lower,
+    Id upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.between(
+          property: r'row_id',
+          lower: lower,
+          includeLower: includeLower,
+          upper: upper,
+          includeUpper: includeUpper,
+        ),
       );
     });
   }
@@ -9038,7 +8352,7 @@ extension ChatOutboundQueueEntityQueryFilter
   updatedAtMillisEqualTo(int value) {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'updatedAtMillis', value: value),
+        FilterCondition.equalTo(property: r'updated_at', value: value),
       );
     });
   }
@@ -9053,7 +8367,7 @@ extension ChatOutboundQueueEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'updatedAtMillis',
+          property: r'updated_at',
           value: value,
         ),
       );
@@ -9070,7 +8384,7 @@ extension ChatOutboundQueueEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'updatedAtMillis',
+          property: r'updated_at',
           value: value,
         ),
       );
@@ -9091,7 +8405,7 @@ extension ChatOutboundQueueEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'updatedAtMillis',
+          property: r'updated_at',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -9121,128 +8435,86 @@ extension ChatOutboundQueueEntityQueryLinks
 extension ChatOutboundQueueEntityQuerySortBy
     on QueryBuilder<ChatOutboundQueueEntity, ChatOutboundQueueEntity, QSortBy> {
   QueryBuilder<ChatOutboundQueueEntity, ChatOutboundQueueEntity, QAfterSortBy>
-  sortByAttemptCount() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'attemptCount', Sort.asc);
-    });
-  }
-
-  QueryBuilder<ChatOutboundQueueEntity, ChatOutboundQueueEntity, QAfterSortBy>
-  sortByAttemptCountDesc() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'attemptCount', Sort.desc);
-    });
-  }
-
-  QueryBuilder<ChatOutboundQueueEntity, ChatOutboundQueueEntity, QAfterSortBy>
   sortByConversationId() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'conversationId', Sort.asc);
+      return query.addSortBy(r'conversation_id', Sort.asc);
     });
   }
 
   QueryBuilder<ChatOutboundQueueEntity, ChatOutboundQueueEntity, QAfterSortBy>
   sortByConversationIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'conversationId', Sort.desc);
-    });
-  }
-
-  QueryBuilder<ChatOutboundQueueEntity, ChatOutboundQueueEntity, QAfterSortBy>
-  sortByDeliveryState() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'deliveryState', Sort.asc);
-    });
-  }
-
-  QueryBuilder<ChatOutboundQueueEntity, ChatOutboundQueueEntity, QAfterSortBy>
-  sortByDeliveryStateDesc() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'deliveryState', Sort.desc);
-    });
-  }
-
-  QueryBuilder<ChatOutboundQueueEntity, ChatOutboundQueueEntity, QAfterSortBy>
-  sortByLastError() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'lastError', Sort.asc);
-    });
-  }
-
-  QueryBuilder<ChatOutboundQueueEntity, ChatOutboundQueueEntity, QAfterSortBy>
-  sortByLastErrorDesc() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'lastError', Sort.desc);
+      return query.addSortBy(r'conversation_id', Sort.desc);
     });
   }
 
   QueryBuilder<ChatOutboundQueueEntity, ChatOutboundQueueEntity, QAfterSortBy>
   sortByMessageBytesHex() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'messageBytesHex', Sort.asc);
+      return query.addSortBy(r'message_bytes', Sort.asc);
     });
   }
 
   QueryBuilder<ChatOutboundQueueEntity, ChatOutboundQueueEntity, QAfterSortBy>
   sortByMessageBytesHexDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'messageBytesHex', Sort.desc);
+      return query.addSortBy(r'message_bytes', Sort.desc);
     });
   }
 
   QueryBuilder<ChatOutboundQueueEntity, ChatOutboundQueueEntity, QAfterSortBy>
   sortByMessageId() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'messageId', Sort.asc);
+      return query.addSortBy(r'message_id', Sort.asc);
     });
   }
 
   QueryBuilder<ChatOutboundQueueEntity, ChatOutboundQueueEntity, QAfterSortBy>
   sortByMessageIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'messageId', Sort.desc);
+      return query.addSortBy(r'message_id', Sort.desc);
     });
   }
 
   QueryBuilder<ChatOutboundQueueEntity, ChatOutboundQueueEntity, QAfterSortBy>
   sortByOwnerUserId() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'ownerUserId', Sort.asc);
+      return query.addSortBy(r'owner_id', Sort.asc);
     });
   }
 
   QueryBuilder<ChatOutboundQueueEntity, ChatOutboundQueueEntity, QAfterSortBy>
   sortByOwnerUserIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'ownerUserId', Sort.desc);
+      return query.addSortBy(r'owner_id', Sort.desc);
     });
   }
 
   QueryBuilder<ChatOutboundQueueEntity, ChatOutboundQueueEntity, QAfterSortBy>
   sortByRecipientUserId() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'recipientUserId', Sort.asc);
+      return query.addSortBy(r'recipient_id', Sort.asc);
     });
   }
 
   QueryBuilder<ChatOutboundQueueEntity, ChatOutboundQueueEntity, QAfterSortBy>
   sortByRecipientUserIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'recipientUserId', Sort.desc);
+      return query.addSortBy(r'recipient_id', Sort.desc);
     });
   }
 
   QueryBuilder<ChatOutboundQueueEntity, ChatOutboundQueueEntity, QAfterSortBy>
   sortByUpdatedAtMillis() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'updatedAtMillis', Sort.asc);
+      return query.addSortBy(r'updated_at', Sort.asc);
     });
   }
 
   QueryBuilder<ChatOutboundQueueEntity, ChatOutboundQueueEntity, QAfterSortBy>
   sortByUpdatedAtMillisDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'updatedAtMillis', Sort.desc);
+      return query.addSortBy(r'updated_at', Sort.desc);
     });
   }
 }
@@ -9255,142 +8527,100 @@ extension ChatOutboundQueueEntityQuerySortThenBy
           QSortThenBy
         > {
   QueryBuilder<ChatOutboundQueueEntity, ChatOutboundQueueEntity, QAfterSortBy>
-  thenByAttemptCount() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'attemptCount', Sort.asc);
-    });
-  }
-
-  QueryBuilder<ChatOutboundQueueEntity, ChatOutboundQueueEntity, QAfterSortBy>
-  thenByAttemptCountDesc() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'attemptCount', Sort.desc);
-    });
-  }
-
-  QueryBuilder<ChatOutboundQueueEntity, ChatOutboundQueueEntity, QAfterSortBy>
   thenByConversationId() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'conversationId', Sort.asc);
+      return query.addSortBy(r'conversation_id', Sort.asc);
     });
   }
 
   QueryBuilder<ChatOutboundQueueEntity, ChatOutboundQueueEntity, QAfterSortBy>
   thenByConversationIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'conversationId', Sort.desc);
-    });
-  }
-
-  QueryBuilder<ChatOutboundQueueEntity, ChatOutboundQueueEntity, QAfterSortBy>
-  thenByDeliveryState() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'deliveryState', Sort.asc);
-    });
-  }
-
-  QueryBuilder<ChatOutboundQueueEntity, ChatOutboundQueueEntity, QAfterSortBy>
-  thenByDeliveryStateDesc() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'deliveryState', Sort.desc);
-    });
-  }
-
-  QueryBuilder<ChatOutboundQueueEntity, ChatOutboundQueueEntity, QAfterSortBy>
-  thenById() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'id', Sort.asc);
-    });
-  }
-
-  QueryBuilder<ChatOutboundQueueEntity, ChatOutboundQueueEntity, QAfterSortBy>
-  thenByIdDesc() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'id', Sort.desc);
-    });
-  }
-
-  QueryBuilder<ChatOutboundQueueEntity, ChatOutboundQueueEntity, QAfterSortBy>
-  thenByLastError() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'lastError', Sort.asc);
-    });
-  }
-
-  QueryBuilder<ChatOutboundQueueEntity, ChatOutboundQueueEntity, QAfterSortBy>
-  thenByLastErrorDesc() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'lastError', Sort.desc);
+      return query.addSortBy(r'conversation_id', Sort.desc);
     });
   }
 
   QueryBuilder<ChatOutboundQueueEntity, ChatOutboundQueueEntity, QAfterSortBy>
   thenByMessageBytesHex() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'messageBytesHex', Sort.asc);
+      return query.addSortBy(r'message_bytes', Sort.asc);
     });
   }
 
   QueryBuilder<ChatOutboundQueueEntity, ChatOutboundQueueEntity, QAfterSortBy>
   thenByMessageBytesHexDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'messageBytesHex', Sort.desc);
+      return query.addSortBy(r'message_bytes', Sort.desc);
     });
   }
 
   QueryBuilder<ChatOutboundQueueEntity, ChatOutboundQueueEntity, QAfterSortBy>
   thenByMessageId() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'messageId', Sort.asc);
+      return query.addSortBy(r'message_id', Sort.asc);
     });
   }
 
   QueryBuilder<ChatOutboundQueueEntity, ChatOutboundQueueEntity, QAfterSortBy>
   thenByMessageIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'messageId', Sort.desc);
+      return query.addSortBy(r'message_id', Sort.desc);
     });
   }
 
   QueryBuilder<ChatOutboundQueueEntity, ChatOutboundQueueEntity, QAfterSortBy>
   thenByOwnerUserId() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'ownerUserId', Sort.asc);
+      return query.addSortBy(r'owner_id', Sort.asc);
     });
   }
 
   QueryBuilder<ChatOutboundQueueEntity, ChatOutboundQueueEntity, QAfterSortBy>
   thenByOwnerUserIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'ownerUserId', Sort.desc);
+      return query.addSortBy(r'owner_id', Sort.desc);
     });
   }
 
   QueryBuilder<ChatOutboundQueueEntity, ChatOutboundQueueEntity, QAfterSortBy>
   thenByRecipientUserId() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'recipientUserId', Sort.asc);
+      return query.addSortBy(r'recipient_id', Sort.asc);
     });
   }
 
   QueryBuilder<ChatOutboundQueueEntity, ChatOutboundQueueEntity, QAfterSortBy>
   thenByRecipientUserIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'recipientUserId', Sort.desc);
+      return query.addSortBy(r'recipient_id', Sort.desc);
+    });
+  }
+
+  QueryBuilder<ChatOutboundQueueEntity, ChatOutboundQueueEntity, QAfterSortBy>
+  thenById() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'row_id', Sort.asc);
+    });
+  }
+
+  QueryBuilder<ChatOutboundQueueEntity, ChatOutboundQueueEntity, QAfterSortBy>
+  thenByIdDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'row_id', Sort.desc);
     });
   }
 
   QueryBuilder<ChatOutboundQueueEntity, ChatOutboundQueueEntity, QAfterSortBy>
   thenByUpdatedAtMillis() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'updatedAtMillis', Sort.asc);
+      return query.addSortBy(r'updated_at', Sort.asc);
     });
   }
 
   QueryBuilder<ChatOutboundQueueEntity, ChatOutboundQueueEntity, QAfterSortBy>
   thenByUpdatedAtMillisDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'updatedAtMillis', Sort.desc);
+      return query.addSortBy(r'updated_at', Sort.desc);
     });
   }
 }
@@ -9403,36 +8633,12 @@ extension ChatOutboundQueueEntityQueryWhereDistinct
           QDistinct
         > {
   QueryBuilder<ChatOutboundQueueEntity, ChatOutboundQueueEntity, QDistinct>
-  distinctByAttemptCount() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'attemptCount');
-    });
-  }
-
-  QueryBuilder<ChatOutboundQueueEntity, ChatOutboundQueueEntity, QDistinct>
   distinctByConversationId({bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(
-        r'conversationId',
+        r'conversation_id',
         caseSensitive: caseSensitive,
       );
-    });
-  }
-
-  QueryBuilder<ChatOutboundQueueEntity, ChatOutboundQueueEntity, QDistinct>
-  distinctByDeliveryState({bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(
-        r'deliveryState',
-        caseSensitive: caseSensitive,
-      );
-    });
-  }
-
-  QueryBuilder<ChatOutboundQueueEntity, ChatOutboundQueueEntity, QDistinct>
-  distinctByLastError({bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'lastError', caseSensitive: caseSensitive);
     });
   }
 
@@ -9440,7 +8646,7 @@ extension ChatOutboundQueueEntityQueryWhereDistinct
   distinctByMessageBytesHex({bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(
-        r'messageBytesHex',
+        r'message_bytes',
         caseSensitive: caseSensitive,
       );
     });
@@ -9449,31 +8655,28 @@ extension ChatOutboundQueueEntityQueryWhereDistinct
   QueryBuilder<ChatOutboundQueueEntity, ChatOutboundQueueEntity, QDistinct>
   distinctByMessageId({bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'messageId', caseSensitive: caseSensitive);
+      return query.addDistinctBy(r'message_id', caseSensitive: caseSensitive);
     });
   }
 
   QueryBuilder<ChatOutboundQueueEntity, ChatOutboundQueueEntity, QDistinct>
   distinctByOwnerUserId({bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'ownerUserId', caseSensitive: caseSensitive);
+      return query.addDistinctBy(r'owner_id', caseSensitive: caseSensitive);
     });
   }
 
   QueryBuilder<ChatOutboundQueueEntity, ChatOutboundQueueEntity, QDistinct>
   distinctByRecipientUserId({bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(
-        r'recipientUserId',
-        caseSensitive: caseSensitive,
-      );
+      return query.addDistinctBy(r'recipient_id', caseSensitive: caseSensitive);
     });
   }
 
   QueryBuilder<ChatOutboundQueueEntity, ChatOutboundQueueEntity, QDistinct>
   distinctByUpdatedAtMillis() {
     return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'updatedAtMillis');
+      return query.addDistinctBy(r'updated_at');
     });
   }
 }
@@ -9487,70 +8690,49 @@ extension ChatOutboundQueueEntityQueryProperty
         > {
   QueryBuilder<ChatOutboundQueueEntity, int, QQueryOperations> idProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'id');
-    });
-  }
-
-  QueryBuilder<ChatOutboundQueueEntity, int, QQueryOperations>
-  attemptCountProperty() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'attemptCount');
+      return query.addPropertyName(r'row_id');
     });
   }
 
   QueryBuilder<ChatOutboundQueueEntity, String, QQueryOperations>
   conversationIdProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'conversationId');
-    });
-  }
-
-  QueryBuilder<ChatOutboundQueueEntity, String, QQueryOperations>
-  deliveryStateProperty() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'deliveryState');
-    });
-  }
-
-  QueryBuilder<ChatOutboundQueueEntity, String?, QQueryOperations>
-  lastErrorProperty() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'lastError');
+      return query.addPropertyName(r'conversation_id');
     });
   }
 
   QueryBuilder<ChatOutboundQueueEntity, String, QQueryOperations>
   messageBytesHexProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'messageBytesHex');
+      return query.addPropertyName(r'message_bytes');
     });
   }
 
   QueryBuilder<ChatOutboundQueueEntity, String, QQueryOperations>
   messageIdProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'messageId');
+      return query.addPropertyName(r'message_id');
     });
   }
 
   QueryBuilder<ChatOutboundQueueEntity, String, QQueryOperations>
   ownerUserIdProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'ownerUserId');
+      return query.addPropertyName(r'owner_id');
     });
   }
 
   QueryBuilder<ChatOutboundQueueEntity, String, QQueryOperations>
   recipientUserIdProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'recipientUserId');
+      return query.addPropertyName(r'recipient_id');
     });
   }
 
   QueryBuilder<ChatOutboundQueueEntity, int, QQueryOperations>
   updatedAtMillisProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'updatedAtMillis');
+      return query.addPropertyName(r'updated_at');
     });
   }
 }
@@ -9564,48 +8746,47 @@ extension GetChatOutgoingMediaEntityCollection on Isar {
 }
 
 const ChatOutgoingMediaEntitySchema = CollectionSchema(
-  name: r'ChatOutgoingMediaEntity',
-  id: -2845887540690814187,
+  name: r'media',
+  id: -460020576612860404,
   properties: {
-    r'attachmentId': PropertySchema(
+    r'attachment_id': PropertySchema(
       id: 0,
-      name: r'attachmentId',
+      name: r'attachment_id',
       type: IsarType.string,
     ),
-    r'byteSize': PropertySchema(id: 1, name: r'byteSize', type: IsarType.long),
-    r'contentType': PropertySchema(
-      id: 2,
-      name: r'contentType',
-      type: IsarType.string,
-    ),
-    r'conversationId': PropertySchema(
-      id: 3,
-      name: r'conversationId',
-      type: IsarType.string,
-    ),
-    r'createdAtMillis': PropertySchema(
-      id: 4,
-      name: r'createdAtMillis',
+    r'byte_size': PropertySchema(
+      id: 1,
+      name: r'byte_size',
       type: IsarType.long,
     ),
-    r'fileName': PropertySchema(
+    r'content_type': PropertySchema(
+      id: 2,
+      name: r'content_type',
+      type: IsarType.string,
+    ),
+    r'conversation_id': PropertySchema(
+      id: 3,
+      name: r'conversation_id',
+      type: IsarType.string,
+    ),
+    r'created_at': PropertySchema(
+      id: 4,
+      name: r'created_at',
+      type: IsarType.long,
+    ),
+    r'file_name': PropertySchema(
       id: 5,
-      name: r'fileName',
+      name: r'file_name',
       type: IsarType.string,
     ),
-    r'ownerUserId': PropertySchema(
+    r'owner_id': PropertySchema(
       id: 6,
-      name: r'ownerUserId',
+      name: r'owner_id',
       type: IsarType.string,
     ),
-    r'pendingKey': PropertySchema(
+    r'recipient_id': PropertySchema(
       id: 7,
-      name: r'pendingKey',
-      type: IsarType.string,
-    ),
-    r'recipientUserId': PropertySchema(
-      id: 8,
-      name: r'recipientUserId',
+      name: r'recipient_id',
       type: IsarType.string,
     ),
   },
@@ -9614,47 +8795,52 @@ const ChatOutgoingMediaEntitySchema = CollectionSchema(
   serialize: _chatOutgoingMediaEntitySerialize,
   deserialize: _chatOutgoingMediaEntityDeserialize,
   deserializeProp: _chatOutgoingMediaEntityDeserializeProp,
-  idName: r'id',
+  idName: r'row_id',
   indexes: {
-    r'ownerUserId_pendingKey': IndexSchema(
-      id: -1333117272288367968,
-      name: r'ownerUserId_pendingKey',
+    r'owner_id_attachment_id_recipient_id': IndexSchema(
+      id: -3397802541012224692,
+      name: r'owner_id_attachment_id_recipient_id',
       unique: true,
       replace: true,
       properties: [
         IndexPropertySchema(
-          name: r'ownerUserId',
+          name: r'owner_id',
           type: IndexType.hash,
           caseSensitive: true,
         ),
         IndexPropertySchema(
-          name: r'pendingKey',
+          name: r'attachment_id',
           type: IndexType.hash,
           caseSensitive: true,
         ),
-      ],
-    ),
-    r'attachmentId': IndexSchema(
-      id: 5677012331559006036,
-      name: r'attachmentId',
-      unique: false,
-      replace: false,
-      properties: [
         IndexPropertySchema(
-          name: r'attachmentId',
+          name: r'recipient_id',
           type: IndexType.hash,
           caseSensitive: true,
         ),
       ],
     ),
-    r'recipientUserId': IndexSchema(
-      id: 6143328612680832585,
-      name: r'recipientUserId',
+    r'attachment_id': IndexSchema(
+      id: -5080068661376432091,
+      name: r'attachment_id',
       unique: false,
       replace: false,
       properties: [
         IndexPropertySchema(
-          name: r'recipientUserId',
+          name: r'attachment_id',
+          type: IndexType.hash,
+          caseSensitive: true,
+        ),
+      ],
+    ),
+    r'recipient_id': IndexSchema(
+      id: -4930864323911450737,
+      name: r'recipient_id',
+      unique: false,
+      replace: false,
+      properties: [
+        IndexPropertySchema(
+          name: r'recipient_id',
           type: IndexType.hash,
           caseSensitive: true,
         ),
@@ -9681,7 +8867,6 @@ int _chatOutgoingMediaEntityEstimateSize(
   bytesCount += 3 + object.conversationId.length * 3;
   bytesCount += 3 + object.fileName.length * 3;
   bytesCount += 3 + object.ownerUserId.length * 3;
-  bytesCount += 3 + object.pendingKey.length * 3;
   bytesCount += 3 + object.recipientUserId.length * 3;
   return bytesCount;
 }
@@ -9699,8 +8884,7 @@ void _chatOutgoingMediaEntitySerialize(
   writer.writeLong(offsets[4], object.createdAtMillis);
   writer.writeString(offsets[5], object.fileName);
   writer.writeString(offsets[6], object.ownerUserId);
-  writer.writeString(offsets[7], object.pendingKey);
-  writer.writeString(offsets[8], object.recipientUserId);
+  writer.writeString(offsets[7], object.recipientUserId);
 }
 
 ChatOutgoingMediaEntity _chatOutgoingMediaEntityDeserialize(
@@ -9716,10 +8900,9 @@ ChatOutgoingMediaEntity _chatOutgoingMediaEntityDeserialize(
   object.conversationId = reader.readString(offsets[3]);
   object.createdAtMillis = reader.readLong(offsets[4]);
   object.fileName = reader.readString(offsets[5]);
-  object.id = id;
   object.ownerUserId = reader.readString(offsets[6]);
-  object.pendingKey = reader.readString(offsets[7]);
-  object.recipientUserId = reader.readString(offsets[8]);
+  object.recipientUserId = reader.readString(offsets[7]);
+  object.id = id;
   return object;
 }
 
@@ -9746,8 +8929,6 @@ P _chatOutgoingMediaEntityDeserializeProp<P>(
       return (reader.readString(offset)) as P;
     case 7:
       return (reader.readString(offset)) as P;
-    case 8:
-      return (reader.readString(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
   }
@@ -9773,132 +8954,173 @@ void _chatOutgoingMediaEntityAttach(
 
 extension ChatOutgoingMediaEntityByIndex
     on IsarCollection<ChatOutgoingMediaEntity> {
-  Future<ChatOutgoingMediaEntity?> getByOwnerUserIdPendingKey(
+  Future<ChatOutgoingMediaEntity?> getByOwnerUserIdAttachmentIdRecipientUserId(
     String ownerUserId,
-    String pendingKey,
+    String attachmentId,
+    String recipientUserId,
   ) {
-    return getByIndex(r'ownerUserId_pendingKey', [ownerUserId, pendingKey]);
-  }
-
-  ChatOutgoingMediaEntity? getByOwnerUserIdPendingKeySync(
-    String ownerUserId,
-    String pendingKey,
-  ) {
-    return getByIndexSync(r'ownerUserId_pendingKey', [ownerUserId, pendingKey]);
-  }
-
-  Future<bool> deleteByOwnerUserIdPendingKey(
-    String ownerUserId,
-    String pendingKey,
-  ) {
-    return deleteByIndex(r'ownerUserId_pendingKey', [ownerUserId, pendingKey]);
-  }
-
-  bool deleteByOwnerUserIdPendingKeySync(
-    String ownerUserId,
-    String pendingKey,
-  ) {
-    return deleteByIndexSync(r'ownerUserId_pendingKey', [
+    return getByIndex(r'owner_id_attachment_id_recipient_id', [
       ownerUserId,
-      pendingKey,
+      attachmentId,
+      recipientUserId,
     ]);
   }
 
-  Future<List<ChatOutgoingMediaEntity?>> getAllByOwnerUserIdPendingKey(
+  ChatOutgoingMediaEntity? getByOwnerUserIdAttachmentIdRecipientUserIdSync(
+    String ownerUserId,
+    String attachmentId,
+    String recipientUserId,
+  ) {
+    return getByIndexSync(r'owner_id_attachment_id_recipient_id', [
+      ownerUserId,
+      attachmentId,
+      recipientUserId,
+    ]);
+  }
+
+  Future<bool> deleteByOwnerUserIdAttachmentIdRecipientUserId(
+    String ownerUserId,
+    String attachmentId,
+    String recipientUserId,
+  ) {
+    return deleteByIndex(r'owner_id_attachment_id_recipient_id', [
+      ownerUserId,
+      attachmentId,
+      recipientUserId,
+    ]);
+  }
+
+  bool deleteByOwnerUserIdAttachmentIdRecipientUserIdSync(
+    String ownerUserId,
+    String attachmentId,
+    String recipientUserId,
+  ) {
+    return deleteByIndexSync(r'owner_id_attachment_id_recipient_id', [
+      ownerUserId,
+      attachmentId,
+      recipientUserId,
+    ]);
+  }
+
+  Future<List<ChatOutgoingMediaEntity?>>
+  getAllByOwnerUserIdAttachmentIdRecipientUserId(
     List<String> ownerUserIdValues,
-    List<String> pendingKeyValues,
+    List<String> attachmentIdValues,
+    List<String> recipientUserIdValues,
   ) {
     final len = ownerUserIdValues.length;
     assert(
-      pendingKeyValues.length == len,
+      attachmentIdValues.length == len && recipientUserIdValues.length == len,
       'All index values must have the same length',
     );
     final values = <List<dynamic>>[];
     for (var i = 0; i < len; i++) {
-      values.add([ownerUserIdValues[i], pendingKeyValues[i]]);
+      values.add([
+        ownerUserIdValues[i],
+        attachmentIdValues[i],
+        recipientUserIdValues[i],
+      ]);
     }
 
-    return getAllByIndex(r'ownerUserId_pendingKey', values);
+    return getAllByIndex(r'owner_id_attachment_id_recipient_id', values);
   }
 
-  List<ChatOutgoingMediaEntity?> getAllByOwnerUserIdPendingKeySync(
+  List<ChatOutgoingMediaEntity?>
+  getAllByOwnerUserIdAttachmentIdRecipientUserIdSync(
     List<String> ownerUserIdValues,
-    List<String> pendingKeyValues,
+    List<String> attachmentIdValues,
+    List<String> recipientUserIdValues,
   ) {
     final len = ownerUserIdValues.length;
     assert(
-      pendingKeyValues.length == len,
+      attachmentIdValues.length == len && recipientUserIdValues.length == len,
       'All index values must have the same length',
     );
     final values = <List<dynamic>>[];
     for (var i = 0; i < len; i++) {
-      values.add([ownerUserIdValues[i], pendingKeyValues[i]]);
+      values.add([
+        ownerUserIdValues[i],
+        attachmentIdValues[i],
+        recipientUserIdValues[i],
+      ]);
     }
 
-    return getAllByIndexSync(r'ownerUserId_pendingKey', values);
+    return getAllByIndexSync(r'owner_id_attachment_id_recipient_id', values);
   }
 
-  Future<int> deleteAllByOwnerUserIdPendingKey(
+  Future<int> deleteAllByOwnerUserIdAttachmentIdRecipientUserId(
     List<String> ownerUserIdValues,
-    List<String> pendingKeyValues,
+    List<String> attachmentIdValues,
+    List<String> recipientUserIdValues,
   ) {
     final len = ownerUserIdValues.length;
     assert(
-      pendingKeyValues.length == len,
+      attachmentIdValues.length == len && recipientUserIdValues.length == len,
       'All index values must have the same length',
     );
     final values = <List<dynamic>>[];
     for (var i = 0; i < len; i++) {
-      values.add([ownerUserIdValues[i], pendingKeyValues[i]]);
+      values.add([
+        ownerUserIdValues[i],
+        attachmentIdValues[i],
+        recipientUserIdValues[i],
+      ]);
     }
 
-    return deleteAllByIndex(r'ownerUserId_pendingKey', values);
+    return deleteAllByIndex(r'owner_id_attachment_id_recipient_id', values);
   }
 
-  int deleteAllByOwnerUserIdPendingKeySync(
+  int deleteAllByOwnerUserIdAttachmentIdRecipientUserIdSync(
     List<String> ownerUserIdValues,
-    List<String> pendingKeyValues,
+    List<String> attachmentIdValues,
+    List<String> recipientUserIdValues,
   ) {
     final len = ownerUserIdValues.length;
     assert(
-      pendingKeyValues.length == len,
+      attachmentIdValues.length == len && recipientUserIdValues.length == len,
       'All index values must have the same length',
     );
     final values = <List<dynamic>>[];
     for (var i = 0; i < len; i++) {
-      values.add([ownerUserIdValues[i], pendingKeyValues[i]]);
+      values.add([
+        ownerUserIdValues[i],
+        attachmentIdValues[i],
+        recipientUserIdValues[i],
+      ]);
     }
 
-    return deleteAllByIndexSync(r'ownerUserId_pendingKey', values);
+    return deleteAllByIndexSync(r'owner_id_attachment_id_recipient_id', values);
   }
 
-  Future<Id> putByOwnerUserIdPendingKey(ChatOutgoingMediaEntity object) {
-    return putByIndex(r'ownerUserId_pendingKey', object);
+  Future<Id> putByOwnerUserIdAttachmentIdRecipientUserId(
+    ChatOutgoingMediaEntity object,
+  ) {
+    return putByIndex(r'owner_id_attachment_id_recipient_id', object);
   }
 
-  Id putByOwnerUserIdPendingKeySync(
+  Id putByOwnerUserIdAttachmentIdRecipientUserIdSync(
     ChatOutgoingMediaEntity object, {
     bool saveLinks = true,
   }) {
     return putByIndexSync(
-      r'ownerUserId_pendingKey',
+      r'owner_id_attachment_id_recipient_id',
       object,
       saveLinks: saveLinks,
     );
   }
 
-  Future<List<Id>> putAllByOwnerUserIdPendingKey(
+  Future<List<Id>> putAllByOwnerUserIdAttachmentIdRecipientUserId(
     List<ChatOutgoingMediaEntity> objects,
   ) {
-    return putAllByIndex(r'ownerUserId_pendingKey', objects);
+    return putAllByIndex(r'owner_id_attachment_id_recipient_id', objects);
   }
 
-  List<Id> putAllByOwnerUserIdPendingKeySync(
+  List<Id> putAllByOwnerUserIdAttachmentIdRecipientUserIdSync(
     List<ChatOutgoingMediaEntity> objects, {
     bool saveLinks = true,
   }) {
     return putAllByIndexSync(
-      r'ownerUserId_pendingKey',
+      r'owner_id_attachment_id_recipient_id',
       objects,
       saveLinks: saveLinks,
     );
@@ -10014,11 +9236,11 @@ extension ChatOutgoingMediaEntityQueryWhere
     ChatOutgoingMediaEntity,
     QAfterWhereClause
   >
-  ownerUserIdEqualToAnyPendingKey(String ownerUserId) {
+  ownerUserIdEqualToAnyAttachmentIdRecipientUserId(String ownerUserId) {
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         IndexWhereClause.equalTo(
-          indexName: r'ownerUserId_pendingKey',
+          indexName: r'owner_id_attachment_id_recipient_id',
           value: [ownerUserId],
         ),
       );
@@ -10030,13 +9252,13 @@ extension ChatOutgoingMediaEntityQueryWhere
     ChatOutgoingMediaEntity,
     QAfterWhereClause
   >
-  ownerUserIdNotEqualToAnyPendingKey(String ownerUserId) {
+  ownerUserIdNotEqualToAnyAttachmentIdRecipientUserId(String ownerUserId) {
     return QueryBuilder.apply(this, (query) {
       if (query.whereSort == Sort.asc) {
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_pendingKey',
+                indexName: r'owner_id_attachment_id_recipient_id',
                 lower: [],
                 upper: [ownerUserId],
                 includeUpper: false,
@@ -10044,7 +9266,7 @@ extension ChatOutgoingMediaEntityQueryWhere
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_pendingKey',
+                indexName: r'owner_id_attachment_id_recipient_id',
                 lower: [ownerUserId],
                 includeLower: false,
                 upper: [],
@@ -10054,7 +9276,7 @@ extension ChatOutgoingMediaEntityQueryWhere
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_pendingKey',
+                indexName: r'owner_id_attachment_id_recipient_id',
                 lower: [ownerUserId],
                 includeLower: false,
                 upper: [],
@@ -10062,7 +9284,7 @@ extension ChatOutgoingMediaEntityQueryWhere
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_pendingKey',
+                indexName: r'owner_id_attachment_id_recipient_id',
                 lower: [],
                 upper: [ownerUserId],
                 includeUpper: false,
@@ -10077,12 +9299,15 @@ extension ChatOutgoingMediaEntityQueryWhere
     ChatOutgoingMediaEntity,
     QAfterWhereClause
   >
-  ownerUserIdPendingKeyEqualTo(String ownerUserId, String pendingKey) {
+  ownerUserIdAttachmentIdEqualToAnyRecipientUserId(
+    String ownerUserId,
+    String attachmentId,
+  ) {
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         IndexWhereClause.equalTo(
-          indexName: r'ownerUserId_pendingKey',
-          value: [ownerUserId, pendingKey],
+          indexName: r'owner_id_attachment_id_recipient_id',
+          value: [ownerUserId, attachmentId],
         ),
       );
     });
@@ -10093,25 +9318,25 @@ extension ChatOutgoingMediaEntityQueryWhere
     ChatOutgoingMediaEntity,
     QAfterWhereClause
   >
-  ownerUserIdEqualToPendingKeyNotEqualTo(
+  ownerUserIdEqualToAttachmentIdNotEqualToAnyRecipientUserId(
     String ownerUserId,
-    String pendingKey,
+    String attachmentId,
   ) {
     return QueryBuilder.apply(this, (query) {
       if (query.whereSort == Sort.asc) {
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_pendingKey',
+                indexName: r'owner_id_attachment_id_recipient_id',
                 lower: [ownerUserId],
-                upper: [ownerUserId, pendingKey],
+                upper: [ownerUserId, attachmentId],
                 includeUpper: false,
               ),
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_pendingKey',
-                lower: [ownerUserId, pendingKey],
+                indexName: r'owner_id_attachment_id_recipient_id',
+                lower: [ownerUserId, attachmentId],
                 includeLower: false,
                 upper: [ownerUserId],
               ),
@@ -10120,17 +9345,88 @@ extension ChatOutgoingMediaEntityQueryWhere
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_pendingKey',
-                lower: [ownerUserId, pendingKey],
+                indexName: r'owner_id_attachment_id_recipient_id',
+                lower: [ownerUserId, attachmentId],
                 includeLower: false,
                 upper: [ownerUserId],
               ),
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_pendingKey',
+                indexName: r'owner_id_attachment_id_recipient_id',
                 lower: [ownerUserId],
-                upper: [ownerUserId, pendingKey],
+                upper: [ownerUserId, attachmentId],
+                includeUpper: false,
+              ),
+            );
+      }
+    });
+  }
+
+  QueryBuilder<
+    ChatOutgoingMediaEntity,
+    ChatOutgoingMediaEntity,
+    QAfterWhereClause
+  >
+  ownerUserIdAttachmentIdRecipientUserIdEqualTo(
+    String ownerUserId,
+    String attachmentId,
+    String recipientUserId,
+  ) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(
+        IndexWhereClause.equalTo(
+          indexName: r'owner_id_attachment_id_recipient_id',
+          value: [ownerUserId, attachmentId, recipientUserId],
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatOutgoingMediaEntity,
+    ChatOutgoingMediaEntity,
+    QAfterWhereClause
+  >
+  ownerUserIdAttachmentIdEqualToRecipientUserIdNotEqualTo(
+    String ownerUserId,
+    String attachmentId,
+    String recipientUserId,
+  ) {
+    return QueryBuilder.apply(this, (query) {
+      if (query.whereSort == Sort.asc) {
+        return query
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'owner_id_attachment_id_recipient_id',
+                lower: [ownerUserId, attachmentId],
+                upper: [ownerUserId, attachmentId, recipientUserId],
+                includeUpper: false,
+              ),
+            )
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'owner_id_attachment_id_recipient_id',
+                lower: [ownerUserId, attachmentId, recipientUserId],
+                includeLower: false,
+                upper: [ownerUserId, attachmentId],
+              ),
+            );
+      } else {
+        return query
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'owner_id_attachment_id_recipient_id',
+                lower: [ownerUserId, attachmentId, recipientUserId],
+                includeLower: false,
+                upper: [ownerUserId, attachmentId],
+              ),
+            )
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'owner_id_attachment_id_recipient_id',
+                lower: [ownerUserId, attachmentId],
+                upper: [ownerUserId, attachmentId, recipientUserId],
                 includeUpper: false,
               ),
             );
@@ -10147,7 +9443,7 @@ extension ChatOutgoingMediaEntityQueryWhere
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         IndexWhereClause.equalTo(
-          indexName: r'attachmentId',
+          indexName: r'attachment_id',
           value: [attachmentId],
         ),
       );
@@ -10165,7 +9461,7 @@ extension ChatOutgoingMediaEntityQueryWhere
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'attachmentId',
+                indexName: r'attachment_id',
                 lower: [],
                 upper: [attachmentId],
                 includeUpper: false,
@@ -10173,7 +9469,7 @@ extension ChatOutgoingMediaEntityQueryWhere
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'attachmentId',
+                indexName: r'attachment_id',
                 lower: [attachmentId],
                 includeLower: false,
                 upper: [],
@@ -10183,7 +9479,7 @@ extension ChatOutgoingMediaEntityQueryWhere
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'attachmentId',
+                indexName: r'attachment_id',
                 lower: [attachmentId],
                 includeLower: false,
                 upper: [],
@@ -10191,7 +9487,7 @@ extension ChatOutgoingMediaEntityQueryWhere
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'attachmentId',
+                indexName: r'attachment_id',
                 lower: [],
                 upper: [attachmentId],
                 includeUpper: false,
@@ -10210,7 +9506,7 @@ extension ChatOutgoingMediaEntityQueryWhere
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         IndexWhereClause.equalTo(
-          indexName: r'recipientUserId',
+          indexName: r'recipient_id',
           value: [recipientUserId],
         ),
       );
@@ -10228,7 +9524,7 @@ extension ChatOutgoingMediaEntityQueryWhere
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'recipientUserId',
+                indexName: r'recipient_id',
                 lower: [],
                 upper: [recipientUserId],
                 includeUpper: false,
@@ -10236,7 +9532,7 @@ extension ChatOutgoingMediaEntityQueryWhere
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'recipientUserId',
+                indexName: r'recipient_id',
                 lower: [recipientUserId],
                 includeLower: false,
                 upper: [],
@@ -10246,7 +9542,7 @@ extension ChatOutgoingMediaEntityQueryWhere
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'recipientUserId',
+                indexName: r'recipient_id',
                 lower: [recipientUserId],
                 includeLower: false,
                 upper: [],
@@ -10254,7 +9550,7 @@ extension ChatOutgoingMediaEntityQueryWhere
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'recipientUserId',
+                indexName: r'recipient_id',
                 lower: [],
                 upper: [recipientUserId],
                 includeUpper: false,
@@ -10281,7 +9577,7 @@ extension ChatOutgoingMediaEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.equalTo(
-          property: r'attachmentId',
+          property: r'attachment_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -10303,7 +9599,7 @@ extension ChatOutgoingMediaEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'attachmentId',
+          property: r'attachment_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -10325,7 +9621,7 @@ extension ChatOutgoingMediaEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'attachmentId',
+          property: r'attachment_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -10348,7 +9644,7 @@ extension ChatOutgoingMediaEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'attachmentId',
+          property: r'attachment_id',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -10368,7 +9664,7 @@ extension ChatOutgoingMediaEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.startsWith(
-          property: r'attachmentId',
+          property: r'attachment_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -10385,7 +9681,7 @@ extension ChatOutgoingMediaEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.endsWith(
-          property: r'attachmentId',
+          property: r'attachment_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -10402,7 +9698,7 @@ extension ChatOutgoingMediaEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.contains(
-          property: r'attachmentId',
+          property: r'attachment_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -10419,7 +9715,7 @@ extension ChatOutgoingMediaEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.matches(
-          property: r'attachmentId',
+          property: r'attachment_id',
           wildcard: pattern,
           caseSensitive: caseSensitive,
         ),
@@ -10435,7 +9731,7 @@ extension ChatOutgoingMediaEntityQueryFilter
   attachmentIdIsEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'attachmentId', value: ''),
+        FilterCondition.equalTo(property: r'attachment_id', value: ''),
       );
     });
   }
@@ -10448,7 +9744,7 @@ extension ChatOutgoingMediaEntityQueryFilter
   attachmentIdIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'attachmentId', value: ''),
+        FilterCondition.greaterThan(property: r'attachment_id', value: ''),
       );
     });
   }
@@ -10461,7 +9757,7 @@ extension ChatOutgoingMediaEntityQueryFilter
   byteSizeEqualTo(int value) {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'byteSize', value: value),
+        FilterCondition.equalTo(property: r'byte_size', value: value),
       );
     });
   }
@@ -10476,7 +9772,7 @@ extension ChatOutgoingMediaEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'byteSize',
+          property: r'byte_size',
           value: value,
         ),
       );
@@ -10493,7 +9789,7 @@ extension ChatOutgoingMediaEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'byteSize',
+          property: r'byte_size',
           value: value,
         ),
       );
@@ -10514,7 +9810,7 @@ extension ChatOutgoingMediaEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'byteSize',
+          property: r'byte_size',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -10533,7 +9829,7 @@ extension ChatOutgoingMediaEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.equalTo(
-          property: r'contentType',
+          property: r'content_type',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -10555,7 +9851,7 @@ extension ChatOutgoingMediaEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'contentType',
+          property: r'content_type',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -10577,7 +9873,7 @@ extension ChatOutgoingMediaEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'contentType',
+          property: r'content_type',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -10600,7 +9896,7 @@ extension ChatOutgoingMediaEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'contentType',
+          property: r'content_type',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -10620,7 +9916,7 @@ extension ChatOutgoingMediaEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.startsWith(
-          property: r'contentType',
+          property: r'content_type',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -10637,7 +9933,7 @@ extension ChatOutgoingMediaEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.endsWith(
-          property: r'contentType',
+          property: r'content_type',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -10654,7 +9950,7 @@ extension ChatOutgoingMediaEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.contains(
-          property: r'contentType',
+          property: r'content_type',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -10671,7 +9967,7 @@ extension ChatOutgoingMediaEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.matches(
-          property: r'contentType',
+          property: r'content_type',
           wildcard: pattern,
           caseSensitive: caseSensitive,
         ),
@@ -10687,7 +9983,7 @@ extension ChatOutgoingMediaEntityQueryFilter
   contentTypeIsEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'contentType', value: ''),
+        FilterCondition.equalTo(property: r'content_type', value: ''),
       );
     });
   }
@@ -10700,7 +9996,7 @@ extension ChatOutgoingMediaEntityQueryFilter
   contentTypeIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'contentType', value: ''),
+        FilterCondition.greaterThan(property: r'content_type', value: ''),
       );
     });
   }
@@ -10714,7 +10010,7 @@ extension ChatOutgoingMediaEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.equalTo(
-          property: r'conversationId',
+          property: r'conversation_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -10736,7 +10032,7 @@ extension ChatOutgoingMediaEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'conversationId',
+          property: r'conversation_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -10758,7 +10054,7 @@ extension ChatOutgoingMediaEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'conversationId',
+          property: r'conversation_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -10781,7 +10077,7 @@ extension ChatOutgoingMediaEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'conversationId',
+          property: r'conversation_id',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -10801,7 +10097,7 @@ extension ChatOutgoingMediaEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.startsWith(
-          property: r'conversationId',
+          property: r'conversation_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -10818,7 +10114,7 @@ extension ChatOutgoingMediaEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.endsWith(
-          property: r'conversationId',
+          property: r'conversation_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -10835,7 +10131,7 @@ extension ChatOutgoingMediaEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.contains(
-          property: r'conversationId',
+          property: r'conversation_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -10852,7 +10148,7 @@ extension ChatOutgoingMediaEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.matches(
-          property: r'conversationId',
+          property: r'conversation_id',
           wildcard: pattern,
           caseSensitive: caseSensitive,
         ),
@@ -10868,7 +10164,7 @@ extension ChatOutgoingMediaEntityQueryFilter
   conversationIdIsEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'conversationId', value: ''),
+        FilterCondition.equalTo(property: r'conversation_id', value: ''),
       );
     });
   }
@@ -10881,7 +10177,7 @@ extension ChatOutgoingMediaEntityQueryFilter
   conversationIdIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'conversationId', value: ''),
+        FilterCondition.greaterThan(property: r'conversation_id', value: ''),
       );
     });
   }
@@ -10894,7 +10190,7 @@ extension ChatOutgoingMediaEntityQueryFilter
   createdAtMillisEqualTo(int value) {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'createdAtMillis', value: value),
+        FilterCondition.equalTo(property: r'created_at', value: value),
       );
     });
   }
@@ -10909,7 +10205,7 @@ extension ChatOutgoingMediaEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'createdAtMillis',
+          property: r'created_at',
           value: value,
         ),
       );
@@ -10926,7 +10222,7 @@ extension ChatOutgoingMediaEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'createdAtMillis',
+          property: r'created_at',
           value: value,
         ),
       );
@@ -10947,7 +10243,7 @@ extension ChatOutgoingMediaEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'createdAtMillis',
+          property: r'created_at',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -10966,7 +10262,7 @@ extension ChatOutgoingMediaEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.equalTo(
-          property: r'fileName',
+          property: r'file_name',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -10988,7 +10284,7 @@ extension ChatOutgoingMediaEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'fileName',
+          property: r'file_name',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -11010,7 +10306,7 @@ extension ChatOutgoingMediaEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'fileName',
+          property: r'file_name',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -11033,7 +10329,7 @@ extension ChatOutgoingMediaEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'fileName',
+          property: r'file_name',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -11053,7 +10349,7 @@ extension ChatOutgoingMediaEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.startsWith(
-          property: r'fileName',
+          property: r'file_name',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -11070,7 +10366,7 @@ extension ChatOutgoingMediaEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.endsWith(
-          property: r'fileName',
+          property: r'file_name',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -11087,7 +10383,7 @@ extension ChatOutgoingMediaEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.contains(
-          property: r'fileName',
+          property: r'file_name',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -11104,7 +10400,7 @@ extension ChatOutgoingMediaEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.matches(
-          property: r'fileName',
+          property: r'file_name',
           wildcard: pattern,
           caseSensitive: caseSensitive,
         ),
@@ -11120,7 +10416,7 @@ extension ChatOutgoingMediaEntityQueryFilter
   fileNameIsEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'fileName', value: ''),
+        FilterCondition.equalTo(property: r'file_name', value: ''),
       );
     });
   }
@@ -11133,78 +10429,7 @@ extension ChatOutgoingMediaEntityQueryFilter
   fileNameIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'fileName', value: ''),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatOutgoingMediaEntity,
-    ChatOutgoingMediaEntity,
-    QAfterFilterCondition
-  >
-  idEqualTo(Id value) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'id', value: value),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatOutgoingMediaEntity,
-    ChatOutgoingMediaEntity,
-    QAfterFilterCondition
-  >
-  idGreaterThan(Id value, {bool include = false}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.greaterThan(
-          include: include,
-          property: r'id',
-          value: value,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatOutgoingMediaEntity,
-    ChatOutgoingMediaEntity,
-    QAfterFilterCondition
-  >
-  idLessThan(Id value, {bool include = false}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.lessThan(
-          include: include,
-          property: r'id',
-          value: value,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatOutgoingMediaEntity,
-    ChatOutgoingMediaEntity,
-    QAfterFilterCondition
-  >
-  idBetween(
-    Id lower,
-    Id upper, {
-    bool includeLower = true,
-    bool includeUpper = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.between(
-          property: r'id',
-          lower: lower,
-          includeLower: includeLower,
-          upper: upper,
-          includeUpper: includeUpper,
-        ),
+        FilterCondition.greaterThan(property: r'file_name', value: ''),
       );
     });
   }
@@ -11218,7 +10443,7 @@ extension ChatOutgoingMediaEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.equalTo(
-          property: r'ownerUserId',
+          property: r'owner_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -11240,7 +10465,7 @@ extension ChatOutgoingMediaEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'ownerUserId',
+          property: r'owner_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -11262,7 +10487,7 @@ extension ChatOutgoingMediaEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'ownerUserId',
+          property: r'owner_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -11285,7 +10510,7 @@ extension ChatOutgoingMediaEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'ownerUserId',
+          property: r'owner_id',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -11305,7 +10530,7 @@ extension ChatOutgoingMediaEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.startsWith(
-          property: r'ownerUserId',
+          property: r'owner_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -11322,7 +10547,7 @@ extension ChatOutgoingMediaEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.endsWith(
-          property: r'ownerUserId',
+          property: r'owner_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -11339,7 +10564,7 @@ extension ChatOutgoingMediaEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.contains(
-          property: r'ownerUserId',
+          property: r'owner_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -11356,7 +10581,7 @@ extension ChatOutgoingMediaEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.matches(
-          property: r'ownerUserId',
+          property: r'owner_id',
           wildcard: pattern,
           caseSensitive: caseSensitive,
         ),
@@ -11372,7 +10597,7 @@ extension ChatOutgoingMediaEntityQueryFilter
   ownerUserIdIsEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'ownerUserId', value: ''),
+        FilterCondition.equalTo(property: r'owner_id', value: ''),
       );
     });
   }
@@ -11385,188 +10610,7 @@ extension ChatOutgoingMediaEntityQueryFilter
   ownerUserIdIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'ownerUserId', value: ''),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatOutgoingMediaEntity,
-    ChatOutgoingMediaEntity,
-    QAfterFilterCondition
-  >
-  pendingKeyEqualTo(String value, {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.equalTo(
-          property: r'pendingKey',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatOutgoingMediaEntity,
-    ChatOutgoingMediaEntity,
-    QAfterFilterCondition
-  >
-  pendingKeyGreaterThan(
-    String value, {
-    bool include = false,
-    bool caseSensitive = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.greaterThan(
-          include: include,
-          property: r'pendingKey',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatOutgoingMediaEntity,
-    ChatOutgoingMediaEntity,
-    QAfterFilterCondition
-  >
-  pendingKeyLessThan(
-    String value, {
-    bool include = false,
-    bool caseSensitive = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.lessThan(
-          include: include,
-          property: r'pendingKey',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatOutgoingMediaEntity,
-    ChatOutgoingMediaEntity,
-    QAfterFilterCondition
-  >
-  pendingKeyBetween(
-    String lower,
-    String upper, {
-    bool includeLower = true,
-    bool includeUpper = true,
-    bool caseSensitive = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.between(
-          property: r'pendingKey',
-          lower: lower,
-          includeLower: includeLower,
-          upper: upper,
-          includeUpper: includeUpper,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatOutgoingMediaEntity,
-    ChatOutgoingMediaEntity,
-    QAfterFilterCondition
-  >
-  pendingKeyStartsWith(String value, {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.startsWith(
-          property: r'pendingKey',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatOutgoingMediaEntity,
-    ChatOutgoingMediaEntity,
-    QAfterFilterCondition
-  >
-  pendingKeyEndsWith(String value, {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.endsWith(
-          property: r'pendingKey',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatOutgoingMediaEntity,
-    ChatOutgoingMediaEntity,
-    QAfterFilterCondition
-  >
-  pendingKeyContains(String value, {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.contains(
-          property: r'pendingKey',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatOutgoingMediaEntity,
-    ChatOutgoingMediaEntity,
-    QAfterFilterCondition
-  >
-  pendingKeyMatches(String pattern, {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.matches(
-          property: r'pendingKey',
-          wildcard: pattern,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatOutgoingMediaEntity,
-    ChatOutgoingMediaEntity,
-    QAfterFilterCondition
-  >
-  pendingKeyIsEmpty() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'pendingKey', value: ''),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatOutgoingMediaEntity,
-    ChatOutgoingMediaEntity,
-    QAfterFilterCondition
-  >
-  pendingKeyIsNotEmpty() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'pendingKey', value: ''),
+        FilterCondition.greaterThan(property: r'owner_id', value: ''),
       );
     });
   }
@@ -11580,7 +10624,7 @@ extension ChatOutgoingMediaEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.equalTo(
-          property: r'recipientUserId',
+          property: r'recipient_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -11602,7 +10646,7 @@ extension ChatOutgoingMediaEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'recipientUserId',
+          property: r'recipient_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -11624,7 +10668,7 @@ extension ChatOutgoingMediaEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'recipientUserId',
+          property: r'recipient_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -11647,7 +10691,7 @@ extension ChatOutgoingMediaEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'recipientUserId',
+          property: r'recipient_id',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -11667,7 +10711,7 @@ extension ChatOutgoingMediaEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.startsWith(
-          property: r'recipientUserId',
+          property: r'recipient_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -11684,7 +10728,7 @@ extension ChatOutgoingMediaEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.endsWith(
-          property: r'recipientUserId',
+          property: r'recipient_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -11701,7 +10745,7 @@ extension ChatOutgoingMediaEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.contains(
-          property: r'recipientUserId',
+          property: r'recipient_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -11718,7 +10762,7 @@ extension ChatOutgoingMediaEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.matches(
-          property: r'recipientUserId',
+          property: r'recipient_id',
           wildcard: pattern,
           caseSensitive: caseSensitive,
         ),
@@ -11734,7 +10778,7 @@ extension ChatOutgoingMediaEntityQueryFilter
   recipientUserIdIsEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'recipientUserId', value: ''),
+        FilterCondition.equalTo(property: r'recipient_id', value: ''),
       );
     });
   }
@@ -11747,7 +10791,78 @@ extension ChatOutgoingMediaEntityQueryFilter
   recipientUserIdIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'recipientUserId', value: ''),
+        FilterCondition.greaterThan(property: r'recipient_id', value: ''),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatOutgoingMediaEntity,
+    ChatOutgoingMediaEntity,
+    QAfterFilterCondition
+  >
+  idEqualTo(Id value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.equalTo(property: r'row_id', value: value),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatOutgoingMediaEntity,
+    ChatOutgoingMediaEntity,
+    QAfterFilterCondition
+  >
+  idGreaterThan(Id value, {bool include = false}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(
+          include: include,
+          property: r'row_id',
+          value: value,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatOutgoingMediaEntity,
+    ChatOutgoingMediaEntity,
+    QAfterFilterCondition
+  >
+  idLessThan(Id value, {bool include = false}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.lessThan(
+          include: include,
+          property: r'row_id',
+          value: value,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatOutgoingMediaEntity,
+    ChatOutgoingMediaEntity,
+    QAfterFilterCondition
+  >
+  idBetween(
+    Id lower,
+    Id upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.between(
+          property: r'row_id',
+          lower: lower,
+          includeLower: includeLower,
+          upper: upper,
+          includeUpper: includeUpper,
+        ),
       );
     });
   }
@@ -11774,126 +10889,112 @@ extension ChatOutgoingMediaEntityQuerySortBy
   QueryBuilder<ChatOutgoingMediaEntity, ChatOutgoingMediaEntity, QAfterSortBy>
   sortByAttachmentId() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'attachmentId', Sort.asc);
+      return query.addSortBy(r'attachment_id', Sort.asc);
     });
   }
 
   QueryBuilder<ChatOutgoingMediaEntity, ChatOutgoingMediaEntity, QAfterSortBy>
   sortByAttachmentIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'attachmentId', Sort.desc);
+      return query.addSortBy(r'attachment_id', Sort.desc);
     });
   }
 
   QueryBuilder<ChatOutgoingMediaEntity, ChatOutgoingMediaEntity, QAfterSortBy>
   sortByByteSize() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'byteSize', Sort.asc);
+      return query.addSortBy(r'byte_size', Sort.asc);
     });
   }
 
   QueryBuilder<ChatOutgoingMediaEntity, ChatOutgoingMediaEntity, QAfterSortBy>
   sortByByteSizeDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'byteSize', Sort.desc);
+      return query.addSortBy(r'byte_size', Sort.desc);
     });
   }
 
   QueryBuilder<ChatOutgoingMediaEntity, ChatOutgoingMediaEntity, QAfterSortBy>
   sortByContentType() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'contentType', Sort.asc);
+      return query.addSortBy(r'content_type', Sort.asc);
     });
   }
 
   QueryBuilder<ChatOutgoingMediaEntity, ChatOutgoingMediaEntity, QAfterSortBy>
   sortByContentTypeDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'contentType', Sort.desc);
+      return query.addSortBy(r'content_type', Sort.desc);
     });
   }
 
   QueryBuilder<ChatOutgoingMediaEntity, ChatOutgoingMediaEntity, QAfterSortBy>
   sortByConversationId() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'conversationId', Sort.asc);
+      return query.addSortBy(r'conversation_id', Sort.asc);
     });
   }
 
   QueryBuilder<ChatOutgoingMediaEntity, ChatOutgoingMediaEntity, QAfterSortBy>
   sortByConversationIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'conversationId', Sort.desc);
+      return query.addSortBy(r'conversation_id', Sort.desc);
     });
   }
 
   QueryBuilder<ChatOutgoingMediaEntity, ChatOutgoingMediaEntity, QAfterSortBy>
   sortByCreatedAtMillis() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'createdAtMillis', Sort.asc);
+      return query.addSortBy(r'created_at', Sort.asc);
     });
   }
 
   QueryBuilder<ChatOutgoingMediaEntity, ChatOutgoingMediaEntity, QAfterSortBy>
   sortByCreatedAtMillisDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'createdAtMillis', Sort.desc);
+      return query.addSortBy(r'created_at', Sort.desc);
     });
   }
 
   QueryBuilder<ChatOutgoingMediaEntity, ChatOutgoingMediaEntity, QAfterSortBy>
   sortByFileName() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'fileName', Sort.asc);
+      return query.addSortBy(r'file_name', Sort.asc);
     });
   }
 
   QueryBuilder<ChatOutgoingMediaEntity, ChatOutgoingMediaEntity, QAfterSortBy>
   sortByFileNameDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'fileName', Sort.desc);
+      return query.addSortBy(r'file_name', Sort.desc);
     });
   }
 
   QueryBuilder<ChatOutgoingMediaEntity, ChatOutgoingMediaEntity, QAfterSortBy>
   sortByOwnerUserId() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'ownerUserId', Sort.asc);
+      return query.addSortBy(r'owner_id', Sort.asc);
     });
   }
 
   QueryBuilder<ChatOutgoingMediaEntity, ChatOutgoingMediaEntity, QAfterSortBy>
   sortByOwnerUserIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'ownerUserId', Sort.desc);
-    });
-  }
-
-  QueryBuilder<ChatOutgoingMediaEntity, ChatOutgoingMediaEntity, QAfterSortBy>
-  sortByPendingKey() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'pendingKey', Sort.asc);
-    });
-  }
-
-  QueryBuilder<ChatOutgoingMediaEntity, ChatOutgoingMediaEntity, QAfterSortBy>
-  sortByPendingKeyDesc() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'pendingKey', Sort.desc);
+      return query.addSortBy(r'owner_id', Sort.desc);
     });
   }
 
   QueryBuilder<ChatOutgoingMediaEntity, ChatOutgoingMediaEntity, QAfterSortBy>
   sortByRecipientUserId() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'recipientUserId', Sort.asc);
+      return query.addSortBy(r'recipient_id', Sort.asc);
     });
   }
 
   QueryBuilder<ChatOutgoingMediaEntity, ChatOutgoingMediaEntity, QAfterSortBy>
   sortByRecipientUserIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'recipientUserId', Sort.desc);
+      return query.addSortBy(r'recipient_id', Sort.desc);
     });
   }
 }
@@ -11908,140 +11009,126 @@ extension ChatOutgoingMediaEntityQuerySortThenBy
   QueryBuilder<ChatOutgoingMediaEntity, ChatOutgoingMediaEntity, QAfterSortBy>
   thenByAttachmentId() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'attachmentId', Sort.asc);
+      return query.addSortBy(r'attachment_id', Sort.asc);
     });
   }
 
   QueryBuilder<ChatOutgoingMediaEntity, ChatOutgoingMediaEntity, QAfterSortBy>
   thenByAttachmentIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'attachmentId', Sort.desc);
+      return query.addSortBy(r'attachment_id', Sort.desc);
     });
   }
 
   QueryBuilder<ChatOutgoingMediaEntity, ChatOutgoingMediaEntity, QAfterSortBy>
   thenByByteSize() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'byteSize', Sort.asc);
+      return query.addSortBy(r'byte_size', Sort.asc);
     });
   }
 
   QueryBuilder<ChatOutgoingMediaEntity, ChatOutgoingMediaEntity, QAfterSortBy>
   thenByByteSizeDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'byteSize', Sort.desc);
+      return query.addSortBy(r'byte_size', Sort.desc);
     });
   }
 
   QueryBuilder<ChatOutgoingMediaEntity, ChatOutgoingMediaEntity, QAfterSortBy>
   thenByContentType() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'contentType', Sort.asc);
+      return query.addSortBy(r'content_type', Sort.asc);
     });
   }
 
   QueryBuilder<ChatOutgoingMediaEntity, ChatOutgoingMediaEntity, QAfterSortBy>
   thenByContentTypeDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'contentType', Sort.desc);
+      return query.addSortBy(r'content_type', Sort.desc);
     });
   }
 
   QueryBuilder<ChatOutgoingMediaEntity, ChatOutgoingMediaEntity, QAfterSortBy>
   thenByConversationId() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'conversationId', Sort.asc);
+      return query.addSortBy(r'conversation_id', Sort.asc);
     });
   }
 
   QueryBuilder<ChatOutgoingMediaEntity, ChatOutgoingMediaEntity, QAfterSortBy>
   thenByConversationIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'conversationId', Sort.desc);
+      return query.addSortBy(r'conversation_id', Sort.desc);
     });
   }
 
   QueryBuilder<ChatOutgoingMediaEntity, ChatOutgoingMediaEntity, QAfterSortBy>
   thenByCreatedAtMillis() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'createdAtMillis', Sort.asc);
+      return query.addSortBy(r'created_at', Sort.asc);
     });
   }
 
   QueryBuilder<ChatOutgoingMediaEntity, ChatOutgoingMediaEntity, QAfterSortBy>
   thenByCreatedAtMillisDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'createdAtMillis', Sort.desc);
+      return query.addSortBy(r'created_at', Sort.desc);
     });
   }
 
   QueryBuilder<ChatOutgoingMediaEntity, ChatOutgoingMediaEntity, QAfterSortBy>
   thenByFileName() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'fileName', Sort.asc);
+      return query.addSortBy(r'file_name', Sort.asc);
     });
   }
 
   QueryBuilder<ChatOutgoingMediaEntity, ChatOutgoingMediaEntity, QAfterSortBy>
   thenByFileNameDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'fileName', Sort.desc);
-    });
-  }
-
-  QueryBuilder<ChatOutgoingMediaEntity, ChatOutgoingMediaEntity, QAfterSortBy>
-  thenById() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'id', Sort.asc);
-    });
-  }
-
-  QueryBuilder<ChatOutgoingMediaEntity, ChatOutgoingMediaEntity, QAfterSortBy>
-  thenByIdDesc() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'id', Sort.desc);
+      return query.addSortBy(r'file_name', Sort.desc);
     });
   }
 
   QueryBuilder<ChatOutgoingMediaEntity, ChatOutgoingMediaEntity, QAfterSortBy>
   thenByOwnerUserId() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'ownerUserId', Sort.asc);
+      return query.addSortBy(r'owner_id', Sort.asc);
     });
   }
 
   QueryBuilder<ChatOutgoingMediaEntity, ChatOutgoingMediaEntity, QAfterSortBy>
   thenByOwnerUserIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'ownerUserId', Sort.desc);
-    });
-  }
-
-  QueryBuilder<ChatOutgoingMediaEntity, ChatOutgoingMediaEntity, QAfterSortBy>
-  thenByPendingKey() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'pendingKey', Sort.asc);
-    });
-  }
-
-  QueryBuilder<ChatOutgoingMediaEntity, ChatOutgoingMediaEntity, QAfterSortBy>
-  thenByPendingKeyDesc() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'pendingKey', Sort.desc);
+      return query.addSortBy(r'owner_id', Sort.desc);
     });
   }
 
   QueryBuilder<ChatOutgoingMediaEntity, ChatOutgoingMediaEntity, QAfterSortBy>
   thenByRecipientUserId() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'recipientUserId', Sort.asc);
+      return query.addSortBy(r'recipient_id', Sort.asc);
     });
   }
 
   QueryBuilder<ChatOutgoingMediaEntity, ChatOutgoingMediaEntity, QAfterSortBy>
   thenByRecipientUserIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'recipientUserId', Sort.desc);
+      return query.addSortBy(r'recipient_id', Sort.desc);
+    });
+  }
+
+  QueryBuilder<ChatOutgoingMediaEntity, ChatOutgoingMediaEntity, QAfterSortBy>
+  thenById() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'row_id', Sort.asc);
+    });
+  }
+
+  QueryBuilder<ChatOutgoingMediaEntity, ChatOutgoingMediaEntity, QAfterSortBy>
+  thenByIdDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'row_id', Sort.desc);
     });
   }
 }
@@ -12056,21 +11143,24 @@ extension ChatOutgoingMediaEntityQueryWhereDistinct
   QueryBuilder<ChatOutgoingMediaEntity, ChatOutgoingMediaEntity, QDistinct>
   distinctByAttachmentId({bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'attachmentId', caseSensitive: caseSensitive);
+      return query.addDistinctBy(
+        r'attachment_id',
+        caseSensitive: caseSensitive,
+      );
     });
   }
 
   QueryBuilder<ChatOutgoingMediaEntity, ChatOutgoingMediaEntity, QDistinct>
   distinctByByteSize() {
     return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'byteSize');
+      return query.addDistinctBy(r'byte_size');
     });
   }
 
   QueryBuilder<ChatOutgoingMediaEntity, ChatOutgoingMediaEntity, QDistinct>
   distinctByContentType({bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'contentType', caseSensitive: caseSensitive);
+      return query.addDistinctBy(r'content_type', caseSensitive: caseSensitive);
     });
   }
 
@@ -12078,7 +11168,7 @@ extension ChatOutgoingMediaEntityQueryWhereDistinct
   distinctByConversationId({bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(
-        r'conversationId',
+        r'conversation_id',
         caseSensitive: caseSensitive,
       );
     });
@@ -12087,38 +11177,28 @@ extension ChatOutgoingMediaEntityQueryWhereDistinct
   QueryBuilder<ChatOutgoingMediaEntity, ChatOutgoingMediaEntity, QDistinct>
   distinctByCreatedAtMillis() {
     return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'createdAtMillis');
+      return query.addDistinctBy(r'created_at');
     });
   }
 
   QueryBuilder<ChatOutgoingMediaEntity, ChatOutgoingMediaEntity, QDistinct>
   distinctByFileName({bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'fileName', caseSensitive: caseSensitive);
+      return query.addDistinctBy(r'file_name', caseSensitive: caseSensitive);
     });
   }
 
   QueryBuilder<ChatOutgoingMediaEntity, ChatOutgoingMediaEntity, QDistinct>
   distinctByOwnerUserId({bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'ownerUserId', caseSensitive: caseSensitive);
-    });
-  }
-
-  QueryBuilder<ChatOutgoingMediaEntity, ChatOutgoingMediaEntity, QDistinct>
-  distinctByPendingKey({bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'pendingKey', caseSensitive: caseSensitive);
+      return query.addDistinctBy(r'owner_id', caseSensitive: caseSensitive);
     });
   }
 
   QueryBuilder<ChatOutgoingMediaEntity, ChatOutgoingMediaEntity, QDistinct>
   distinctByRecipientUserId({bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(
-        r'recipientUserId',
-        caseSensitive: caseSensitive,
-      );
+      return query.addDistinctBy(r'recipient_id', caseSensitive: caseSensitive);
     });
   }
 }
@@ -12132,70 +11212,63 @@ extension ChatOutgoingMediaEntityQueryProperty
         > {
   QueryBuilder<ChatOutgoingMediaEntity, int, QQueryOperations> idProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'id');
+      return query.addPropertyName(r'row_id');
     });
   }
 
   QueryBuilder<ChatOutgoingMediaEntity, String, QQueryOperations>
   attachmentIdProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'attachmentId');
+      return query.addPropertyName(r'attachment_id');
     });
   }
 
   QueryBuilder<ChatOutgoingMediaEntity, int, QQueryOperations>
   byteSizeProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'byteSize');
+      return query.addPropertyName(r'byte_size');
     });
   }
 
   QueryBuilder<ChatOutgoingMediaEntity, String, QQueryOperations>
   contentTypeProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'contentType');
+      return query.addPropertyName(r'content_type');
     });
   }
 
   QueryBuilder<ChatOutgoingMediaEntity, String, QQueryOperations>
   conversationIdProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'conversationId');
+      return query.addPropertyName(r'conversation_id');
     });
   }
 
   QueryBuilder<ChatOutgoingMediaEntity, int, QQueryOperations>
   createdAtMillisProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'createdAtMillis');
+      return query.addPropertyName(r'created_at');
     });
   }
 
   QueryBuilder<ChatOutgoingMediaEntity, String, QQueryOperations>
   fileNameProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'fileName');
+      return query.addPropertyName(r'file_name');
     });
   }
 
   QueryBuilder<ChatOutgoingMediaEntity, String, QQueryOperations>
   ownerUserIdProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'ownerUserId');
-    });
-  }
-
-  QueryBuilder<ChatOutgoingMediaEntity, String, QQueryOperations>
-  pendingKeyProperty() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'pendingKey');
+      return query.addPropertyName(r'owner_id');
     });
   }
 
   QueryBuilder<ChatOutgoingMediaEntity, String, QQueryOperations>
   recipientUserIdProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'recipientUserId');
+      return query.addPropertyName(r'recipient_id');
     });
   }
 }
@@ -12209,82 +11282,81 @@ extension GetChatPendingInboundEntityCollection on Isar {
 }
 
 const ChatPendingInboundEntitySchema = CollectionSchema(
-  name: r'ChatPendingInboundEntity',
-  id: -5074141936840117970,
+  name: r'inbound',
+  id: 8868688902405367814,
   properties: {
-    r'conversationId': PropertySchema(
+    r'conversation_id': PropertySchema(
       id: 0,
-      name: r'conversationId',
+      name: r'conversation_id',
       type: IsarType.string,
     ),
-    r'createdAtMillis': PropertySchema(
+    r'created_at': PropertySchema(
       id: 1,
-      name: r'createdAtMillis',
+      name: r'created_at',
       type: IsarType.long,
     ),
-    r'messageBytesHex': PropertySchema(
+    r'message_bytes': PropertySchema(
       id: 2,
-      name: r'messageBytesHex',
+      name: r'message_bytes',
       type: IsarType.string,
     ),
-    r'messageId': PropertySchema(
+    r'message_id': PropertySchema(
       id: 3,
-      name: r'messageId',
+      name: r'message_id',
       type: IsarType.string,
     ),
-    r'ownerUserId': PropertySchema(
+    r'owner_id': PropertySchema(
       id: 4,
-      name: r'ownerUserId',
+      name: r'owner_id',
       type: IsarType.string,
     ),
-    r'reason': PropertySchema(id: 5, name: r'reason', type: IsarType.string),
   },
 
   estimateSize: _chatPendingInboundEntityEstimateSize,
   serialize: _chatPendingInboundEntitySerialize,
   deserialize: _chatPendingInboundEntityDeserialize,
   deserializeProp: _chatPendingInboundEntityDeserializeProp,
-  idName: r'id',
+  idName: r'row_id',
   indexes: {
-    r'ownerUserId_messageId': IndexSchema(
-      id: 6423036073976843555,
-      name: r'ownerUserId_messageId',
+    r'owner_id_message_id': IndexSchema(
+      id: -5137609912169235308,
+      name: r'owner_id_message_id',
       unique: true,
       replace: true,
       properties: [
         IndexPropertySchema(
-          name: r'ownerUserId',
+          name: r'owner_id',
           type: IndexType.hash,
           caseSensitive: true,
         ),
         IndexPropertySchema(
-          name: r'messageId',
-          type: IndexType.hash,
-          caseSensitive: true,
-        ),
-      ],
-    ),
-    r'conversationId': IndexSchema(
-      id: 2945908346256754300,
-      name: r'conversationId',
-      unique: false,
-      replace: false,
-      properties: [
-        IndexPropertySchema(
-          name: r'conversationId',
+          name: r'message_id',
           type: IndexType.hash,
           caseSensitive: true,
         ),
       ],
     ),
-    r'createdAtMillis': IndexSchema(
-      id: -2739706252225730577,
-      name: r'createdAtMillis',
+    r'conversation_id': IndexSchema(
+      id: -4048954474591270722,
+      name: r'conversation_id',
       unique: false,
       replace: false,
       properties: [
         IndexPropertySchema(
-          name: r'createdAtMillis',
+          name: r'conversation_id',
+          type: IndexType.hash,
+          caseSensitive: true,
+        ),
+      ],
+    ),
+    r'created_at': IndexSchema(
+      id: 6296488693525790031,
+      name: r'created_at',
+      unique: false,
+      replace: false,
+      properties: [
+        IndexPropertySchema(
+          name: r'created_at',
           type: IndexType.value,
           caseSensitive: false,
         ),
@@ -12310,7 +11382,6 @@ int _chatPendingInboundEntityEstimateSize(
   bytesCount += 3 + object.messageBytesHex.length * 3;
   bytesCount += 3 + object.messageId.length * 3;
   bytesCount += 3 + object.ownerUserId.length * 3;
-  bytesCount += 3 + object.reason.length * 3;
   return bytesCount;
 }
 
@@ -12325,7 +11396,6 @@ void _chatPendingInboundEntitySerialize(
   writer.writeString(offsets[2], object.messageBytesHex);
   writer.writeString(offsets[3], object.messageId);
   writer.writeString(offsets[4], object.ownerUserId);
-  writer.writeString(offsets[5], object.reason);
 }
 
 ChatPendingInboundEntity _chatPendingInboundEntityDeserialize(
@@ -12337,11 +11407,10 @@ ChatPendingInboundEntity _chatPendingInboundEntityDeserialize(
   final object = ChatPendingInboundEntity();
   object.conversationId = reader.readString(offsets[0]);
   object.createdAtMillis = reader.readLong(offsets[1]);
-  object.id = id;
   object.messageBytesHex = reader.readString(offsets[2]);
   object.messageId = reader.readString(offsets[3]);
   object.ownerUserId = reader.readString(offsets[4]);
-  object.reason = reader.readString(offsets[5]);
+  object.id = id;
   return object;
 }
 
@@ -12361,8 +11430,6 @@ P _chatPendingInboundEntityDeserializeProp<P>(
     case 3:
       return (reader.readString(offset)) as P;
     case 4:
-      return (reader.readString(offset)) as P;
-    case 5:
       return (reader.readString(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
@@ -12393,28 +11460,25 @@ extension ChatPendingInboundEntityByIndex
     String ownerUserId,
     String messageId,
   ) {
-    return getByIndex(r'ownerUserId_messageId', [ownerUserId, messageId]);
+    return getByIndex(r'owner_id_message_id', [ownerUserId, messageId]);
   }
 
   ChatPendingInboundEntity? getByOwnerUserIdMessageIdSync(
     String ownerUserId,
     String messageId,
   ) {
-    return getByIndexSync(r'ownerUserId_messageId', [ownerUserId, messageId]);
+    return getByIndexSync(r'owner_id_message_id', [ownerUserId, messageId]);
   }
 
   Future<bool> deleteByOwnerUserIdMessageId(
     String ownerUserId,
     String messageId,
   ) {
-    return deleteByIndex(r'ownerUserId_messageId', [ownerUserId, messageId]);
+    return deleteByIndex(r'owner_id_message_id', [ownerUserId, messageId]);
   }
 
   bool deleteByOwnerUserIdMessageIdSync(String ownerUserId, String messageId) {
-    return deleteByIndexSync(r'ownerUserId_messageId', [
-      ownerUserId,
-      messageId,
-    ]);
+    return deleteByIndexSync(r'owner_id_message_id', [ownerUserId, messageId]);
   }
 
   Future<List<ChatPendingInboundEntity?>> getAllByOwnerUserIdMessageId(
@@ -12431,7 +11495,7 @@ extension ChatPendingInboundEntityByIndex
       values.add([ownerUserIdValues[i], messageIdValues[i]]);
     }
 
-    return getAllByIndex(r'ownerUserId_messageId', values);
+    return getAllByIndex(r'owner_id_message_id', values);
   }
 
   List<ChatPendingInboundEntity?> getAllByOwnerUserIdMessageIdSync(
@@ -12448,7 +11512,7 @@ extension ChatPendingInboundEntityByIndex
       values.add([ownerUserIdValues[i], messageIdValues[i]]);
     }
 
-    return getAllByIndexSync(r'ownerUserId_messageId', values);
+    return getAllByIndexSync(r'owner_id_message_id', values);
   }
 
   Future<int> deleteAllByOwnerUserIdMessageId(
@@ -12465,7 +11529,7 @@ extension ChatPendingInboundEntityByIndex
       values.add([ownerUserIdValues[i], messageIdValues[i]]);
     }
 
-    return deleteAllByIndex(r'ownerUserId_messageId', values);
+    return deleteAllByIndex(r'owner_id_message_id', values);
   }
 
   int deleteAllByOwnerUserIdMessageIdSync(
@@ -12482,28 +11546,24 @@ extension ChatPendingInboundEntityByIndex
       values.add([ownerUserIdValues[i], messageIdValues[i]]);
     }
 
-    return deleteAllByIndexSync(r'ownerUserId_messageId', values);
+    return deleteAllByIndexSync(r'owner_id_message_id', values);
   }
 
   Future<Id> putByOwnerUserIdMessageId(ChatPendingInboundEntity object) {
-    return putByIndex(r'ownerUserId_messageId', object);
+    return putByIndex(r'owner_id_message_id', object);
   }
 
   Id putByOwnerUserIdMessageIdSync(
     ChatPendingInboundEntity object, {
     bool saveLinks = true,
   }) {
-    return putByIndexSync(
-      r'ownerUserId_messageId',
-      object,
-      saveLinks: saveLinks,
-    );
+    return putByIndexSync(r'owner_id_message_id', object, saveLinks: saveLinks);
   }
 
   Future<List<Id>> putAllByOwnerUserIdMessageId(
     List<ChatPendingInboundEntity> objects,
   ) {
-    return putAllByIndex(r'ownerUserId_messageId', objects);
+    return putAllByIndex(r'owner_id_message_id', objects);
   }
 
   List<Id> putAllByOwnerUserIdMessageIdSync(
@@ -12511,7 +11571,7 @@ extension ChatPendingInboundEntityByIndex
     bool saveLinks = true,
   }) {
     return putAllByIndexSync(
-      r'ownerUserId_messageId',
+      r'owner_id_message_id',
       objects,
       saveLinks: saveLinks,
     );
@@ -12536,7 +11596,7 @@ extension ChatPendingInboundEntityQueryWhereSort
   anyCreatedAtMillis() {
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
-        const IndexWhereClause.any(indexName: r'createdAtMillis'),
+        const IndexWhereClause.any(indexName: r'created_at'),
       );
     });
   }
@@ -12645,7 +11705,7 @@ extension ChatPendingInboundEntityQueryWhere
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         IndexWhereClause.equalTo(
-          indexName: r'ownerUserId_messageId',
+          indexName: r'owner_id_message_id',
           value: [ownerUserId],
         ),
       );
@@ -12663,7 +11723,7 @@ extension ChatPendingInboundEntityQueryWhere
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_messageId',
+                indexName: r'owner_id_message_id',
                 lower: [],
                 upper: [ownerUserId],
                 includeUpper: false,
@@ -12671,7 +11731,7 @@ extension ChatPendingInboundEntityQueryWhere
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_messageId',
+                indexName: r'owner_id_message_id',
                 lower: [ownerUserId],
                 includeLower: false,
                 upper: [],
@@ -12681,7 +11741,7 @@ extension ChatPendingInboundEntityQueryWhere
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_messageId',
+                indexName: r'owner_id_message_id',
                 lower: [ownerUserId],
                 includeLower: false,
                 upper: [],
@@ -12689,7 +11749,7 @@ extension ChatPendingInboundEntityQueryWhere
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_messageId',
+                indexName: r'owner_id_message_id',
                 lower: [],
                 upper: [ownerUserId],
                 includeUpper: false,
@@ -12708,7 +11768,7 @@ extension ChatPendingInboundEntityQueryWhere
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         IndexWhereClause.equalTo(
-          indexName: r'ownerUserId_messageId',
+          indexName: r'owner_id_message_id',
           value: [ownerUserId, messageId],
         ),
       );
@@ -12726,7 +11786,7 @@ extension ChatPendingInboundEntityQueryWhere
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_messageId',
+                indexName: r'owner_id_message_id',
                 lower: [ownerUserId],
                 upper: [ownerUserId, messageId],
                 includeUpper: false,
@@ -12734,7 +11794,7 @@ extension ChatPendingInboundEntityQueryWhere
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_messageId',
+                indexName: r'owner_id_message_id',
                 lower: [ownerUserId, messageId],
                 includeLower: false,
                 upper: [ownerUserId],
@@ -12744,7 +11804,7 @@ extension ChatPendingInboundEntityQueryWhere
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_messageId',
+                indexName: r'owner_id_message_id',
                 lower: [ownerUserId, messageId],
                 includeLower: false,
                 upper: [ownerUserId],
@@ -12752,7 +11812,7 @@ extension ChatPendingInboundEntityQueryWhere
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_messageId',
+                indexName: r'owner_id_message_id',
                 lower: [ownerUserId],
                 upper: [ownerUserId, messageId],
                 includeUpper: false,
@@ -12771,7 +11831,7 @@ extension ChatPendingInboundEntityQueryWhere
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         IndexWhereClause.equalTo(
-          indexName: r'conversationId',
+          indexName: r'conversation_id',
           value: [conversationId],
         ),
       );
@@ -12789,7 +11849,7 @@ extension ChatPendingInboundEntityQueryWhere
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'conversationId',
+                indexName: r'conversation_id',
                 lower: [],
                 upper: [conversationId],
                 includeUpper: false,
@@ -12797,7 +11857,7 @@ extension ChatPendingInboundEntityQueryWhere
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'conversationId',
+                indexName: r'conversation_id',
                 lower: [conversationId],
                 includeLower: false,
                 upper: [],
@@ -12807,7 +11867,7 @@ extension ChatPendingInboundEntityQueryWhere
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'conversationId',
+                indexName: r'conversation_id',
                 lower: [conversationId],
                 includeLower: false,
                 upper: [],
@@ -12815,7 +11875,7 @@ extension ChatPendingInboundEntityQueryWhere
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'conversationId',
+                indexName: r'conversation_id',
                 lower: [],
                 upper: [conversationId],
                 includeUpper: false,
@@ -12834,7 +11894,7 @@ extension ChatPendingInboundEntityQueryWhere
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         IndexWhereClause.equalTo(
-          indexName: r'createdAtMillis',
+          indexName: r'created_at',
           value: [createdAtMillis],
         ),
       );
@@ -12852,7 +11912,7 @@ extension ChatPendingInboundEntityQueryWhere
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'createdAtMillis',
+                indexName: r'created_at',
                 lower: [],
                 upper: [createdAtMillis],
                 includeUpper: false,
@@ -12860,7 +11920,7 @@ extension ChatPendingInboundEntityQueryWhere
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'createdAtMillis',
+                indexName: r'created_at',
                 lower: [createdAtMillis],
                 includeLower: false,
                 upper: [],
@@ -12870,7 +11930,7 @@ extension ChatPendingInboundEntityQueryWhere
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'createdAtMillis',
+                indexName: r'created_at',
                 lower: [createdAtMillis],
                 includeLower: false,
                 upper: [],
@@ -12878,7 +11938,7 @@ extension ChatPendingInboundEntityQueryWhere
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'createdAtMillis',
+                indexName: r'created_at',
                 lower: [],
                 upper: [createdAtMillis],
                 includeUpper: false,
@@ -12897,7 +11957,7 @@ extension ChatPendingInboundEntityQueryWhere
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         IndexWhereClause.between(
-          indexName: r'createdAtMillis',
+          indexName: r'created_at',
           lower: [createdAtMillis],
           includeLower: include,
           upper: [],
@@ -12915,7 +11975,7 @@ extension ChatPendingInboundEntityQueryWhere
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         IndexWhereClause.between(
-          indexName: r'createdAtMillis',
+          indexName: r'created_at',
           lower: [],
           upper: [createdAtMillis],
           includeUpper: include,
@@ -12938,7 +11998,7 @@ extension ChatPendingInboundEntityQueryWhere
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         IndexWhereClause.between(
-          indexName: r'createdAtMillis',
+          indexName: r'created_at',
           lower: [lowerCreatedAtMillis],
           includeLower: includeLower,
           upper: [upperCreatedAtMillis],
@@ -12965,7 +12025,7 @@ extension ChatPendingInboundEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.equalTo(
-          property: r'conversationId',
+          property: r'conversation_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -12987,7 +12047,7 @@ extension ChatPendingInboundEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'conversationId',
+          property: r'conversation_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -13009,7 +12069,7 @@ extension ChatPendingInboundEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'conversationId',
+          property: r'conversation_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -13032,7 +12092,7 @@ extension ChatPendingInboundEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'conversationId',
+          property: r'conversation_id',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -13052,7 +12112,7 @@ extension ChatPendingInboundEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.startsWith(
-          property: r'conversationId',
+          property: r'conversation_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -13069,7 +12129,7 @@ extension ChatPendingInboundEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.endsWith(
-          property: r'conversationId',
+          property: r'conversation_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -13086,7 +12146,7 @@ extension ChatPendingInboundEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.contains(
-          property: r'conversationId',
+          property: r'conversation_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -13103,7 +12163,7 @@ extension ChatPendingInboundEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.matches(
-          property: r'conversationId',
+          property: r'conversation_id',
           wildcard: pattern,
           caseSensitive: caseSensitive,
         ),
@@ -13119,7 +12179,7 @@ extension ChatPendingInboundEntityQueryFilter
   conversationIdIsEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'conversationId', value: ''),
+        FilterCondition.equalTo(property: r'conversation_id', value: ''),
       );
     });
   }
@@ -13132,7 +12192,7 @@ extension ChatPendingInboundEntityQueryFilter
   conversationIdIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'conversationId', value: ''),
+        FilterCondition.greaterThan(property: r'conversation_id', value: ''),
       );
     });
   }
@@ -13145,7 +12205,7 @@ extension ChatPendingInboundEntityQueryFilter
   createdAtMillisEqualTo(int value) {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'createdAtMillis', value: value),
+        FilterCondition.equalTo(property: r'created_at', value: value),
       );
     });
   }
@@ -13160,7 +12220,7 @@ extension ChatPendingInboundEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'createdAtMillis',
+          property: r'created_at',
           value: value,
         ),
       );
@@ -13177,7 +12237,7 @@ extension ChatPendingInboundEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'createdAtMillis',
+          property: r'created_at',
           value: value,
         ),
       );
@@ -13198,78 +12258,7 @@ extension ChatPendingInboundEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'createdAtMillis',
-          lower: lower,
-          includeLower: includeLower,
-          upper: upper,
-          includeUpper: includeUpper,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatPendingInboundEntity,
-    ChatPendingInboundEntity,
-    QAfterFilterCondition
-  >
-  idEqualTo(Id value) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'id', value: value),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatPendingInboundEntity,
-    ChatPendingInboundEntity,
-    QAfterFilterCondition
-  >
-  idGreaterThan(Id value, {bool include = false}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.greaterThan(
-          include: include,
-          property: r'id',
-          value: value,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatPendingInboundEntity,
-    ChatPendingInboundEntity,
-    QAfterFilterCondition
-  >
-  idLessThan(Id value, {bool include = false}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.lessThan(
-          include: include,
-          property: r'id',
-          value: value,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatPendingInboundEntity,
-    ChatPendingInboundEntity,
-    QAfterFilterCondition
-  >
-  idBetween(
-    Id lower,
-    Id upper, {
-    bool includeLower = true,
-    bool includeUpper = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.between(
-          property: r'id',
+          property: r'created_at',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -13288,7 +12277,7 @@ extension ChatPendingInboundEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.equalTo(
-          property: r'messageBytesHex',
+          property: r'message_bytes',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -13310,7 +12299,7 @@ extension ChatPendingInboundEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'messageBytesHex',
+          property: r'message_bytes',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -13332,7 +12321,7 @@ extension ChatPendingInboundEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'messageBytesHex',
+          property: r'message_bytes',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -13355,7 +12344,7 @@ extension ChatPendingInboundEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'messageBytesHex',
+          property: r'message_bytes',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -13375,7 +12364,7 @@ extension ChatPendingInboundEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.startsWith(
-          property: r'messageBytesHex',
+          property: r'message_bytes',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -13392,7 +12381,7 @@ extension ChatPendingInboundEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.endsWith(
-          property: r'messageBytesHex',
+          property: r'message_bytes',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -13409,7 +12398,7 @@ extension ChatPendingInboundEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.contains(
-          property: r'messageBytesHex',
+          property: r'message_bytes',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -13426,7 +12415,7 @@ extension ChatPendingInboundEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.matches(
-          property: r'messageBytesHex',
+          property: r'message_bytes',
           wildcard: pattern,
           caseSensitive: caseSensitive,
         ),
@@ -13442,7 +12431,7 @@ extension ChatPendingInboundEntityQueryFilter
   messageBytesHexIsEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'messageBytesHex', value: ''),
+        FilterCondition.equalTo(property: r'message_bytes', value: ''),
       );
     });
   }
@@ -13455,7 +12444,7 @@ extension ChatPendingInboundEntityQueryFilter
   messageBytesHexIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'messageBytesHex', value: ''),
+        FilterCondition.greaterThan(property: r'message_bytes', value: ''),
       );
     });
   }
@@ -13469,7 +12458,7 @@ extension ChatPendingInboundEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.equalTo(
-          property: r'messageId',
+          property: r'message_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -13491,7 +12480,7 @@ extension ChatPendingInboundEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'messageId',
+          property: r'message_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -13513,7 +12502,7 @@ extension ChatPendingInboundEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'messageId',
+          property: r'message_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -13536,7 +12525,7 @@ extension ChatPendingInboundEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'messageId',
+          property: r'message_id',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -13556,7 +12545,7 @@ extension ChatPendingInboundEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.startsWith(
-          property: r'messageId',
+          property: r'message_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -13573,7 +12562,7 @@ extension ChatPendingInboundEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.endsWith(
-          property: r'messageId',
+          property: r'message_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -13590,7 +12579,7 @@ extension ChatPendingInboundEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.contains(
-          property: r'messageId',
+          property: r'message_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -13607,7 +12596,7 @@ extension ChatPendingInboundEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.matches(
-          property: r'messageId',
+          property: r'message_id',
           wildcard: pattern,
           caseSensitive: caseSensitive,
         ),
@@ -13623,7 +12612,7 @@ extension ChatPendingInboundEntityQueryFilter
   messageIdIsEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'messageId', value: ''),
+        FilterCondition.equalTo(property: r'message_id', value: ''),
       );
     });
   }
@@ -13636,7 +12625,7 @@ extension ChatPendingInboundEntityQueryFilter
   messageIdIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'messageId', value: ''),
+        FilterCondition.greaterThan(property: r'message_id', value: ''),
       );
     });
   }
@@ -13650,7 +12639,7 @@ extension ChatPendingInboundEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.equalTo(
-          property: r'ownerUserId',
+          property: r'owner_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -13672,7 +12661,7 @@ extension ChatPendingInboundEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'ownerUserId',
+          property: r'owner_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -13694,7 +12683,7 @@ extension ChatPendingInboundEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'ownerUserId',
+          property: r'owner_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -13717,7 +12706,7 @@ extension ChatPendingInboundEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'ownerUserId',
+          property: r'owner_id',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -13737,7 +12726,7 @@ extension ChatPendingInboundEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.startsWith(
-          property: r'ownerUserId',
+          property: r'owner_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -13754,7 +12743,7 @@ extension ChatPendingInboundEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.endsWith(
-          property: r'ownerUserId',
+          property: r'owner_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -13771,7 +12760,7 @@ extension ChatPendingInboundEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.contains(
-          property: r'ownerUserId',
+          property: r'owner_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -13788,7 +12777,7 @@ extension ChatPendingInboundEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.matches(
-          property: r'ownerUserId',
+          property: r'owner_id',
           wildcard: pattern,
           caseSensitive: caseSensitive,
         ),
@@ -13804,7 +12793,7 @@ extension ChatPendingInboundEntityQueryFilter
   ownerUserIdIsEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'ownerUserId', value: ''),
+        FilterCondition.equalTo(property: r'owner_id', value: ''),
       );
     });
   }
@@ -13817,7 +12806,7 @@ extension ChatPendingInboundEntityQueryFilter
   ownerUserIdIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'ownerUserId', value: ''),
+        FilterCondition.greaterThan(property: r'owner_id', value: ''),
       );
     });
   }
@@ -13827,14 +12816,10 @@ extension ChatPendingInboundEntityQueryFilter
     ChatPendingInboundEntity,
     QAfterFilterCondition
   >
-  reasonEqualTo(String value, {bool caseSensitive = true}) {
+  idEqualTo(Id value) {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(
-          property: r'reason',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
+        FilterCondition.equalTo(property: r'row_id', value: value),
       );
     });
   }
@@ -13844,18 +12829,13 @@ extension ChatPendingInboundEntityQueryFilter
     ChatPendingInboundEntity,
     QAfterFilterCondition
   >
-  reasonGreaterThan(
-    String value, {
-    bool include = false,
-    bool caseSensitive = true,
-  }) {
+  idGreaterThan(Id value, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'reason',
+          property: r'row_id',
           value: value,
-          caseSensitive: caseSensitive,
         ),
       );
     });
@@ -13866,18 +12846,13 @@ extension ChatPendingInboundEntityQueryFilter
     ChatPendingInboundEntity,
     QAfterFilterCondition
   >
-  reasonLessThan(
-    String value, {
-    bool include = false,
-    bool caseSensitive = true,
-  }) {
+  idLessThan(Id value, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'reason',
+          property: r'row_id',
           value: value,
-          caseSensitive: caseSensitive,
         ),
       );
     });
@@ -13888,117 +12863,21 @@ extension ChatPendingInboundEntityQueryFilter
     ChatPendingInboundEntity,
     QAfterFilterCondition
   >
-  reasonBetween(
-    String lower,
-    String upper, {
+  idBetween(
+    Id lower,
+    Id upper, {
     bool includeLower = true,
     bool includeUpper = true,
-    bool caseSensitive = true,
   }) {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'reason',
+          property: r'row_id',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
           includeUpper: includeUpper,
-          caseSensitive: caseSensitive,
         ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatPendingInboundEntity,
-    ChatPendingInboundEntity,
-    QAfterFilterCondition
-  >
-  reasonStartsWith(String value, {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.startsWith(
-          property: r'reason',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatPendingInboundEntity,
-    ChatPendingInboundEntity,
-    QAfterFilterCondition
-  >
-  reasonEndsWith(String value, {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.endsWith(
-          property: r'reason',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatPendingInboundEntity,
-    ChatPendingInboundEntity,
-    QAfterFilterCondition
-  >
-  reasonContains(String value, {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.contains(
-          property: r'reason',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatPendingInboundEntity,
-    ChatPendingInboundEntity,
-    QAfterFilterCondition
-  >
-  reasonMatches(String pattern, {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.matches(
-          property: r'reason',
-          wildcard: pattern,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatPendingInboundEntity,
-    ChatPendingInboundEntity,
-    QAfterFilterCondition
-  >
-  reasonIsEmpty() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'reason', value: ''),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatPendingInboundEntity,
-    ChatPendingInboundEntity,
-    QAfterFilterCondition
-  >
-  reasonIsNotEmpty() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'reason', value: ''),
       );
     });
   }
@@ -14030,84 +12909,70 @@ extension ChatPendingInboundEntityQuerySortBy
   QueryBuilder<ChatPendingInboundEntity, ChatPendingInboundEntity, QAfterSortBy>
   sortByConversationId() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'conversationId', Sort.asc);
+      return query.addSortBy(r'conversation_id', Sort.asc);
     });
   }
 
   QueryBuilder<ChatPendingInboundEntity, ChatPendingInboundEntity, QAfterSortBy>
   sortByConversationIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'conversationId', Sort.desc);
+      return query.addSortBy(r'conversation_id', Sort.desc);
     });
   }
 
   QueryBuilder<ChatPendingInboundEntity, ChatPendingInboundEntity, QAfterSortBy>
   sortByCreatedAtMillis() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'createdAtMillis', Sort.asc);
+      return query.addSortBy(r'created_at', Sort.asc);
     });
   }
 
   QueryBuilder<ChatPendingInboundEntity, ChatPendingInboundEntity, QAfterSortBy>
   sortByCreatedAtMillisDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'createdAtMillis', Sort.desc);
+      return query.addSortBy(r'created_at', Sort.desc);
     });
   }
 
   QueryBuilder<ChatPendingInboundEntity, ChatPendingInboundEntity, QAfterSortBy>
   sortByMessageBytesHex() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'messageBytesHex', Sort.asc);
+      return query.addSortBy(r'message_bytes', Sort.asc);
     });
   }
 
   QueryBuilder<ChatPendingInboundEntity, ChatPendingInboundEntity, QAfterSortBy>
   sortByMessageBytesHexDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'messageBytesHex', Sort.desc);
+      return query.addSortBy(r'message_bytes', Sort.desc);
     });
   }
 
   QueryBuilder<ChatPendingInboundEntity, ChatPendingInboundEntity, QAfterSortBy>
   sortByMessageId() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'messageId', Sort.asc);
+      return query.addSortBy(r'message_id', Sort.asc);
     });
   }
 
   QueryBuilder<ChatPendingInboundEntity, ChatPendingInboundEntity, QAfterSortBy>
   sortByMessageIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'messageId', Sort.desc);
+      return query.addSortBy(r'message_id', Sort.desc);
     });
   }
 
   QueryBuilder<ChatPendingInboundEntity, ChatPendingInboundEntity, QAfterSortBy>
   sortByOwnerUserId() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'ownerUserId', Sort.asc);
+      return query.addSortBy(r'owner_id', Sort.asc);
     });
   }
 
   QueryBuilder<ChatPendingInboundEntity, ChatPendingInboundEntity, QAfterSortBy>
   sortByOwnerUserIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'ownerUserId', Sort.desc);
-    });
-  }
-
-  QueryBuilder<ChatPendingInboundEntity, ChatPendingInboundEntity, QAfterSortBy>
-  sortByReason() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'reason', Sort.asc);
-    });
-  }
-
-  QueryBuilder<ChatPendingInboundEntity, ChatPendingInboundEntity, QAfterSortBy>
-  sortByReasonDesc() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'reason', Sort.desc);
+      return query.addSortBy(r'owner_id', Sort.desc);
     });
   }
 }
@@ -14122,98 +12987,84 @@ extension ChatPendingInboundEntityQuerySortThenBy
   QueryBuilder<ChatPendingInboundEntity, ChatPendingInboundEntity, QAfterSortBy>
   thenByConversationId() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'conversationId', Sort.asc);
+      return query.addSortBy(r'conversation_id', Sort.asc);
     });
   }
 
   QueryBuilder<ChatPendingInboundEntity, ChatPendingInboundEntity, QAfterSortBy>
   thenByConversationIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'conversationId', Sort.desc);
+      return query.addSortBy(r'conversation_id', Sort.desc);
     });
   }
 
   QueryBuilder<ChatPendingInboundEntity, ChatPendingInboundEntity, QAfterSortBy>
   thenByCreatedAtMillis() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'createdAtMillis', Sort.asc);
+      return query.addSortBy(r'created_at', Sort.asc);
     });
   }
 
   QueryBuilder<ChatPendingInboundEntity, ChatPendingInboundEntity, QAfterSortBy>
   thenByCreatedAtMillisDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'createdAtMillis', Sort.desc);
-    });
-  }
-
-  QueryBuilder<ChatPendingInboundEntity, ChatPendingInboundEntity, QAfterSortBy>
-  thenById() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'id', Sort.asc);
-    });
-  }
-
-  QueryBuilder<ChatPendingInboundEntity, ChatPendingInboundEntity, QAfterSortBy>
-  thenByIdDesc() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'id', Sort.desc);
+      return query.addSortBy(r'created_at', Sort.desc);
     });
   }
 
   QueryBuilder<ChatPendingInboundEntity, ChatPendingInboundEntity, QAfterSortBy>
   thenByMessageBytesHex() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'messageBytesHex', Sort.asc);
+      return query.addSortBy(r'message_bytes', Sort.asc);
     });
   }
 
   QueryBuilder<ChatPendingInboundEntity, ChatPendingInboundEntity, QAfterSortBy>
   thenByMessageBytesHexDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'messageBytesHex', Sort.desc);
+      return query.addSortBy(r'message_bytes', Sort.desc);
     });
   }
 
   QueryBuilder<ChatPendingInboundEntity, ChatPendingInboundEntity, QAfterSortBy>
   thenByMessageId() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'messageId', Sort.asc);
+      return query.addSortBy(r'message_id', Sort.asc);
     });
   }
 
   QueryBuilder<ChatPendingInboundEntity, ChatPendingInboundEntity, QAfterSortBy>
   thenByMessageIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'messageId', Sort.desc);
+      return query.addSortBy(r'message_id', Sort.desc);
     });
   }
 
   QueryBuilder<ChatPendingInboundEntity, ChatPendingInboundEntity, QAfterSortBy>
   thenByOwnerUserId() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'ownerUserId', Sort.asc);
+      return query.addSortBy(r'owner_id', Sort.asc);
     });
   }
 
   QueryBuilder<ChatPendingInboundEntity, ChatPendingInboundEntity, QAfterSortBy>
   thenByOwnerUserIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'ownerUserId', Sort.desc);
+      return query.addSortBy(r'owner_id', Sort.desc);
     });
   }
 
   QueryBuilder<ChatPendingInboundEntity, ChatPendingInboundEntity, QAfterSortBy>
-  thenByReason() {
+  thenById() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'reason', Sort.asc);
+      return query.addSortBy(r'row_id', Sort.asc);
     });
   }
 
   QueryBuilder<ChatPendingInboundEntity, ChatPendingInboundEntity, QAfterSortBy>
-  thenByReasonDesc() {
+  thenByIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'reason', Sort.desc);
+      return query.addSortBy(r'row_id', Sort.desc);
     });
   }
 }
@@ -14229,7 +13080,7 @@ extension ChatPendingInboundEntityQueryWhereDistinct
   distinctByConversationId({bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(
-        r'conversationId',
+        r'conversation_id',
         caseSensitive: caseSensitive,
       );
     });
@@ -14238,7 +13089,7 @@ extension ChatPendingInboundEntityQueryWhereDistinct
   QueryBuilder<ChatPendingInboundEntity, ChatPendingInboundEntity, QDistinct>
   distinctByCreatedAtMillis() {
     return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'createdAtMillis');
+      return query.addDistinctBy(r'created_at');
     });
   }
 
@@ -14246,7 +13097,7 @@ extension ChatPendingInboundEntityQueryWhereDistinct
   distinctByMessageBytesHex({bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(
-        r'messageBytesHex',
+        r'message_bytes',
         caseSensitive: caseSensitive,
       );
     });
@@ -14255,21 +13106,14 @@ extension ChatPendingInboundEntityQueryWhereDistinct
   QueryBuilder<ChatPendingInboundEntity, ChatPendingInboundEntity, QDistinct>
   distinctByMessageId({bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'messageId', caseSensitive: caseSensitive);
+      return query.addDistinctBy(r'message_id', caseSensitive: caseSensitive);
     });
   }
 
   QueryBuilder<ChatPendingInboundEntity, ChatPendingInboundEntity, QDistinct>
   distinctByOwnerUserId({bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'ownerUserId', caseSensitive: caseSensitive);
-    });
-  }
-
-  QueryBuilder<ChatPendingInboundEntity, ChatPendingInboundEntity, QDistinct>
-  distinctByReason({bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'reason', caseSensitive: caseSensitive);
+      return query.addDistinctBy(r'owner_id', caseSensitive: caseSensitive);
     });
   }
 }
@@ -14283,49 +13127,42 @@ extension ChatPendingInboundEntityQueryProperty
         > {
   QueryBuilder<ChatPendingInboundEntity, int, QQueryOperations> idProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'id');
+      return query.addPropertyName(r'row_id');
     });
   }
 
   QueryBuilder<ChatPendingInboundEntity, String, QQueryOperations>
   conversationIdProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'conversationId');
+      return query.addPropertyName(r'conversation_id');
     });
   }
 
   QueryBuilder<ChatPendingInboundEntity, int, QQueryOperations>
   createdAtMillisProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'createdAtMillis');
+      return query.addPropertyName(r'created_at');
     });
   }
 
   QueryBuilder<ChatPendingInboundEntity, String, QQueryOperations>
   messageBytesHexProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'messageBytesHex');
+      return query.addPropertyName(r'message_bytes');
     });
   }
 
   QueryBuilder<ChatPendingInboundEntity, String, QQueryOperations>
   messageIdProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'messageId');
+      return query.addPropertyName(r'message_id');
     });
   }
 
   QueryBuilder<ChatPendingInboundEntity, String, QQueryOperations>
   ownerUserIdProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'ownerUserId');
-    });
-  }
-
-  QueryBuilder<ChatPendingInboundEntity, String, QQueryOperations>
-  reasonProperty() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'reason');
+      return query.addPropertyName(r'owner_id');
     });
   }
 }
@@ -14339,48 +13176,48 @@ extension GetChatRouteCacheEntityCollection on Isar {
 }
 
 const ChatRouteCacheEntitySchema = CollectionSchema(
-  name: r'ChatRouteCacheEntity',
-  id: -1879395959909772186,
+  name: r'route',
+  id: 8686557153332962867,
   properties: {
-    r'createdAtMillis': PropertySchema(
+    r'created_at': PropertySchema(
       id: 0,
-      name: r'createdAtMillis',
+      name: r'created_at',
       type: IsarType.long,
     ),
-    r'deviceId': PropertySchema(
+    r'device_id': PropertySchema(
       id: 1,
-      name: r'deviceId',
+      name: r'device_id',
       type: IsarType.string,
     ),
-    r'nearbyPeerHint': PropertySchema(
+    r'nearby_hint': PropertySchema(
       id: 2,
-      name: r'nearbyPeerHint',
+      name: r'nearby_hint',
       type: IsarType.string,
     ),
-    r'note': PropertySchema(id: 3, name: r'note', type: IsarType.string),
-    r'ownerUserId': PropertySchema(
-      id: 4,
-      name: r'ownerUserId',
+    r'owner_id': PropertySchema(
+      id: 3,
+      name: r'owner_id',
       type: IsarType.string,
     ),
-    r'peerUserId': PropertySchema(
+    r'peer_id': PropertySchema(id: 4, name: r'peer_id', type: IsarType.string),
+    r'route_name': PropertySchema(
       id: 5,
-      name: r'peerUserId',
+      name: r'route_name',
       type: IsarType.string,
     ),
-    r'routeDisplayName': PropertySchema(
+    r'route_note': PropertySchema(
       id: 6,
-      name: r'routeDisplayName',
+      name: r'route_note',
       type: IsarType.string,
     ),
-    r'safetyNumber': PropertySchema(
+    r'safety_number': PropertySchema(
       id: 7,
-      name: r'safetyNumber',
+      name: r'safety_number',
       type: IsarType.string,
     ),
-    r'updatedAtMillis': PropertySchema(
+    r'updated_at': PropertySchema(
       id: 8,
-      name: r'updatedAtMillis',
+      name: r'updated_at',
       type: IsarType.long,
     ),
   },
@@ -14389,21 +13226,21 @@ const ChatRouteCacheEntitySchema = CollectionSchema(
   serialize: _chatRouteCacheEntitySerialize,
   deserialize: _chatRouteCacheEntityDeserialize,
   deserializeProp: _chatRouteCacheEntityDeserializeProp,
-  idName: r'id',
+  idName: r'row_id',
   indexes: {
-    r'ownerUserId_peerUserId': IndexSchema(
-      id: 5480118011649564512,
-      name: r'ownerUserId_peerUserId',
+    r'owner_id_peer_id': IndexSchema(
+      id: -5230315218043329836,
+      name: r'owner_id_peer_id',
       unique: true,
       replace: true,
       properties: [
         IndexPropertySchema(
-          name: r'ownerUserId',
+          name: r'owner_id',
           type: IndexType.hash,
           caseSensitive: true,
         ),
         IndexPropertySchema(
-          name: r'peerUserId',
+          name: r'peer_id',
           type: IndexType.hash,
           caseSensitive: true,
         ),
@@ -14432,15 +13269,15 @@ int _chatRouteCacheEntityEstimateSize(
       bytesCount += 3 + value.length * 3;
     }
   }
+  bytesCount += 3 + object.ownerUserId.length * 3;
+  bytesCount += 3 + object.peerUserId.length * 3;
+  bytesCount += 3 + object.routeDisplayName.length * 3;
   {
     final value = object.note;
     if (value != null) {
       bytesCount += 3 + value.length * 3;
     }
   }
-  bytesCount += 3 + object.ownerUserId.length * 3;
-  bytesCount += 3 + object.peerUserId.length * 3;
-  bytesCount += 3 + object.routeDisplayName.length * 3;
   bytesCount += 3 + object.safetyNumber.length * 3;
   return bytesCount;
 }
@@ -14454,10 +13291,10 @@ void _chatRouteCacheEntitySerialize(
   writer.writeLong(offsets[0], object.createdAtMillis);
   writer.writeString(offsets[1], object.deviceId);
   writer.writeString(offsets[2], object.nearbyPeerHint);
-  writer.writeString(offsets[3], object.note);
-  writer.writeString(offsets[4], object.ownerUserId);
-  writer.writeString(offsets[5], object.peerUserId);
-  writer.writeString(offsets[6], object.routeDisplayName);
+  writer.writeString(offsets[3], object.ownerUserId);
+  writer.writeString(offsets[4], object.peerUserId);
+  writer.writeString(offsets[5], object.routeDisplayName);
+  writer.writeString(offsets[6], object.note);
   writer.writeString(offsets[7], object.safetyNumber);
   writer.writeLong(offsets[8], object.updatedAtMillis);
 }
@@ -14471,12 +13308,12 @@ ChatRouteCacheEntity _chatRouteCacheEntityDeserialize(
   final object = ChatRouteCacheEntity();
   object.createdAtMillis = reader.readLong(offsets[0]);
   object.deviceId = reader.readString(offsets[1]);
-  object.id = id;
   object.nearbyPeerHint = reader.readStringOrNull(offsets[2]);
-  object.note = reader.readStringOrNull(offsets[3]);
-  object.ownerUserId = reader.readString(offsets[4]);
-  object.peerUserId = reader.readString(offsets[5]);
-  object.routeDisplayName = reader.readString(offsets[6]);
+  object.ownerUserId = reader.readString(offsets[3]);
+  object.peerUserId = reader.readString(offsets[4]);
+  object.routeDisplayName = reader.readString(offsets[5]);
+  object.note = reader.readStringOrNull(offsets[6]);
+  object.id = id;
   object.safetyNumber = reader.readString(offsets[7]);
   object.updatedAtMillis = reader.readLong(offsets[8]);
   return object;
@@ -14496,13 +13333,13 @@ P _chatRouteCacheEntityDeserializeProp<P>(
     case 2:
       return (reader.readStringOrNull(offset)) as P;
     case 3:
-      return (reader.readStringOrNull(offset)) as P;
+      return (reader.readString(offset)) as P;
     case 4:
       return (reader.readString(offset)) as P;
     case 5:
       return (reader.readString(offset)) as P;
     case 6:
-      return (reader.readString(offset)) as P;
+      return (reader.readStringOrNull(offset)) as P;
     case 7:
       return (reader.readString(offset)) as P;
     case 8:
@@ -14535,31 +13372,28 @@ extension ChatRouteCacheEntityByIndex on IsarCollection<ChatRouteCacheEntity> {
     String ownerUserId,
     String peerUserId,
   ) {
-    return getByIndex(r'ownerUserId_peerUserId', [ownerUserId, peerUserId]);
+    return getByIndex(r'owner_id_peer_id', [ownerUserId, peerUserId]);
   }
 
   ChatRouteCacheEntity? getByOwnerUserIdPeerUserIdSync(
     String ownerUserId,
     String peerUserId,
   ) {
-    return getByIndexSync(r'ownerUserId_peerUserId', [ownerUserId, peerUserId]);
+    return getByIndexSync(r'owner_id_peer_id', [ownerUserId, peerUserId]);
   }
 
   Future<bool> deleteByOwnerUserIdPeerUserId(
     String ownerUserId,
     String peerUserId,
   ) {
-    return deleteByIndex(r'ownerUserId_peerUserId', [ownerUserId, peerUserId]);
+    return deleteByIndex(r'owner_id_peer_id', [ownerUserId, peerUserId]);
   }
 
   bool deleteByOwnerUserIdPeerUserIdSync(
     String ownerUserId,
     String peerUserId,
   ) {
-    return deleteByIndexSync(r'ownerUserId_peerUserId', [
-      ownerUserId,
-      peerUserId,
-    ]);
+    return deleteByIndexSync(r'owner_id_peer_id', [ownerUserId, peerUserId]);
   }
 
   Future<List<ChatRouteCacheEntity?>> getAllByOwnerUserIdPeerUserId(
@@ -14576,7 +13410,7 @@ extension ChatRouteCacheEntityByIndex on IsarCollection<ChatRouteCacheEntity> {
       values.add([ownerUserIdValues[i], peerUserIdValues[i]]);
     }
 
-    return getAllByIndex(r'ownerUserId_peerUserId', values);
+    return getAllByIndex(r'owner_id_peer_id', values);
   }
 
   List<ChatRouteCacheEntity?> getAllByOwnerUserIdPeerUserIdSync(
@@ -14593,7 +13427,7 @@ extension ChatRouteCacheEntityByIndex on IsarCollection<ChatRouteCacheEntity> {
       values.add([ownerUserIdValues[i], peerUserIdValues[i]]);
     }
 
-    return getAllByIndexSync(r'ownerUserId_peerUserId', values);
+    return getAllByIndexSync(r'owner_id_peer_id', values);
   }
 
   Future<int> deleteAllByOwnerUserIdPeerUserId(
@@ -14610,7 +13444,7 @@ extension ChatRouteCacheEntityByIndex on IsarCollection<ChatRouteCacheEntity> {
       values.add([ownerUserIdValues[i], peerUserIdValues[i]]);
     }
 
-    return deleteAllByIndex(r'ownerUserId_peerUserId', values);
+    return deleteAllByIndex(r'owner_id_peer_id', values);
   }
 
   int deleteAllByOwnerUserIdPeerUserIdSync(
@@ -14627,28 +13461,24 @@ extension ChatRouteCacheEntityByIndex on IsarCollection<ChatRouteCacheEntity> {
       values.add([ownerUserIdValues[i], peerUserIdValues[i]]);
     }
 
-    return deleteAllByIndexSync(r'ownerUserId_peerUserId', values);
+    return deleteAllByIndexSync(r'owner_id_peer_id', values);
   }
 
   Future<Id> putByOwnerUserIdPeerUserId(ChatRouteCacheEntity object) {
-    return putByIndex(r'ownerUserId_peerUserId', object);
+    return putByIndex(r'owner_id_peer_id', object);
   }
 
   Id putByOwnerUserIdPeerUserIdSync(
     ChatRouteCacheEntity object, {
     bool saveLinks = true,
   }) {
-    return putByIndexSync(
-      r'ownerUserId_peerUserId',
-      object,
-      saveLinks: saveLinks,
-    );
+    return putByIndexSync(r'owner_id_peer_id', object, saveLinks: saveLinks);
   }
 
   Future<List<Id>> putAllByOwnerUserIdPeerUserId(
     List<ChatRouteCacheEntity> objects,
   ) {
-    return putAllByIndex(r'ownerUserId_peerUserId', objects);
+    return putAllByIndex(r'owner_id_peer_id', objects);
   }
 
   List<Id> putAllByOwnerUserIdPeerUserIdSync(
@@ -14656,7 +13486,7 @@ extension ChatRouteCacheEntityByIndex on IsarCollection<ChatRouteCacheEntity> {
     bool saveLinks = true,
   }) {
     return putAllByIndexSync(
-      r'ownerUserId_peerUserId',
+      r'owner_id_peer_id',
       objects,
       saveLinks: saveLinks,
     );
@@ -14747,7 +13577,7 @@ extension ChatRouteCacheEntityQueryWhere
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         IndexWhereClause.equalTo(
-          indexName: r'ownerUserId_peerUserId',
+          indexName: r'owner_id_peer_id',
           value: [ownerUserId],
         ),
       );
@@ -14761,7 +13591,7 @@ extension ChatRouteCacheEntityQueryWhere
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_peerUserId',
+                indexName: r'owner_id_peer_id',
                 lower: [],
                 upper: [ownerUserId],
                 includeUpper: false,
@@ -14769,7 +13599,7 @@ extension ChatRouteCacheEntityQueryWhere
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_peerUserId',
+                indexName: r'owner_id_peer_id',
                 lower: [ownerUserId],
                 includeLower: false,
                 upper: [],
@@ -14779,7 +13609,7 @@ extension ChatRouteCacheEntityQueryWhere
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_peerUserId',
+                indexName: r'owner_id_peer_id',
                 lower: [ownerUserId],
                 includeLower: false,
                 upper: [],
@@ -14787,7 +13617,7 @@ extension ChatRouteCacheEntityQueryWhere
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_peerUserId',
+                indexName: r'owner_id_peer_id',
                 lower: [],
                 upper: [ownerUserId],
                 includeUpper: false,
@@ -14802,7 +13632,7 @@ extension ChatRouteCacheEntityQueryWhere
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         IndexWhereClause.equalTo(
-          indexName: r'ownerUserId_peerUserId',
+          indexName: r'owner_id_peer_id',
           value: [ownerUserId, peerUserId],
         ),
       );
@@ -14819,7 +13649,7 @@ extension ChatRouteCacheEntityQueryWhere
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_peerUserId',
+                indexName: r'owner_id_peer_id',
                 lower: [ownerUserId],
                 upper: [ownerUserId, peerUserId],
                 includeUpper: false,
@@ -14827,7 +13657,7 @@ extension ChatRouteCacheEntityQueryWhere
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_peerUserId',
+                indexName: r'owner_id_peer_id',
                 lower: [ownerUserId, peerUserId],
                 includeLower: false,
                 upper: [ownerUserId],
@@ -14837,7 +13667,7 @@ extension ChatRouteCacheEntityQueryWhere
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_peerUserId',
+                indexName: r'owner_id_peer_id',
                 lower: [ownerUserId, peerUserId],
                 includeLower: false,
                 upper: [ownerUserId],
@@ -14845,7 +13675,7 @@ extension ChatRouteCacheEntityQueryWhere
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_peerUserId',
+                indexName: r'owner_id_peer_id',
                 lower: [ownerUserId],
                 upper: [ownerUserId, peerUserId],
                 includeUpper: false,
@@ -14871,7 +13701,7 @@ extension ChatRouteCacheEntityQueryFilter
   createdAtMillisEqualTo(int value) {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'createdAtMillis', value: value),
+        FilterCondition.equalTo(property: r'created_at', value: value),
       );
     });
   }
@@ -14886,7 +13716,7 @@ extension ChatRouteCacheEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'createdAtMillis',
+          property: r'created_at',
           value: value,
         ),
       );
@@ -14903,7 +13733,7 @@ extension ChatRouteCacheEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'createdAtMillis',
+          property: r'created_at',
           value: value,
         ),
       );
@@ -14924,7 +13754,7 @@ extension ChatRouteCacheEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'createdAtMillis',
+          property: r'created_at',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -14943,7 +13773,7 @@ extension ChatRouteCacheEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.equalTo(
-          property: r'deviceId',
+          property: r'device_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -14965,7 +13795,7 @@ extension ChatRouteCacheEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'deviceId',
+          property: r'device_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -14987,7 +13817,7 @@ extension ChatRouteCacheEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'deviceId',
+          property: r'device_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -15010,7 +13840,7 @@ extension ChatRouteCacheEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'deviceId',
+          property: r'device_id',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -15030,7 +13860,7 @@ extension ChatRouteCacheEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.startsWith(
-          property: r'deviceId',
+          property: r'device_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -15047,7 +13877,7 @@ extension ChatRouteCacheEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.endsWith(
-          property: r'deviceId',
+          property: r'device_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -15064,7 +13894,7 @@ extension ChatRouteCacheEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.contains(
-          property: r'deviceId',
+          property: r'device_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -15081,7 +13911,7 @@ extension ChatRouteCacheEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.matches(
-          property: r'deviceId',
+          property: r'device_id',
           wildcard: pattern,
           caseSensitive: caseSensitive,
         ),
@@ -15097,7 +13927,7 @@ extension ChatRouteCacheEntityQueryFilter
   deviceIdIsEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'deviceId', value: ''),
+        FilterCondition.equalTo(property: r'device_id', value: ''),
       );
     });
   }
@@ -15110,78 +13940,7 @@ extension ChatRouteCacheEntityQueryFilter
   deviceIdIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'deviceId', value: ''),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatRouteCacheEntity,
-    ChatRouteCacheEntity,
-    QAfterFilterCondition
-  >
-  idEqualTo(Id value) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'id', value: value),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatRouteCacheEntity,
-    ChatRouteCacheEntity,
-    QAfterFilterCondition
-  >
-  idGreaterThan(Id value, {bool include = false}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.greaterThan(
-          include: include,
-          property: r'id',
-          value: value,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatRouteCacheEntity,
-    ChatRouteCacheEntity,
-    QAfterFilterCondition
-  >
-  idLessThan(Id value, {bool include = false}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.lessThan(
-          include: include,
-          property: r'id',
-          value: value,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatRouteCacheEntity,
-    ChatRouteCacheEntity,
-    QAfterFilterCondition
-  >
-  idBetween(
-    Id lower,
-    Id upper, {
-    bool includeLower = true,
-    bool includeUpper = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.between(
-          property: r'id',
-          lower: lower,
-          includeLower: includeLower,
-          upper: upper,
-          includeUpper: includeUpper,
-        ),
+        FilterCondition.greaterThan(property: r'device_id', value: ''),
       );
     });
   }
@@ -15194,7 +13953,7 @@ extension ChatRouteCacheEntityQueryFilter
   nearbyPeerHintIsNull() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        const FilterCondition.isNull(property: r'nearbyPeerHint'),
+        const FilterCondition.isNull(property: r'nearby_hint'),
       );
     });
   }
@@ -15207,7 +13966,7 @@ extension ChatRouteCacheEntityQueryFilter
   nearbyPeerHintIsNotNull() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        const FilterCondition.isNotNull(property: r'nearbyPeerHint'),
+        const FilterCondition.isNotNull(property: r'nearby_hint'),
       );
     });
   }
@@ -15221,7 +13980,7 @@ extension ChatRouteCacheEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.equalTo(
-          property: r'nearbyPeerHint',
+          property: r'nearby_hint',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -15243,7 +14002,7 @@ extension ChatRouteCacheEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'nearbyPeerHint',
+          property: r'nearby_hint',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -15265,7 +14024,7 @@ extension ChatRouteCacheEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'nearbyPeerHint',
+          property: r'nearby_hint',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -15288,7 +14047,7 @@ extension ChatRouteCacheEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'nearbyPeerHint',
+          property: r'nearby_hint',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -15308,7 +14067,7 @@ extension ChatRouteCacheEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.startsWith(
-          property: r'nearbyPeerHint',
+          property: r'nearby_hint',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -15325,7 +14084,7 @@ extension ChatRouteCacheEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.endsWith(
-          property: r'nearbyPeerHint',
+          property: r'nearby_hint',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -15342,7 +14101,7 @@ extension ChatRouteCacheEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.contains(
-          property: r'nearbyPeerHint',
+          property: r'nearby_hint',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -15359,7 +14118,7 @@ extension ChatRouteCacheEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.matches(
-          property: r'nearbyPeerHint',
+          property: r'nearby_hint',
           wildcard: pattern,
           caseSensitive: caseSensitive,
         ),
@@ -15375,7 +14134,7 @@ extension ChatRouteCacheEntityQueryFilter
   nearbyPeerHintIsEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'nearbyPeerHint', value: ''),
+        FilterCondition.equalTo(property: r'nearby_hint', value: ''),
       );
     });
   }
@@ -15388,214 +14147,7 @@ extension ChatRouteCacheEntityQueryFilter
   nearbyPeerHintIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'nearbyPeerHint', value: ''),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatRouteCacheEntity,
-    ChatRouteCacheEntity,
-    QAfterFilterCondition
-  >
-  noteIsNull() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        const FilterCondition.isNull(property: r'note'),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatRouteCacheEntity,
-    ChatRouteCacheEntity,
-    QAfterFilterCondition
-  >
-  noteIsNotNull() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        const FilterCondition.isNotNull(property: r'note'),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatRouteCacheEntity,
-    ChatRouteCacheEntity,
-    QAfterFilterCondition
-  >
-  noteEqualTo(String? value, {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.equalTo(
-          property: r'note',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatRouteCacheEntity,
-    ChatRouteCacheEntity,
-    QAfterFilterCondition
-  >
-  noteGreaterThan(
-    String? value, {
-    bool include = false,
-    bool caseSensitive = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.greaterThan(
-          include: include,
-          property: r'note',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatRouteCacheEntity,
-    ChatRouteCacheEntity,
-    QAfterFilterCondition
-  >
-  noteLessThan(
-    String? value, {
-    bool include = false,
-    bool caseSensitive = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.lessThan(
-          include: include,
-          property: r'note',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatRouteCacheEntity,
-    ChatRouteCacheEntity,
-    QAfterFilterCondition
-  >
-  noteBetween(
-    String? lower,
-    String? upper, {
-    bool includeLower = true,
-    bool includeUpper = true,
-    bool caseSensitive = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.between(
-          property: r'note',
-          lower: lower,
-          includeLower: includeLower,
-          upper: upper,
-          includeUpper: includeUpper,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatRouteCacheEntity,
-    ChatRouteCacheEntity,
-    QAfterFilterCondition
-  >
-  noteStartsWith(String value, {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.startsWith(
-          property: r'note',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatRouteCacheEntity,
-    ChatRouteCacheEntity,
-    QAfterFilterCondition
-  >
-  noteEndsWith(String value, {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.endsWith(
-          property: r'note',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatRouteCacheEntity,
-    ChatRouteCacheEntity,
-    QAfterFilterCondition
-  >
-  noteContains(String value, {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.contains(
-          property: r'note',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatRouteCacheEntity,
-    ChatRouteCacheEntity,
-    QAfterFilterCondition
-  >
-  noteMatches(String pattern, {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.matches(
-          property: r'note',
-          wildcard: pattern,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatRouteCacheEntity,
-    ChatRouteCacheEntity,
-    QAfterFilterCondition
-  >
-  noteIsEmpty() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'note', value: ''),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatRouteCacheEntity,
-    ChatRouteCacheEntity,
-    QAfterFilterCondition
-  >
-  noteIsNotEmpty() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'note', value: ''),
+        FilterCondition.greaterThan(property: r'nearby_hint', value: ''),
       );
     });
   }
@@ -15609,7 +14161,7 @@ extension ChatRouteCacheEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.equalTo(
-          property: r'ownerUserId',
+          property: r'owner_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -15631,7 +14183,7 @@ extension ChatRouteCacheEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'ownerUserId',
+          property: r'owner_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -15653,7 +14205,7 @@ extension ChatRouteCacheEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'ownerUserId',
+          property: r'owner_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -15676,7 +14228,7 @@ extension ChatRouteCacheEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'ownerUserId',
+          property: r'owner_id',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -15696,7 +14248,7 @@ extension ChatRouteCacheEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.startsWith(
-          property: r'ownerUserId',
+          property: r'owner_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -15713,7 +14265,7 @@ extension ChatRouteCacheEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.endsWith(
-          property: r'ownerUserId',
+          property: r'owner_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -15730,7 +14282,7 @@ extension ChatRouteCacheEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.contains(
-          property: r'ownerUserId',
+          property: r'owner_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -15747,7 +14299,7 @@ extension ChatRouteCacheEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.matches(
-          property: r'ownerUserId',
+          property: r'owner_id',
           wildcard: pattern,
           caseSensitive: caseSensitive,
         ),
@@ -15763,7 +14315,7 @@ extension ChatRouteCacheEntityQueryFilter
   ownerUserIdIsEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'ownerUserId', value: ''),
+        FilterCondition.equalTo(property: r'owner_id', value: ''),
       );
     });
   }
@@ -15776,7 +14328,7 @@ extension ChatRouteCacheEntityQueryFilter
   ownerUserIdIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'ownerUserId', value: ''),
+        FilterCondition.greaterThan(property: r'owner_id', value: ''),
       );
     });
   }
@@ -15790,7 +14342,7 @@ extension ChatRouteCacheEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.equalTo(
-          property: r'peerUserId',
+          property: r'peer_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -15812,7 +14364,7 @@ extension ChatRouteCacheEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'peerUserId',
+          property: r'peer_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -15834,7 +14386,7 @@ extension ChatRouteCacheEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'peerUserId',
+          property: r'peer_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -15857,7 +14409,7 @@ extension ChatRouteCacheEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'peerUserId',
+          property: r'peer_id',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -15877,7 +14429,7 @@ extension ChatRouteCacheEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.startsWith(
-          property: r'peerUserId',
+          property: r'peer_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -15894,7 +14446,7 @@ extension ChatRouteCacheEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.endsWith(
-          property: r'peerUserId',
+          property: r'peer_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -15911,7 +14463,7 @@ extension ChatRouteCacheEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.contains(
-          property: r'peerUserId',
+          property: r'peer_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -15928,7 +14480,7 @@ extension ChatRouteCacheEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.matches(
-          property: r'peerUserId',
+          property: r'peer_id',
           wildcard: pattern,
           caseSensitive: caseSensitive,
         ),
@@ -15944,7 +14496,7 @@ extension ChatRouteCacheEntityQueryFilter
   peerUserIdIsEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'peerUserId', value: ''),
+        FilterCondition.equalTo(property: r'peer_id', value: ''),
       );
     });
   }
@@ -15957,7 +14509,7 @@ extension ChatRouteCacheEntityQueryFilter
   peerUserIdIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'peerUserId', value: ''),
+        FilterCondition.greaterThan(property: r'peer_id', value: ''),
       );
     });
   }
@@ -15971,7 +14523,7 @@ extension ChatRouteCacheEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.equalTo(
-          property: r'routeDisplayName',
+          property: r'route_name',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -15993,7 +14545,7 @@ extension ChatRouteCacheEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'routeDisplayName',
+          property: r'route_name',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -16015,7 +14567,7 @@ extension ChatRouteCacheEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'routeDisplayName',
+          property: r'route_name',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -16038,7 +14590,7 @@ extension ChatRouteCacheEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'routeDisplayName',
+          property: r'route_name',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -16058,7 +14610,7 @@ extension ChatRouteCacheEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.startsWith(
-          property: r'routeDisplayName',
+          property: r'route_name',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -16075,7 +14627,7 @@ extension ChatRouteCacheEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.endsWith(
-          property: r'routeDisplayName',
+          property: r'route_name',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -16092,7 +14644,7 @@ extension ChatRouteCacheEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.contains(
-          property: r'routeDisplayName',
+          property: r'route_name',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -16109,7 +14661,7 @@ extension ChatRouteCacheEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.matches(
-          property: r'routeDisplayName',
+          property: r'route_name',
           wildcard: pattern,
           caseSensitive: caseSensitive,
         ),
@@ -16125,7 +14677,7 @@ extension ChatRouteCacheEntityQueryFilter
   routeDisplayNameIsEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'routeDisplayName', value: ''),
+        FilterCondition.equalTo(property: r'route_name', value: ''),
       );
     });
   }
@@ -16138,7 +14690,285 @@ extension ChatRouteCacheEntityQueryFilter
   routeDisplayNameIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'routeDisplayName', value: ''),
+        FilterCondition.greaterThan(property: r'route_name', value: ''),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatRouteCacheEntity,
+    ChatRouteCacheEntity,
+    QAfterFilterCondition
+  >
+  noteIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        const FilterCondition.isNull(property: r'route_note'),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatRouteCacheEntity,
+    ChatRouteCacheEntity,
+    QAfterFilterCondition
+  >
+  noteIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        const FilterCondition.isNotNull(property: r'route_note'),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatRouteCacheEntity,
+    ChatRouteCacheEntity,
+    QAfterFilterCondition
+  >
+  noteEqualTo(String? value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.equalTo(
+          property: r'route_note',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatRouteCacheEntity,
+    ChatRouteCacheEntity,
+    QAfterFilterCondition
+  >
+  noteGreaterThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(
+          include: include,
+          property: r'route_note',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatRouteCacheEntity,
+    ChatRouteCacheEntity,
+    QAfterFilterCondition
+  >
+  noteLessThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.lessThan(
+          include: include,
+          property: r'route_note',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatRouteCacheEntity,
+    ChatRouteCacheEntity,
+    QAfterFilterCondition
+  >
+  noteBetween(
+    String? lower,
+    String? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.between(
+          property: r'route_note',
+          lower: lower,
+          includeLower: includeLower,
+          upper: upper,
+          includeUpper: includeUpper,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatRouteCacheEntity,
+    ChatRouteCacheEntity,
+    QAfterFilterCondition
+  >
+  noteStartsWith(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.startsWith(
+          property: r'route_note',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatRouteCacheEntity,
+    ChatRouteCacheEntity,
+    QAfterFilterCondition
+  >
+  noteEndsWith(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.endsWith(
+          property: r'route_note',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatRouteCacheEntity,
+    ChatRouteCacheEntity,
+    QAfterFilterCondition
+  >
+  noteContains(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.contains(
+          property: r'route_note',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatRouteCacheEntity,
+    ChatRouteCacheEntity,
+    QAfterFilterCondition
+  >
+  noteMatches(String pattern, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.matches(
+          property: r'route_note',
+          wildcard: pattern,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatRouteCacheEntity,
+    ChatRouteCacheEntity,
+    QAfterFilterCondition
+  >
+  noteIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.equalTo(property: r'route_note', value: ''),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatRouteCacheEntity,
+    ChatRouteCacheEntity,
+    QAfterFilterCondition
+  >
+  noteIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(property: r'route_note', value: ''),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatRouteCacheEntity,
+    ChatRouteCacheEntity,
+    QAfterFilterCondition
+  >
+  idEqualTo(Id value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.equalTo(property: r'row_id', value: value),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatRouteCacheEntity,
+    ChatRouteCacheEntity,
+    QAfterFilterCondition
+  >
+  idGreaterThan(Id value, {bool include = false}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(
+          include: include,
+          property: r'row_id',
+          value: value,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatRouteCacheEntity,
+    ChatRouteCacheEntity,
+    QAfterFilterCondition
+  >
+  idLessThan(Id value, {bool include = false}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.lessThan(
+          include: include,
+          property: r'row_id',
+          value: value,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatRouteCacheEntity,
+    ChatRouteCacheEntity,
+    QAfterFilterCondition
+  >
+  idBetween(
+    Id lower,
+    Id upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.between(
+          property: r'row_id',
+          lower: lower,
+          includeLower: includeLower,
+          upper: upper,
+          includeUpper: includeUpper,
+        ),
       );
     });
   }
@@ -16152,7 +14982,7 @@ extension ChatRouteCacheEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.equalTo(
-          property: r'safetyNumber',
+          property: r'safety_number',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -16174,7 +15004,7 @@ extension ChatRouteCacheEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'safetyNumber',
+          property: r'safety_number',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -16196,7 +15026,7 @@ extension ChatRouteCacheEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'safetyNumber',
+          property: r'safety_number',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -16219,7 +15049,7 @@ extension ChatRouteCacheEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'safetyNumber',
+          property: r'safety_number',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -16239,7 +15069,7 @@ extension ChatRouteCacheEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.startsWith(
-          property: r'safetyNumber',
+          property: r'safety_number',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -16256,7 +15086,7 @@ extension ChatRouteCacheEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.endsWith(
-          property: r'safetyNumber',
+          property: r'safety_number',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -16273,7 +15103,7 @@ extension ChatRouteCacheEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.contains(
-          property: r'safetyNumber',
+          property: r'safety_number',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -16290,7 +15120,7 @@ extension ChatRouteCacheEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.matches(
-          property: r'safetyNumber',
+          property: r'safety_number',
           wildcard: pattern,
           caseSensitive: caseSensitive,
         ),
@@ -16306,7 +15136,7 @@ extension ChatRouteCacheEntityQueryFilter
   safetyNumberIsEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'safetyNumber', value: ''),
+        FilterCondition.equalTo(property: r'safety_number', value: ''),
       );
     });
   }
@@ -16319,7 +15149,7 @@ extension ChatRouteCacheEntityQueryFilter
   safetyNumberIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'safetyNumber', value: ''),
+        FilterCondition.greaterThan(property: r'safety_number', value: ''),
       );
     });
   }
@@ -16332,7 +15162,7 @@ extension ChatRouteCacheEntityQueryFilter
   updatedAtMillisEqualTo(int value) {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'updatedAtMillis', value: value),
+        FilterCondition.equalTo(property: r'updated_at', value: value),
       );
     });
   }
@@ -16347,7 +15177,7 @@ extension ChatRouteCacheEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'updatedAtMillis',
+          property: r'updated_at',
           value: value,
         ),
       );
@@ -16364,7 +15194,7 @@ extension ChatRouteCacheEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'updatedAtMillis',
+          property: r'updated_at',
           value: value,
         ),
       );
@@ -16385,7 +15215,7 @@ extension ChatRouteCacheEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'updatedAtMillis',
+          property: r'updated_at',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -16417,126 +15247,126 @@ extension ChatRouteCacheEntityQuerySortBy
   QueryBuilder<ChatRouteCacheEntity, ChatRouteCacheEntity, QAfterSortBy>
   sortByCreatedAtMillis() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'createdAtMillis', Sort.asc);
+      return query.addSortBy(r'created_at', Sort.asc);
     });
   }
 
   QueryBuilder<ChatRouteCacheEntity, ChatRouteCacheEntity, QAfterSortBy>
   sortByCreatedAtMillisDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'createdAtMillis', Sort.desc);
+      return query.addSortBy(r'created_at', Sort.desc);
     });
   }
 
   QueryBuilder<ChatRouteCacheEntity, ChatRouteCacheEntity, QAfterSortBy>
   sortByDeviceId() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'deviceId', Sort.asc);
+      return query.addSortBy(r'device_id', Sort.asc);
     });
   }
 
   QueryBuilder<ChatRouteCacheEntity, ChatRouteCacheEntity, QAfterSortBy>
   sortByDeviceIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'deviceId', Sort.desc);
+      return query.addSortBy(r'device_id', Sort.desc);
     });
   }
 
   QueryBuilder<ChatRouteCacheEntity, ChatRouteCacheEntity, QAfterSortBy>
   sortByNearbyPeerHint() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'nearbyPeerHint', Sort.asc);
+      return query.addSortBy(r'nearby_hint', Sort.asc);
     });
   }
 
   QueryBuilder<ChatRouteCacheEntity, ChatRouteCacheEntity, QAfterSortBy>
   sortByNearbyPeerHintDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'nearbyPeerHint', Sort.desc);
-    });
-  }
-
-  QueryBuilder<ChatRouteCacheEntity, ChatRouteCacheEntity, QAfterSortBy>
-  sortByNote() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'note', Sort.asc);
-    });
-  }
-
-  QueryBuilder<ChatRouteCacheEntity, ChatRouteCacheEntity, QAfterSortBy>
-  sortByNoteDesc() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'note', Sort.desc);
+      return query.addSortBy(r'nearby_hint', Sort.desc);
     });
   }
 
   QueryBuilder<ChatRouteCacheEntity, ChatRouteCacheEntity, QAfterSortBy>
   sortByOwnerUserId() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'ownerUserId', Sort.asc);
+      return query.addSortBy(r'owner_id', Sort.asc);
     });
   }
 
   QueryBuilder<ChatRouteCacheEntity, ChatRouteCacheEntity, QAfterSortBy>
   sortByOwnerUserIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'ownerUserId', Sort.desc);
+      return query.addSortBy(r'owner_id', Sort.desc);
     });
   }
 
   QueryBuilder<ChatRouteCacheEntity, ChatRouteCacheEntity, QAfterSortBy>
   sortByPeerUserId() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'peerUserId', Sort.asc);
+      return query.addSortBy(r'peer_id', Sort.asc);
     });
   }
 
   QueryBuilder<ChatRouteCacheEntity, ChatRouteCacheEntity, QAfterSortBy>
   sortByPeerUserIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'peerUserId', Sort.desc);
+      return query.addSortBy(r'peer_id', Sort.desc);
     });
   }
 
   QueryBuilder<ChatRouteCacheEntity, ChatRouteCacheEntity, QAfterSortBy>
   sortByRouteDisplayName() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'routeDisplayName', Sort.asc);
+      return query.addSortBy(r'route_name', Sort.asc);
     });
   }
 
   QueryBuilder<ChatRouteCacheEntity, ChatRouteCacheEntity, QAfterSortBy>
   sortByRouteDisplayNameDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'routeDisplayName', Sort.desc);
+      return query.addSortBy(r'route_name', Sort.desc);
+    });
+  }
+
+  QueryBuilder<ChatRouteCacheEntity, ChatRouteCacheEntity, QAfterSortBy>
+  sortByNote() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'route_note', Sort.asc);
+    });
+  }
+
+  QueryBuilder<ChatRouteCacheEntity, ChatRouteCacheEntity, QAfterSortBy>
+  sortByNoteDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'route_note', Sort.desc);
     });
   }
 
   QueryBuilder<ChatRouteCacheEntity, ChatRouteCacheEntity, QAfterSortBy>
   sortBySafetyNumber() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'safetyNumber', Sort.asc);
+      return query.addSortBy(r'safety_number', Sort.asc);
     });
   }
 
   QueryBuilder<ChatRouteCacheEntity, ChatRouteCacheEntity, QAfterSortBy>
   sortBySafetyNumberDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'safetyNumber', Sort.desc);
+      return query.addSortBy(r'safety_number', Sort.desc);
     });
   }
 
   QueryBuilder<ChatRouteCacheEntity, ChatRouteCacheEntity, QAfterSortBy>
   sortByUpdatedAtMillis() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'updatedAtMillis', Sort.asc);
+      return query.addSortBy(r'updated_at', Sort.asc);
     });
   }
 
   QueryBuilder<ChatRouteCacheEntity, ChatRouteCacheEntity, QAfterSortBy>
   sortByUpdatedAtMillisDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'updatedAtMillis', Sort.desc);
+      return query.addSortBy(r'updated_at', Sort.desc);
     });
   }
 }
@@ -16546,140 +15376,140 @@ extension ChatRouteCacheEntityQuerySortThenBy
   QueryBuilder<ChatRouteCacheEntity, ChatRouteCacheEntity, QAfterSortBy>
   thenByCreatedAtMillis() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'createdAtMillis', Sort.asc);
+      return query.addSortBy(r'created_at', Sort.asc);
     });
   }
 
   QueryBuilder<ChatRouteCacheEntity, ChatRouteCacheEntity, QAfterSortBy>
   thenByCreatedAtMillisDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'createdAtMillis', Sort.desc);
+      return query.addSortBy(r'created_at', Sort.desc);
     });
   }
 
   QueryBuilder<ChatRouteCacheEntity, ChatRouteCacheEntity, QAfterSortBy>
   thenByDeviceId() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'deviceId', Sort.asc);
+      return query.addSortBy(r'device_id', Sort.asc);
     });
   }
 
   QueryBuilder<ChatRouteCacheEntity, ChatRouteCacheEntity, QAfterSortBy>
   thenByDeviceIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'deviceId', Sort.desc);
-    });
-  }
-
-  QueryBuilder<ChatRouteCacheEntity, ChatRouteCacheEntity, QAfterSortBy>
-  thenById() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'id', Sort.asc);
-    });
-  }
-
-  QueryBuilder<ChatRouteCacheEntity, ChatRouteCacheEntity, QAfterSortBy>
-  thenByIdDesc() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'id', Sort.desc);
+      return query.addSortBy(r'device_id', Sort.desc);
     });
   }
 
   QueryBuilder<ChatRouteCacheEntity, ChatRouteCacheEntity, QAfterSortBy>
   thenByNearbyPeerHint() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'nearbyPeerHint', Sort.asc);
+      return query.addSortBy(r'nearby_hint', Sort.asc);
     });
   }
 
   QueryBuilder<ChatRouteCacheEntity, ChatRouteCacheEntity, QAfterSortBy>
   thenByNearbyPeerHintDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'nearbyPeerHint', Sort.desc);
-    });
-  }
-
-  QueryBuilder<ChatRouteCacheEntity, ChatRouteCacheEntity, QAfterSortBy>
-  thenByNote() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'note', Sort.asc);
-    });
-  }
-
-  QueryBuilder<ChatRouteCacheEntity, ChatRouteCacheEntity, QAfterSortBy>
-  thenByNoteDesc() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'note', Sort.desc);
+      return query.addSortBy(r'nearby_hint', Sort.desc);
     });
   }
 
   QueryBuilder<ChatRouteCacheEntity, ChatRouteCacheEntity, QAfterSortBy>
   thenByOwnerUserId() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'ownerUserId', Sort.asc);
+      return query.addSortBy(r'owner_id', Sort.asc);
     });
   }
 
   QueryBuilder<ChatRouteCacheEntity, ChatRouteCacheEntity, QAfterSortBy>
   thenByOwnerUserIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'ownerUserId', Sort.desc);
+      return query.addSortBy(r'owner_id', Sort.desc);
     });
   }
 
   QueryBuilder<ChatRouteCacheEntity, ChatRouteCacheEntity, QAfterSortBy>
   thenByPeerUserId() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'peerUserId', Sort.asc);
+      return query.addSortBy(r'peer_id', Sort.asc);
     });
   }
 
   QueryBuilder<ChatRouteCacheEntity, ChatRouteCacheEntity, QAfterSortBy>
   thenByPeerUserIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'peerUserId', Sort.desc);
+      return query.addSortBy(r'peer_id', Sort.desc);
     });
   }
 
   QueryBuilder<ChatRouteCacheEntity, ChatRouteCacheEntity, QAfterSortBy>
   thenByRouteDisplayName() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'routeDisplayName', Sort.asc);
+      return query.addSortBy(r'route_name', Sort.asc);
     });
   }
 
   QueryBuilder<ChatRouteCacheEntity, ChatRouteCacheEntity, QAfterSortBy>
   thenByRouteDisplayNameDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'routeDisplayName', Sort.desc);
+      return query.addSortBy(r'route_name', Sort.desc);
+    });
+  }
+
+  QueryBuilder<ChatRouteCacheEntity, ChatRouteCacheEntity, QAfterSortBy>
+  thenByNote() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'route_note', Sort.asc);
+    });
+  }
+
+  QueryBuilder<ChatRouteCacheEntity, ChatRouteCacheEntity, QAfterSortBy>
+  thenByNoteDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'route_note', Sort.desc);
+    });
+  }
+
+  QueryBuilder<ChatRouteCacheEntity, ChatRouteCacheEntity, QAfterSortBy>
+  thenById() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'row_id', Sort.asc);
+    });
+  }
+
+  QueryBuilder<ChatRouteCacheEntity, ChatRouteCacheEntity, QAfterSortBy>
+  thenByIdDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'row_id', Sort.desc);
     });
   }
 
   QueryBuilder<ChatRouteCacheEntity, ChatRouteCacheEntity, QAfterSortBy>
   thenBySafetyNumber() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'safetyNumber', Sort.asc);
+      return query.addSortBy(r'safety_number', Sort.asc);
     });
   }
 
   QueryBuilder<ChatRouteCacheEntity, ChatRouteCacheEntity, QAfterSortBy>
   thenBySafetyNumberDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'safetyNumber', Sort.desc);
+      return query.addSortBy(r'safety_number', Sort.desc);
     });
   }
 
   QueryBuilder<ChatRouteCacheEntity, ChatRouteCacheEntity, QAfterSortBy>
   thenByUpdatedAtMillis() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'updatedAtMillis', Sort.asc);
+      return query.addSortBy(r'updated_at', Sort.asc);
     });
   }
 
   QueryBuilder<ChatRouteCacheEntity, ChatRouteCacheEntity, QAfterSortBy>
   thenByUpdatedAtMillisDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'updatedAtMillis', Sort.desc);
+      return query.addSortBy(r'updated_at', Sort.desc);
     });
   }
 }
@@ -16689,69 +15519,66 @@ extension ChatRouteCacheEntityQueryWhereDistinct
   QueryBuilder<ChatRouteCacheEntity, ChatRouteCacheEntity, QDistinct>
   distinctByCreatedAtMillis() {
     return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'createdAtMillis');
+      return query.addDistinctBy(r'created_at');
     });
   }
 
   QueryBuilder<ChatRouteCacheEntity, ChatRouteCacheEntity, QDistinct>
   distinctByDeviceId({bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'deviceId', caseSensitive: caseSensitive);
+      return query.addDistinctBy(r'device_id', caseSensitive: caseSensitive);
     });
   }
 
   QueryBuilder<ChatRouteCacheEntity, ChatRouteCacheEntity, QDistinct>
   distinctByNearbyPeerHint({bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(
-        r'nearbyPeerHint',
-        caseSensitive: caseSensitive,
-      );
-    });
-  }
-
-  QueryBuilder<ChatRouteCacheEntity, ChatRouteCacheEntity, QDistinct>
-  distinctByNote({bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'note', caseSensitive: caseSensitive);
+      return query.addDistinctBy(r'nearby_hint', caseSensitive: caseSensitive);
     });
   }
 
   QueryBuilder<ChatRouteCacheEntity, ChatRouteCacheEntity, QDistinct>
   distinctByOwnerUserId({bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'ownerUserId', caseSensitive: caseSensitive);
+      return query.addDistinctBy(r'owner_id', caseSensitive: caseSensitive);
     });
   }
 
   QueryBuilder<ChatRouteCacheEntity, ChatRouteCacheEntity, QDistinct>
   distinctByPeerUserId({bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'peerUserId', caseSensitive: caseSensitive);
+      return query.addDistinctBy(r'peer_id', caseSensitive: caseSensitive);
     });
   }
 
   QueryBuilder<ChatRouteCacheEntity, ChatRouteCacheEntity, QDistinct>
   distinctByRouteDisplayName({bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(
-        r'routeDisplayName',
-        caseSensitive: caseSensitive,
-      );
+      return query.addDistinctBy(r'route_name', caseSensitive: caseSensitive);
+    });
+  }
+
+  QueryBuilder<ChatRouteCacheEntity, ChatRouteCacheEntity, QDistinct>
+  distinctByNote({bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'route_note', caseSensitive: caseSensitive);
     });
   }
 
   QueryBuilder<ChatRouteCacheEntity, ChatRouteCacheEntity, QDistinct>
   distinctBySafetyNumber({bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'safetyNumber', caseSensitive: caseSensitive);
+      return query.addDistinctBy(
+        r'safety_number',
+        caseSensitive: caseSensitive,
+      );
     });
   }
 
   QueryBuilder<ChatRouteCacheEntity, ChatRouteCacheEntity, QDistinct>
   distinctByUpdatedAtMillis() {
     return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'updatedAtMillis');
+      return query.addDistinctBy(r'updated_at');
     });
   }
 }
@@ -16765,69 +15592,69 @@ extension ChatRouteCacheEntityQueryProperty
         > {
   QueryBuilder<ChatRouteCacheEntity, int, QQueryOperations> idProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'id');
+      return query.addPropertyName(r'row_id');
     });
   }
 
   QueryBuilder<ChatRouteCacheEntity, int, QQueryOperations>
   createdAtMillisProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'createdAtMillis');
+      return query.addPropertyName(r'created_at');
     });
   }
 
   QueryBuilder<ChatRouteCacheEntity, String, QQueryOperations>
   deviceIdProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'deviceId');
+      return query.addPropertyName(r'device_id');
     });
   }
 
   QueryBuilder<ChatRouteCacheEntity, String?, QQueryOperations>
   nearbyPeerHintProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'nearbyPeerHint');
-    });
-  }
-
-  QueryBuilder<ChatRouteCacheEntity, String?, QQueryOperations> noteProperty() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'note');
+      return query.addPropertyName(r'nearby_hint');
     });
   }
 
   QueryBuilder<ChatRouteCacheEntity, String, QQueryOperations>
   ownerUserIdProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'ownerUserId');
+      return query.addPropertyName(r'owner_id');
     });
   }
 
   QueryBuilder<ChatRouteCacheEntity, String, QQueryOperations>
   peerUserIdProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'peerUserId');
+      return query.addPropertyName(r'peer_id');
     });
   }
 
   QueryBuilder<ChatRouteCacheEntity, String, QQueryOperations>
   routeDisplayNameProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'routeDisplayName');
+      return query.addPropertyName(r'route_name');
+    });
+  }
+
+  QueryBuilder<ChatRouteCacheEntity, String?, QQueryOperations> noteProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'route_note');
     });
   }
 
   QueryBuilder<ChatRouteCacheEntity, String, QQueryOperations>
   safetyNumberProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'safetyNumber');
+      return query.addPropertyName(r'safety_number');
     });
   }
 
   QueryBuilder<ChatRouteCacheEntity, int, QQueryOperations>
   updatedAtMillisProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'updatedAtMillis');
+      return query.addPropertyName(r'updated_at');
     });
   }
 }
@@ -16840,45 +15667,34 @@ extension GetChatGroupEntityCollection on Isar {
 }
 
 const ChatGroupEntitySchema = CollectionSchema(
-  name: r'ChatGroupEntity',
-  id: 6599995462947761436,
+  name: r'group',
+  id: -7980787437430964260,
   properties: {
-    r'createdAtMillis': PropertySchema(
+    r'creator_id': PropertySchema(
       id: 0,
-      name: r'createdAtMillis',
-      type: IsarType.long,
+      name: r'creator_id',
+      type: IsarType.string,
     ),
-    r'creatorUserId': PropertySchema(
+    r'group_epoch': PropertySchema(
       id: 1,
-      name: r'creatorUserId',
+      name: r'group_epoch',
+      type: IsarType.long,
+    ),
+    r'group_id': PropertySchema(
+      id: 2,
+      name: r'group_id',
       type: IsarType.string,
     ),
-    r'epoch': PropertySchema(id: 2, name: r'epoch', type: IsarType.long),
-    r'groupId': PropertySchema(id: 3, name: r'groupId', type: IsarType.string),
-    r'groupName': PropertySchema(
-      id: 4,
-      name: r'groupName',
+    r'group_name': PropertySchema(
+      id: 3,
+      name: r'group_name',
       type: IsarType.string,
     ),
-    r'leftLocally': PropertySchema(
+    r'has_left': PropertySchema(id: 4, name: r'has_left', type: IsarType.bool),
+    r'owner_id': PropertySchema(
       id: 5,
-      name: r'leftLocally',
-      type: IsarType.bool,
-    ),
-    r'memberCount': PropertySchema(
-      id: 6,
-      name: r'memberCount',
-      type: IsarType.long,
-    ),
-    r'ownerUserId': PropertySchema(
-      id: 7,
-      name: r'ownerUserId',
+      name: r'owner_id',
       type: IsarType.string,
-    ),
-    r'updatedAtMillis': PropertySchema(
-      id: 8,
-      name: r'updatedAtMillis',
-      type: IsarType.long,
     ),
   },
 
@@ -16886,21 +15702,21 @@ const ChatGroupEntitySchema = CollectionSchema(
   serialize: _chatGroupEntitySerialize,
   deserialize: _chatGroupEntityDeserialize,
   deserializeProp: _chatGroupEntityDeserializeProp,
-  idName: r'id',
+  idName: r'row_id',
   indexes: {
-    r'ownerUserId_groupId': IndexSchema(
-      id: 2900065843691528502,
-      name: r'ownerUserId_groupId',
+    r'owner_id_group_id': IndexSchema(
+      id: -427454306745948833,
+      name: r'owner_id_group_id',
       unique: true,
       replace: true,
       properties: [
         IndexPropertySchema(
-          name: r'ownerUserId',
+          name: r'owner_id',
           type: IndexType.hash,
           caseSensitive: true,
         ),
         IndexPropertySchema(
-          name: r'groupId',
+          name: r'group_id',
           type: IndexType.hash,
           caseSensitive: true,
         ),
@@ -16935,15 +15751,12 @@ void _chatGroupEntitySerialize(
   List<int> offsets,
   Map<Type, List<int>> allOffsets,
 ) {
-  writer.writeLong(offsets[0], object.createdAtMillis);
-  writer.writeString(offsets[1], object.creatorUserId);
-  writer.writeLong(offsets[2], object.epoch);
-  writer.writeString(offsets[3], object.groupId);
-  writer.writeString(offsets[4], object.groupName);
-  writer.writeBool(offsets[5], object.leftLocally);
-  writer.writeLong(offsets[6], object.memberCount);
-  writer.writeString(offsets[7], object.ownerUserId);
-  writer.writeLong(offsets[8], object.updatedAtMillis);
+  writer.writeString(offsets[0], object.creatorUserId);
+  writer.writeLong(offsets[1], object.epoch);
+  writer.writeString(offsets[2], object.groupId);
+  writer.writeString(offsets[3], object.groupName);
+  writer.writeBool(offsets[4], object.leftLocally);
+  writer.writeString(offsets[5], object.ownerUserId);
 }
 
 ChatGroupEntity _chatGroupEntityDeserialize(
@@ -16953,16 +15766,13 @@ ChatGroupEntity _chatGroupEntityDeserialize(
   Map<Type, List<int>> allOffsets,
 ) {
   final object = ChatGroupEntity();
-  object.createdAtMillis = reader.readLong(offsets[0]);
-  object.creatorUserId = reader.readString(offsets[1]);
-  object.epoch = reader.readLong(offsets[2]);
-  object.groupId = reader.readString(offsets[3]);
-  object.groupName = reader.readString(offsets[4]);
+  object.creatorUserId = reader.readString(offsets[0]);
+  object.epoch = reader.readLong(offsets[1]);
+  object.groupId = reader.readString(offsets[2]);
+  object.groupName = reader.readString(offsets[3]);
+  object.leftLocally = reader.readBool(offsets[4]);
+  object.ownerUserId = reader.readString(offsets[5]);
   object.id = id;
-  object.leftLocally = reader.readBool(offsets[5]);
-  object.memberCount = reader.readLong(offsets[6]);
-  object.ownerUserId = reader.readString(offsets[7]);
-  object.updatedAtMillis = reader.readLong(offsets[8]);
   return object;
 }
 
@@ -16974,23 +15784,17 @@ P _chatGroupEntityDeserializeProp<P>(
 ) {
   switch (propertyId) {
     case 0:
-      return (reader.readLong(offset)) as P;
-    case 1:
       return (reader.readString(offset)) as P;
-    case 2:
+    case 1:
       return (reader.readLong(offset)) as P;
+    case 2:
+      return (reader.readString(offset)) as P;
     case 3:
       return (reader.readString(offset)) as P;
     case 4:
-      return (reader.readString(offset)) as P;
-    case 5:
       return (reader.readBool(offset)) as P;
-    case 6:
-      return (reader.readLong(offset)) as P;
-    case 7:
+    case 5:
       return (reader.readString(offset)) as P;
-    case 8:
-      return (reader.readLong(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
   }
@@ -17017,22 +15821,22 @@ extension ChatGroupEntityByIndex on IsarCollection<ChatGroupEntity> {
     String ownerUserId,
     String groupId,
   ) {
-    return getByIndex(r'ownerUserId_groupId', [ownerUserId, groupId]);
+    return getByIndex(r'owner_id_group_id', [ownerUserId, groupId]);
   }
 
   ChatGroupEntity? getByOwnerUserIdGroupIdSync(
     String ownerUserId,
     String groupId,
   ) {
-    return getByIndexSync(r'ownerUserId_groupId', [ownerUserId, groupId]);
+    return getByIndexSync(r'owner_id_group_id', [ownerUserId, groupId]);
   }
 
   Future<bool> deleteByOwnerUserIdGroupId(String ownerUserId, String groupId) {
-    return deleteByIndex(r'ownerUserId_groupId', [ownerUserId, groupId]);
+    return deleteByIndex(r'owner_id_group_id', [ownerUserId, groupId]);
   }
 
   bool deleteByOwnerUserIdGroupIdSync(String ownerUserId, String groupId) {
-    return deleteByIndexSync(r'ownerUserId_groupId', [ownerUserId, groupId]);
+    return deleteByIndexSync(r'owner_id_group_id', [ownerUserId, groupId]);
   }
 
   Future<List<ChatGroupEntity?>> getAllByOwnerUserIdGroupId(
@@ -17049,7 +15853,7 @@ extension ChatGroupEntityByIndex on IsarCollection<ChatGroupEntity> {
       values.add([ownerUserIdValues[i], groupIdValues[i]]);
     }
 
-    return getAllByIndex(r'ownerUserId_groupId', values);
+    return getAllByIndex(r'owner_id_group_id', values);
   }
 
   List<ChatGroupEntity?> getAllByOwnerUserIdGroupIdSync(
@@ -17066,7 +15870,7 @@ extension ChatGroupEntityByIndex on IsarCollection<ChatGroupEntity> {
       values.add([ownerUserIdValues[i], groupIdValues[i]]);
     }
 
-    return getAllByIndexSync(r'ownerUserId_groupId', values);
+    return getAllByIndexSync(r'owner_id_group_id', values);
   }
 
   Future<int> deleteAllByOwnerUserIdGroupId(
@@ -17083,7 +15887,7 @@ extension ChatGroupEntityByIndex on IsarCollection<ChatGroupEntity> {
       values.add([ownerUserIdValues[i], groupIdValues[i]]);
     }
 
-    return deleteAllByIndex(r'ownerUserId_groupId', values);
+    return deleteAllByIndex(r'owner_id_group_id', values);
   }
 
   int deleteAllByOwnerUserIdGroupIdSync(
@@ -17100,22 +15904,22 @@ extension ChatGroupEntityByIndex on IsarCollection<ChatGroupEntity> {
       values.add([ownerUserIdValues[i], groupIdValues[i]]);
     }
 
-    return deleteAllByIndexSync(r'ownerUserId_groupId', values);
+    return deleteAllByIndexSync(r'owner_id_group_id', values);
   }
 
   Future<Id> putByOwnerUserIdGroupId(ChatGroupEntity object) {
-    return putByIndex(r'ownerUserId_groupId', object);
+    return putByIndex(r'owner_id_group_id', object);
   }
 
   Id putByOwnerUserIdGroupIdSync(
     ChatGroupEntity object, {
     bool saveLinks = true,
   }) {
-    return putByIndexSync(r'ownerUserId_groupId', object, saveLinks: saveLinks);
+    return putByIndexSync(r'owner_id_group_id', object, saveLinks: saveLinks);
   }
 
   Future<List<Id>> putAllByOwnerUserIdGroupId(List<ChatGroupEntity> objects) {
-    return putAllByIndex(r'ownerUserId_groupId', objects);
+    return putAllByIndex(r'owner_id_group_id', objects);
   }
 
   List<Id> putAllByOwnerUserIdGroupIdSync(
@@ -17123,7 +15927,7 @@ extension ChatGroupEntityByIndex on IsarCollection<ChatGroupEntity> {
     bool saveLinks = true,
   }) {
     return putAllByIndexSync(
-      r'ownerUserId_groupId',
+      r'owner_id_group_id',
       objects,
       saveLinks: saveLinks,
     );
@@ -17215,7 +16019,7 @@ extension ChatGroupEntityQueryWhere
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         IndexWhereClause.equalTo(
-          indexName: r'ownerUserId_groupId',
+          indexName: r'owner_id_group_id',
           value: [ownerUserId],
         ),
       );
@@ -17229,7 +16033,7 @@ extension ChatGroupEntityQueryWhere
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_groupId',
+                indexName: r'owner_id_group_id',
                 lower: [],
                 upper: [ownerUserId],
                 includeUpper: false,
@@ -17237,7 +16041,7 @@ extension ChatGroupEntityQueryWhere
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_groupId',
+                indexName: r'owner_id_group_id',
                 lower: [ownerUserId],
                 includeLower: false,
                 upper: [],
@@ -17247,7 +16051,7 @@ extension ChatGroupEntityQueryWhere
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_groupId',
+                indexName: r'owner_id_group_id',
                 lower: [ownerUserId],
                 includeLower: false,
                 upper: [],
@@ -17255,7 +16059,7 @@ extension ChatGroupEntityQueryWhere
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_groupId',
+                indexName: r'owner_id_group_id',
                 lower: [],
                 upper: [ownerUserId],
                 includeUpper: false,
@@ -17270,7 +16074,7 @@ extension ChatGroupEntityQueryWhere
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         IndexWhereClause.equalTo(
-          indexName: r'ownerUserId_groupId',
+          indexName: r'owner_id_group_id',
           value: [ownerUserId, groupId],
         ),
       );
@@ -17284,7 +16088,7 @@ extension ChatGroupEntityQueryWhere
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_groupId',
+                indexName: r'owner_id_group_id',
                 lower: [ownerUserId],
                 upper: [ownerUserId, groupId],
                 includeUpper: false,
@@ -17292,7 +16096,7 @@ extension ChatGroupEntityQueryWhere
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_groupId',
+                indexName: r'owner_id_group_id',
                 lower: [ownerUserId, groupId],
                 includeLower: false,
                 upper: [ownerUserId],
@@ -17302,7 +16106,7 @@ extension ChatGroupEntityQueryWhere
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_groupId',
+                indexName: r'owner_id_group_id',
                 lower: [ownerUserId, groupId],
                 includeLower: false,
                 upper: [ownerUserId],
@@ -17310,7 +16114,7 @@ extension ChatGroupEntityQueryWhere
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_groupId',
+                indexName: r'owner_id_group_id',
                 lower: [ownerUserId],
                 upper: [ownerUserId, groupId],
                 includeUpper: false,
@@ -17324,66 +16128,11 @@ extension ChatGroupEntityQueryWhere
 extension ChatGroupEntityQueryFilter
     on QueryBuilder<ChatGroupEntity, ChatGroupEntity, QFilterCondition> {
   QueryBuilder<ChatGroupEntity, ChatGroupEntity, QAfterFilterCondition>
-  createdAtMillisEqualTo(int value) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'createdAtMillis', value: value),
-      );
-    });
-  }
-
-  QueryBuilder<ChatGroupEntity, ChatGroupEntity, QAfterFilterCondition>
-  createdAtMillisGreaterThan(int value, {bool include = false}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.greaterThan(
-          include: include,
-          property: r'createdAtMillis',
-          value: value,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<ChatGroupEntity, ChatGroupEntity, QAfterFilterCondition>
-  createdAtMillisLessThan(int value, {bool include = false}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.lessThan(
-          include: include,
-          property: r'createdAtMillis',
-          value: value,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<ChatGroupEntity, ChatGroupEntity, QAfterFilterCondition>
-  createdAtMillisBetween(
-    int lower,
-    int upper, {
-    bool includeLower = true,
-    bool includeUpper = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.between(
-          property: r'createdAtMillis',
-          lower: lower,
-          includeLower: includeLower,
-          upper: upper,
-          includeUpper: includeUpper,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<ChatGroupEntity, ChatGroupEntity, QAfterFilterCondition>
   creatorUserIdEqualTo(String value, {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.equalTo(
-          property: r'creatorUserId',
+          property: r'creator_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -17401,7 +16150,7 @@ extension ChatGroupEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'creatorUserId',
+          property: r'creator_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -17419,7 +16168,7 @@ extension ChatGroupEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'creatorUserId',
+          property: r'creator_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -17438,7 +16187,7 @@ extension ChatGroupEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'creatorUserId',
+          property: r'creator_id',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -17454,7 +16203,7 @@ extension ChatGroupEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.startsWith(
-          property: r'creatorUserId',
+          property: r'creator_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -17467,7 +16216,7 @@ extension ChatGroupEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.endsWith(
-          property: r'creatorUserId',
+          property: r'creator_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -17480,7 +16229,7 @@ extension ChatGroupEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.contains(
-          property: r'creatorUserId',
+          property: r'creator_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -17493,7 +16242,7 @@ extension ChatGroupEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.matches(
-          property: r'creatorUserId',
+          property: r'creator_id',
           wildcard: pattern,
           caseSensitive: caseSensitive,
         ),
@@ -17505,7 +16254,7 @@ extension ChatGroupEntityQueryFilter
   creatorUserIdIsEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'creatorUserId', value: ''),
+        FilterCondition.equalTo(property: r'creator_id', value: ''),
       );
     });
   }
@@ -17514,7 +16263,7 @@ extension ChatGroupEntityQueryFilter
   creatorUserIdIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'creatorUserId', value: ''),
+        FilterCondition.greaterThan(property: r'creator_id', value: ''),
       );
     });
   }
@@ -17523,7 +16272,7 @@ extension ChatGroupEntityQueryFilter
   epochEqualTo(int value) {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'epoch', value: value),
+        FilterCondition.equalTo(property: r'group_epoch', value: value),
       );
     });
   }
@@ -17534,7 +16283,7 @@ extension ChatGroupEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'epoch',
+          property: r'group_epoch',
           value: value,
         ),
       );
@@ -17547,7 +16296,7 @@ extension ChatGroupEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'epoch',
+          property: r'group_epoch',
           value: value,
         ),
       );
@@ -17564,7 +16313,7 @@ extension ChatGroupEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'epoch',
+          property: r'group_epoch',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -17579,7 +16328,7 @@ extension ChatGroupEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.equalTo(
-          property: r'groupId',
+          property: r'group_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -17597,7 +16346,7 @@ extension ChatGroupEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'groupId',
+          property: r'group_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -17615,7 +16364,7 @@ extension ChatGroupEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'groupId',
+          property: r'group_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -17634,7 +16383,7 @@ extension ChatGroupEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'groupId',
+          property: r'group_id',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -17650,7 +16399,7 @@ extension ChatGroupEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.startsWith(
-          property: r'groupId',
+          property: r'group_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -17663,7 +16412,7 @@ extension ChatGroupEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.endsWith(
-          property: r'groupId',
+          property: r'group_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -17676,7 +16425,7 @@ extension ChatGroupEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.contains(
-          property: r'groupId',
+          property: r'group_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -17689,7 +16438,7 @@ extension ChatGroupEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.matches(
-          property: r'groupId',
+          property: r'group_id',
           wildcard: pattern,
           caseSensitive: caseSensitive,
         ),
@@ -17701,7 +16450,7 @@ extension ChatGroupEntityQueryFilter
   groupIdIsEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'groupId', value: ''),
+        FilterCondition.equalTo(property: r'group_id', value: ''),
       );
     });
   }
@@ -17710,7 +16459,7 @@ extension ChatGroupEntityQueryFilter
   groupIdIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'groupId', value: ''),
+        FilterCondition.greaterThan(property: r'group_id', value: ''),
       );
     });
   }
@@ -17720,7 +16469,7 @@ extension ChatGroupEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.equalTo(
-          property: r'groupName',
+          property: r'group_name',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -17738,7 +16487,7 @@ extension ChatGroupEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'groupName',
+          property: r'group_name',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -17756,7 +16505,7 @@ extension ChatGroupEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'groupName',
+          property: r'group_name',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -17775,7 +16524,7 @@ extension ChatGroupEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'groupName',
+          property: r'group_name',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -17791,7 +16540,7 @@ extension ChatGroupEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.startsWith(
-          property: r'groupName',
+          property: r'group_name',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -17804,7 +16553,7 @@ extension ChatGroupEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.endsWith(
-          property: r'groupName',
+          property: r'group_name',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -17817,7 +16566,7 @@ extension ChatGroupEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.contains(
-          property: r'groupName',
+          property: r'group_name',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -17830,7 +16579,7 @@ extension ChatGroupEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.matches(
-          property: r'groupName',
+          property: r'group_name',
           wildcard: pattern,
           caseSensitive: caseSensitive,
         ),
@@ -17842,7 +16591,7 @@ extension ChatGroupEntityQueryFilter
   groupNameIsEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'groupName', value: ''),
+        FilterCondition.equalTo(property: r'group_name', value: ''),
       );
     });
   }
@@ -17851,62 +16600,7 @@ extension ChatGroupEntityQueryFilter
   groupNameIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'groupName', value: ''),
-      );
-    });
-  }
-
-  QueryBuilder<ChatGroupEntity, ChatGroupEntity, QAfterFilterCondition>
-  idEqualTo(Id value) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'id', value: value),
-      );
-    });
-  }
-
-  QueryBuilder<ChatGroupEntity, ChatGroupEntity, QAfterFilterCondition>
-  idGreaterThan(Id value, {bool include = false}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.greaterThan(
-          include: include,
-          property: r'id',
-          value: value,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<ChatGroupEntity, ChatGroupEntity, QAfterFilterCondition>
-  idLessThan(Id value, {bool include = false}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.lessThan(
-          include: include,
-          property: r'id',
-          value: value,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<ChatGroupEntity, ChatGroupEntity, QAfterFilterCondition>
-  idBetween(
-    Id lower,
-    Id upper, {
-    bool includeLower = true,
-    bool includeUpper = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.between(
-          property: r'id',
-          lower: lower,
-          includeLower: includeLower,
-          upper: upper,
-          includeUpper: includeUpper,
-        ),
+        FilterCondition.greaterThan(property: r'group_name', value: ''),
       );
     });
   }
@@ -17915,62 +16609,7 @@ extension ChatGroupEntityQueryFilter
   leftLocallyEqualTo(bool value) {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'leftLocally', value: value),
-      );
-    });
-  }
-
-  QueryBuilder<ChatGroupEntity, ChatGroupEntity, QAfterFilterCondition>
-  memberCountEqualTo(int value) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'memberCount', value: value),
-      );
-    });
-  }
-
-  QueryBuilder<ChatGroupEntity, ChatGroupEntity, QAfterFilterCondition>
-  memberCountGreaterThan(int value, {bool include = false}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.greaterThan(
-          include: include,
-          property: r'memberCount',
-          value: value,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<ChatGroupEntity, ChatGroupEntity, QAfterFilterCondition>
-  memberCountLessThan(int value, {bool include = false}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.lessThan(
-          include: include,
-          property: r'memberCount',
-          value: value,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<ChatGroupEntity, ChatGroupEntity, QAfterFilterCondition>
-  memberCountBetween(
-    int lower,
-    int upper, {
-    bool includeLower = true,
-    bool includeUpper = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.between(
-          property: r'memberCount',
-          lower: lower,
-          includeLower: includeLower,
-          upper: upper,
-          includeUpper: includeUpper,
-        ),
+        FilterCondition.equalTo(property: r'has_left', value: value),
       );
     });
   }
@@ -17980,7 +16619,7 @@ extension ChatGroupEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.equalTo(
-          property: r'ownerUserId',
+          property: r'owner_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -17998,7 +16637,7 @@ extension ChatGroupEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'ownerUserId',
+          property: r'owner_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -18016,7 +16655,7 @@ extension ChatGroupEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'ownerUserId',
+          property: r'owner_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -18035,7 +16674,7 @@ extension ChatGroupEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'ownerUserId',
+          property: r'owner_id',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -18051,7 +16690,7 @@ extension ChatGroupEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.startsWith(
-          property: r'ownerUserId',
+          property: r'owner_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -18064,7 +16703,7 @@ extension ChatGroupEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.endsWith(
-          property: r'ownerUserId',
+          property: r'owner_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -18077,7 +16716,7 @@ extension ChatGroupEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.contains(
-          property: r'ownerUserId',
+          property: r'owner_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -18090,7 +16729,7 @@ extension ChatGroupEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.matches(
-          property: r'ownerUserId',
+          property: r'owner_id',
           wildcard: pattern,
           caseSensitive: caseSensitive,
         ),
@@ -18102,7 +16741,7 @@ extension ChatGroupEntityQueryFilter
   ownerUserIdIsEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'ownerUserId', value: ''),
+        FilterCondition.equalTo(property: r'owner_id', value: ''),
       );
     });
   }
@@ -18111,27 +16750,27 @@ extension ChatGroupEntityQueryFilter
   ownerUserIdIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'ownerUserId', value: ''),
+        FilterCondition.greaterThan(property: r'owner_id', value: ''),
       );
     });
   }
 
   QueryBuilder<ChatGroupEntity, ChatGroupEntity, QAfterFilterCondition>
-  updatedAtMillisEqualTo(int value) {
+  idEqualTo(Id value) {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'updatedAtMillis', value: value),
+        FilterCondition.equalTo(property: r'row_id', value: value),
       );
     });
   }
 
   QueryBuilder<ChatGroupEntity, ChatGroupEntity, QAfterFilterCondition>
-  updatedAtMillisGreaterThan(int value, {bool include = false}) {
+  idGreaterThan(Id value, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'updatedAtMillis',
+          property: r'row_id',
           value: value,
         ),
       );
@@ -18139,12 +16778,12 @@ extension ChatGroupEntityQueryFilter
   }
 
   QueryBuilder<ChatGroupEntity, ChatGroupEntity, QAfterFilterCondition>
-  updatedAtMillisLessThan(int value, {bool include = false}) {
+  idLessThan(Id value, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'updatedAtMillis',
+          property: r'row_id',
           value: value,
         ),
       );
@@ -18152,16 +16791,16 @@ extension ChatGroupEntityQueryFilter
   }
 
   QueryBuilder<ChatGroupEntity, ChatGroupEntity, QAfterFilterCondition>
-  updatedAtMillisBetween(
-    int lower,
-    int upper, {
+  idBetween(
+    Id lower,
+    Id upper, {
     bool includeLower = true,
     bool includeUpper = true,
   }) {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'updatedAtMillis',
+          property: r'row_id',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -18181,126 +16820,84 @@ extension ChatGroupEntityQueryLinks
 extension ChatGroupEntityQuerySortBy
     on QueryBuilder<ChatGroupEntity, ChatGroupEntity, QSortBy> {
   QueryBuilder<ChatGroupEntity, ChatGroupEntity, QAfterSortBy>
-  sortByCreatedAtMillis() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'createdAtMillis', Sort.asc);
-    });
-  }
-
-  QueryBuilder<ChatGroupEntity, ChatGroupEntity, QAfterSortBy>
-  sortByCreatedAtMillisDesc() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'createdAtMillis', Sort.desc);
-    });
-  }
-
-  QueryBuilder<ChatGroupEntity, ChatGroupEntity, QAfterSortBy>
   sortByCreatorUserId() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'creatorUserId', Sort.asc);
+      return query.addSortBy(r'creator_id', Sort.asc);
     });
   }
 
   QueryBuilder<ChatGroupEntity, ChatGroupEntity, QAfterSortBy>
   sortByCreatorUserIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'creatorUserId', Sort.desc);
+      return query.addSortBy(r'creator_id', Sort.desc);
     });
   }
 
   QueryBuilder<ChatGroupEntity, ChatGroupEntity, QAfterSortBy> sortByEpoch() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'epoch', Sort.asc);
+      return query.addSortBy(r'group_epoch', Sort.asc);
     });
   }
 
   QueryBuilder<ChatGroupEntity, ChatGroupEntity, QAfterSortBy>
   sortByEpochDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'epoch', Sort.desc);
+      return query.addSortBy(r'group_epoch', Sort.desc);
     });
   }
 
   QueryBuilder<ChatGroupEntity, ChatGroupEntity, QAfterSortBy> sortByGroupId() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'groupId', Sort.asc);
+      return query.addSortBy(r'group_id', Sort.asc);
     });
   }
 
   QueryBuilder<ChatGroupEntity, ChatGroupEntity, QAfterSortBy>
   sortByGroupIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'groupId', Sort.desc);
+      return query.addSortBy(r'group_id', Sort.desc);
     });
   }
 
   QueryBuilder<ChatGroupEntity, ChatGroupEntity, QAfterSortBy>
   sortByGroupName() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'groupName', Sort.asc);
+      return query.addSortBy(r'group_name', Sort.asc);
     });
   }
 
   QueryBuilder<ChatGroupEntity, ChatGroupEntity, QAfterSortBy>
   sortByGroupNameDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'groupName', Sort.desc);
+      return query.addSortBy(r'group_name', Sort.desc);
     });
   }
 
   QueryBuilder<ChatGroupEntity, ChatGroupEntity, QAfterSortBy>
   sortByLeftLocally() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'leftLocally', Sort.asc);
+      return query.addSortBy(r'has_left', Sort.asc);
     });
   }
 
   QueryBuilder<ChatGroupEntity, ChatGroupEntity, QAfterSortBy>
   sortByLeftLocallyDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'leftLocally', Sort.desc);
-    });
-  }
-
-  QueryBuilder<ChatGroupEntity, ChatGroupEntity, QAfterSortBy>
-  sortByMemberCount() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'memberCount', Sort.asc);
-    });
-  }
-
-  QueryBuilder<ChatGroupEntity, ChatGroupEntity, QAfterSortBy>
-  sortByMemberCountDesc() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'memberCount', Sort.desc);
+      return query.addSortBy(r'has_left', Sort.desc);
     });
   }
 
   QueryBuilder<ChatGroupEntity, ChatGroupEntity, QAfterSortBy>
   sortByOwnerUserId() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'ownerUserId', Sort.asc);
+      return query.addSortBy(r'owner_id', Sort.asc);
     });
   }
 
   QueryBuilder<ChatGroupEntity, ChatGroupEntity, QAfterSortBy>
   sortByOwnerUserIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'ownerUserId', Sort.desc);
-    });
-  }
-
-  QueryBuilder<ChatGroupEntity, ChatGroupEntity, QAfterSortBy>
-  sortByUpdatedAtMillis() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'updatedAtMillis', Sort.asc);
-    });
-  }
-
-  QueryBuilder<ChatGroupEntity, ChatGroupEntity, QAfterSortBy>
-  sortByUpdatedAtMillisDesc() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'updatedAtMillis', Sort.desc);
+      return query.addSortBy(r'owner_id', Sort.desc);
     });
   }
 }
@@ -18308,138 +16905,96 @@ extension ChatGroupEntityQuerySortBy
 extension ChatGroupEntityQuerySortThenBy
     on QueryBuilder<ChatGroupEntity, ChatGroupEntity, QSortThenBy> {
   QueryBuilder<ChatGroupEntity, ChatGroupEntity, QAfterSortBy>
-  thenByCreatedAtMillis() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'createdAtMillis', Sort.asc);
-    });
-  }
-
-  QueryBuilder<ChatGroupEntity, ChatGroupEntity, QAfterSortBy>
-  thenByCreatedAtMillisDesc() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'createdAtMillis', Sort.desc);
-    });
-  }
-
-  QueryBuilder<ChatGroupEntity, ChatGroupEntity, QAfterSortBy>
   thenByCreatorUserId() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'creatorUserId', Sort.asc);
+      return query.addSortBy(r'creator_id', Sort.asc);
     });
   }
 
   QueryBuilder<ChatGroupEntity, ChatGroupEntity, QAfterSortBy>
   thenByCreatorUserIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'creatorUserId', Sort.desc);
+      return query.addSortBy(r'creator_id', Sort.desc);
     });
   }
 
   QueryBuilder<ChatGroupEntity, ChatGroupEntity, QAfterSortBy> thenByEpoch() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'epoch', Sort.asc);
+      return query.addSortBy(r'group_epoch', Sort.asc);
     });
   }
 
   QueryBuilder<ChatGroupEntity, ChatGroupEntity, QAfterSortBy>
   thenByEpochDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'epoch', Sort.desc);
+      return query.addSortBy(r'group_epoch', Sort.desc);
     });
   }
 
   QueryBuilder<ChatGroupEntity, ChatGroupEntity, QAfterSortBy> thenByGroupId() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'groupId', Sort.asc);
+      return query.addSortBy(r'group_id', Sort.asc);
     });
   }
 
   QueryBuilder<ChatGroupEntity, ChatGroupEntity, QAfterSortBy>
   thenByGroupIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'groupId', Sort.desc);
+      return query.addSortBy(r'group_id', Sort.desc);
     });
   }
 
   QueryBuilder<ChatGroupEntity, ChatGroupEntity, QAfterSortBy>
   thenByGroupName() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'groupName', Sort.asc);
+      return query.addSortBy(r'group_name', Sort.asc);
     });
   }
 
   QueryBuilder<ChatGroupEntity, ChatGroupEntity, QAfterSortBy>
   thenByGroupNameDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'groupName', Sort.desc);
-    });
-  }
-
-  QueryBuilder<ChatGroupEntity, ChatGroupEntity, QAfterSortBy> thenById() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'id', Sort.asc);
-    });
-  }
-
-  QueryBuilder<ChatGroupEntity, ChatGroupEntity, QAfterSortBy> thenByIdDesc() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'id', Sort.desc);
+      return query.addSortBy(r'group_name', Sort.desc);
     });
   }
 
   QueryBuilder<ChatGroupEntity, ChatGroupEntity, QAfterSortBy>
   thenByLeftLocally() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'leftLocally', Sort.asc);
+      return query.addSortBy(r'has_left', Sort.asc);
     });
   }
 
   QueryBuilder<ChatGroupEntity, ChatGroupEntity, QAfterSortBy>
   thenByLeftLocallyDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'leftLocally', Sort.desc);
-    });
-  }
-
-  QueryBuilder<ChatGroupEntity, ChatGroupEntity, QAfterSortBy>
-  thenByMemberCount() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'memberCount', Sort.asc);
-    });
-  }
-
-  QueryBuilder<ChatGroupEntity, ChatGroupEntity, QAfterSortBy>
-  thenByMemberCountDesc() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'memberCount', Sort.desc);
+      return query.addSortBy(r'has_left', Sort.desc);
     });
   }
 
   QueryBuilder<ChatGroupEntity, ChatGroupEntity, QAfterSortBy>
   thenByOwnerUserId() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'ownerUserId', Sort.asc);
+      return query.addSortBy(r'owner_id', Sort.asc);
     });
   }
 
   QueryBuilder<ChatGroupEntity, ChatGroupEntity, QAfterSortBy>
   thenByOwnerUserIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'ownerUserId', Sort.desc);
+      return query.addSortBy(r'owner_id', Sort.desc);
     });
   }
 
-  QueryBuilder<ChatGroupEntity, ChatGroupEntity, QAfterSortBy>
-  thenByUpdatedAtMillis() {
+  QueryBuilder<ChatGroupEntity, ChatGroupEntity, QAfterSortBy> thenById() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'updatedAtMillis', Sort.asc);
+      return query.addSortBy(r'row_id', Sort.asc);
     });
   }
 
-  QueryBuilder<ChatGroupEntity, ChatGroupEntity, QAfterSortBy>
-  thenByUpdatedAtMillisDesc() {
+  QueryBuilder<ChatGroupEntity, ChatGroupEntity, QAfterSortBy> thenByIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'updatedAtMillis', Sort.desc);
+      return query.addSortBy(r'row_id', Sort.desc);
     });
   }
 }
@@ -18447,25 +17002,15 @@ extension ChatGroupEntityQuerySortThenBy
 extension ChatGroupEntityQueryWhereDistinct
     on QueryBuilder<ChatGroupEntity, ChatGroupEntity, QDistinct> {
   QueryBuilder<ChatGroupEntity, ChatGroupEntity, QDistinct>
-  distinctByCreatedAtMillis() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'createdAtMillis');
-    });
-  }
-
-  QueryBuilder<ChatGroupEntity, ChatGroupEntity, QDistinct>
   distinctByCreatorUserId({bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(
-        r'creatorUserId',
-        caseSensitive: caseSensitive,
-      );
+      return query.addDistinctBy(r'creator_id', caseSensitive: caseSensitive);
     });
   }
 
   QueryBuilder<ChatGroupEntity, ChatGroupEntity, QDistinct> distinctByEpoch() {
     return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'epoch');
+      return query.addDistinctBy(r'group_epoch');
     });
   }
 
@@ -18473,42 +17018,28 @@ extension ChatGroupEntityQueryWhereDistinct
     bool caseSensitive = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'groupId', caseSensitive: caseSensitive);
+      return query.addDistinctBy(r'group_id', caseSensitive: caseSensitive);
     });
   }
 
   QueryBuilder<ChatGroupEntity, ChatGroupEntity, QDistinct>
   distinctByGroupName({bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'groupName', caseSensitive: caseSensitive);
+      return query.addDistinctBy(r'group_name', caseSensitive: caseSensitive);
     });
   }
 
   QueryBuilder<ChatGroupEntity, ChatGroupEntity, QDistinct>
   distinctByLeftLocally() {
     return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'leftLocally');
-    });
-  }
-
-  QueryBuilder<ChatGroupEntity, ChatGroupEntity, QDistinct>
-  distinctByMemberCount() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'memberCount');
+      return query.addDistinctBy(r'has_left');
     });
   }
 
   QueryBuilder<ChatGroupEntity, ChatGroupEntity, QDistinct>
   distinctByOwnerUserId({bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'ownerUserId', caseSensitive: caseSensitive);
-    });
-  }
-
-  QueryBuilder<ChatGroupEntity, ChatGroupEntity, QDistinct>
-  distinctByUpdatedAtMillis() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'updatedAtMillis');
+      return query.addDistinctBy(r'owner_id', caseSensitive: caseSensitive);
     });
   }
 }
@@ -18517,65 +17048,45 @@ extension ChatGroupEntityQueryProperty
     on QueryBuilder<ChatGroupEntity, ChatGroupEntity, QQueryProperty> {
   QueryBuilder<ChatGroupEntity, int, QQueryOperations> idProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'id');
-    });
-  }
-
-  QueryBuilder<ChatGroupEntity, int, QQueryOperations>
-  createdAtMillisProperty() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'createdAtMillis');
+      return query.addPropertyName(r'row_id');
     });
   }
 
   QueryBuilder<ChatGroupEntity, String, QQueryOperations>
   creatorUserIdProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'creatorUserId');
+      return query.addPropertyName(r'creator_id');
     });
   }
 
   QueryBuilder<ChatGroupEntity, int, QQueryOperations> epochProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'epoch');
+      return query.addPropertyName(r'group_epoch');
     });
   }
 
   QueryBuilder<ChatGroupEntity, String, QQueryOperations> groupIdProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'groupId');
+      return query.addPropertyName(r'group_id');
     });
   }
 
   QueryBuilder<ChatGroupEntity, String, QQueryOperations> groupNameProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'groupName');
+      return query.addPropertyName(r'group_name');
     });
   }
 
   QueryBuilder<ChatGroupEntity, bool, QQueryOperations> leftLocallyProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'leftLocally');
-    });
-  }
-
-  QueryBuilder<ChatGroupEntity, int, QQueryOperations> memberCountProperty() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'memberCount');
+      return query.addPropertyName(r'has_left');
     });
   }
 
   QueryBuilder<ChatGroupEntity, String, QQueryOperations>
   ownerUserIdProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'ownerUserId');
-    });
-  }
-
-  QueryBuilder<ChatGroupEntity, int, QQueryOperations>
-  updatedAtMillisProperty() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'updatedAtMillis');
+      return query.addPropertyName(r'owner_id');
     });
   }
 }
@@ -18589,65 +17100,68 @@ extension GetChatGroupMemberEntityCollection on Isar {
 }
 
 const ChatGroupMemberEntitySchema = CollectionSchema(
-  name: r'ChatGroupMemberEntity',
-  id: 2209953071771450672,
+  name: r'member',
+  id: 4005898307651635317,
   properties: {
-    r'groupId': PropertySchema(id: 0, name: r'groupId', type: IsarType.string),
-    r'joinedAtMillis': PropertySchema(
+    r'group_id': PropertySchema(
+      id: 0,
+      name: r'group_id',
+      type: IsarType.string,
+    ),
+    r'member_id': PropertySchema(
       id: 1,
-      name: r'joinedAtMillis',
-      type: IsarType.long,
+      name: r'member_id',
+      type: IsarType.string,
     ),
-    r'memberKey': PropertySchema(
+    r'member_role': PropertySchema(
       id: 2,
-      name: r'memberKey',
+      name: r'member_role',
       type: IsarType.string,
     ),
-    r'memberUserId': PropertySchema(
+    r'owner_id': PropertySchema(
       id: 3,
-      name: r'memberUserId',
+      name: r'owner_id',
       type: IsarType.string,
     ),
-    r'ownerUserId': PropertySchema(
-      id: 4,
-      name: r'ownerUserId',
-      type: IsarType.string,
-    ),
-    r'role': PropertySchema(id: 5, name: r'role', type: IsarType.string),
   },
 
   estimateSize: _chatGroupMemberEntityEstimateSize,
   serialize: _chatGroupMemberEntitySerialize,
   deserialize: _chatGroupMemberEntityDeserialize,
   deserializeProp: _chatGroupMemberEntityDeserializeProp,
-  idName: r'id',
+  idName: r'row_id',
   indexes: {
-    r'ownerUserId_memberKey': IndexSchema(
-      id: -5855101034541477931,
-      name: r'ownerUserId_memberKey',
+    r'owner_id_group_id_member_id': IndexSchema(
+      id: 1960610877781981911,
+      name: r'owner_id_group_id_member_id',
       unique: true,
       replace: true,
       properties: [
         IndexPropertySchema(
-          name: r'ownerUserId',
+          name: r'owner_id',
           type: IndexType.hash,
           caseSensitive: true,
         ),
         IndexPropertySchema(
-          name: r'memberKey',
+          name: r'group_id',
+          type: IndexType.hash,
+          caseSensitive: true,
+        ),
+        IndexPropertySchema(
+          name: r'member_id',
           type: IndexType.hash,
           caseSensitive: true,
         ),
       ],
     ),
-    r'groupId': IndexSchema(
-      id: -8523216633229774932,
-      name: r'groupId',
+    r'group_id': IndexSchema(
+      id: 8896262069560657725,
+      name: r'group_id',
       unique: false,
       replace: false,
       properties: [
         IndexPropertySchema(
-          name: r'groupId',
+          name: r'group_id',
           type: IndexType.hash,
           caseSensitive: true,
         ),
@@ -18670,10 +17184,9 @@ int _chatGroupMemberEntityEstimateSize(
 ) {
   var bytesCount = offsets.last;
   bytesCount += 3 + object.groupId.length * 3;
-  bytesCount += 3 + object.memberKey.length * 3;
   bytesCount += 3 + object.memberUserId.length * 3;
-  bytesCount += 3 + object.ownerUserId.length * 3;
   bytesCount += 3 + object.role.length * 3;
+  bytesCount += 3 + object.ownerUserId.length * 3;
   return bytesCount;
 }
 
@@ -18684,11 +17197,9 @@ void _chatGroupMemberEntitySerialize(
   Map<Type, List<int>> allOffsets,
 ) {
   writer.writeString(offsets[0], object.groupId);
-  writer.writeLong(offsets[1], object.joinedAtMillis);
-  writer.writeString(offsets[2], object.memberKey);
-  writer.writeString(offsets[3], object.memberUserId);
-  writer.writeString(offsets[4], object.ownerUserId);
-  writer.writeString(offsets[5], object.role);
+  writer.writeString(offsets[1], object.memberUserId);
+  writer.writeString(offsets[2], object.role);
+  writer.writeString(offsets[3], object.ownerUserId);
 }
 
 ChatGroupMemberEntity _chatGroupMemberEntityDeserialize(
@@ -18699,12 +17210,10 @@ ChatGroupMemberEntity _chatGroupMemberEntityDeserialize(
 ) {
   final object = ChatGroupMemberEntity();
   object.groupId = reader.readString(offsets[0]);
+  object.memberUserId = reader.readString(offsets[1]);
+  object.role = reader.readString(offsets[2]);
+  object.ownerUserId = reader.readString(offsets[3]);
   object.id = id;
-  object.joinedAtMillis = reader.readLong(offsets[1]);
-  object.memberKey = reader.readString(offsets[2]);
-  object.memberUserId = reader.readString(offsets[3]);
-  object.ownerUserId = reader.readString(offsets[4]);
-  object.role = reader.readString(offsets[5]);
   return object;
 }
 
@@ -18718,14 +17227,10 @@ P _chatGroupMemberEntityDeserializeProp<P>(
     case 0:
       return (reader.readString(offset)) as P;
     case 1:
-      return (reader.readLong(offset)) as P;
+      return (reader.readString(offset)) as P;
     case 2:
       return (reader.readString(offset)) as P;
     case 3:
-      return (reader.readString(offset)) as P;
-    case 4:
-      return (reader.readString(offset)) as P;
-    case 5:
       return (reader.readString(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
@@ -18752,129 +17257,169 @@ void _chatGroupMemberEntityAttach(
 
 extension ChatGroupMemberEntityByIndex
     on IsarCollection<ChatGroupMemberEntity> {
-  Future<ChatGroupMemberEntity?> getByOwnerUserIdMemberKey(
+  Future<ChatGroupMemberEntity?> getByOwnerUserIdGroupIdMemberUserId(
     String ownerUserId,
-    String memberKey,
+    String groupId,
+    String memberUserId,
   ) {
-    return getByIndex(r'ownerUserId_memberKey', [ownerUserId, memberKey]);
-  }
-
-  ChatGroupMemberEntity? getByOwnerUserIdMemberKeySync(
-    String ownerUserId,
-    String memberKey,
-  ) {
-    return getByIndexSync(r'ownerUserId_memberKey', [ownerUserId, memberKey]);
-  }
-
-  Future<bool> deleteByOwnerUserIdMemberKey(
-    String ownerUserId,
-    String memberKey,
-  ) {
-    return deleteByIndex(r'ownerUserId_memberKey', [ownerUserId, memberKey]);
-  }
-
-  bool deleteByOwnerUserIdMemberKeySync(String ownerUserId, String memberKey) {
-    return deleteByIndexSync(r'ownerUserId_memberKey', [
+    return getByIndex(r'owner_id_group_id_member_id', [
       ownerUserId,
-      memberKey,
+      groupId,
+      memberUserId,
     ]);
   }
 
-  Future<List<ChatGroupMemberEntity?>> getAllByOwnerUserIdMemberKey(
+  ChatGroupMemberEntity? getByOwnerUserIdGroupIdMemberUserIdSync(
+    String ownerUserId,
+    String groupId,
+    String memberUserId,
+  ) {
+    return getByIndexSync(r'owner_id_group_id_member_id', [
+      ownerUserId,
+      groupId,
+      memberUserId,
+    ]);
+  }
+
+  Future<bool> deleteByOwnerUserIdGroupIdMemberUserId(
+    String ownerUserId,
+    String groupId,
+    String memberUserId,
+  ) {
+    return deleteByIndex(r'owner_id_group_id_member_id', [
+      ownerUserId,
+      groupId,
+      memberUserId,
+    ]);
+  }
+
+  bool deleteByOwnerUserIdGroupIdMemberUserIdSync(
+    String ownerUserId,
+    String groupId,
+    String memberUserId,
+  ) {
+    return deleteByIndexSync(r'owner_id_group_id_member_id', [
+      ownerUserId,
+      groupId,
+      memberUserId,
+    ]);
+  }
+
+  Future<List<ChatGroupMemberEntity?>> getAllByOwnerUserIdGroupIdMemberUserId(
     List<String> ownerUserIdValues,
-    List<String> memberKeyValues,
+    List<String> groupIdValues,
+    List<String> memberUserIdValues,
   ) {
     final len = ownerUserIdValues.length;
     assert(
-      memberKeyValues.length == len,
+      groupIdValues.length == len && memberUserIdValues.length == len,
       'All index values must have the same length',
     );
     final values = <List<dynamic>>[];
     for (var i = 0; i < len; i++) {
-      values.add([ownerUserIdValues[i], memberKeyValues[i]]);
+      values.add([
+        ownerUserIdValues[i],
+        groupIdValues[i],
+        memberUserIdValues[i],
+      ]);
     }
 
-    return getAllByIndex(r'ownerUserId_memberKey', values);
+    return getAllByIndex(r'owner_id_group_id_member_id', values);
   }
 
-  List<ChatGroupMemberEntity?> getAllByOwnerUserIdMemberKeySync(
+  List<ChatGroupMemberEntity?> getAllByOwnerUserIdGroupIdMemberUserIdSync(
     List<String> ownerUserIdValues,
-    List<String> memberKeyValues,
+    List<String> groupIdValues,
+    List<String> memberUserIdValues,
   ) {
     final len = ownerUserIdValues.length;
     assert(
-      memberKeyValues.length == len,
+      groupIdValues.length == len && memberUserIdValues.length == len,
       'All index values must have the same length',
     );
     final values = <List<dynamic>>[];
     for (var i = 0; i < len; i++) {
-      values.add([ownerUserIdValues[i], memberKeyValues[i]]);
+      values.add([
+        ownerUserIdValues[i],
+        groupIdValues[i],
+        memberUserIdValues[i],
+      ]);
     }
 
-    return getAllByIndexSync(r'ownerUserId_memberKey', values);
+    return getAllByIndexSync(r'owner_id_group_id_member_id', values);
   }
 
-  Future<int> deleteAllByOwnerUserIdMemberKey(
+  Future<int> deleteAllByOwnerUserIdGroupIdMemberUserId(
     List<String> ownerUserIdValues,
-    List<String> memberKeyValues,
+    List<String> groupIdValues,
+    List<String> memberUserIdValues,
   ) {
     final len = ownerUserIdValues.length;
     assert(
-      memberKeyValues.length == len,
+      groupIdValues.length == len && memberUserIdValues.length == len,
       'All index values must have the same length',
     );
     final values = <List<dynamic>>[];
     for (var i = 0; i < len; i++) {
-      values.add([ownerUserIdValues[i], memberKeyValues[i]]);
+      values.add([
+        ownerUserIdValues[i],
+        groupIdValues[i],
+        memberUserIdValues[i],
+      ]);
     }
 
-    return deleteAllByIndex(r'ownerUserId_memberKey', values);
+    return deleteAllByIndex(r'owner_id_group_id_member_id', values);
   }
 
-  int deleteAllByOwnerUserIdMemberKeySync(
+  int deleteAllByOwnerUserIdGroupIdMemberUserIdSync(
     List<String> ownerUserIdValues,
-    List<String> memberKeyValues,
+    List<String> groupIdValues,
+    List<String> memberUserIdValues,
   ) {
     final len = ownerUserIdValues.length;
     assert(
-      memberKeyValues.length == len,
+      groupIdValues.length == len && memberUserIdValues.length == len,
       'All index values must have the same length',
     );
     final values = <List<dynamic>>[];
     for (var i = 0; i < len; i++) {
-      values.add([ownerUserIdValues[i], memberKeyValues[i]]);
+      values.add([
+        ownerUserIdValues[i],
+        groupIdValues[i],
+        memberUserIdValues[i],
+      ]);
     }
 
-    return deleteAllByIndexSync(r'ownerUserId_memberKey', values);
+    return deleteAllByIndexSync(r'owner_id_group_id_member_id', values);
   }
 
-  Future<Id> putByOwnerUserIdMemberKey(ChatGroupMemberEntity object) {
-    return putByIndex(r'ownerUserId_memberKey', object);
+  Future<Id> putByOwnerUserIdGroupIdMemberUserId(ChatGroupMemberEntity object) {
+    return putByIndex(r'owner_id_group_id_member_id', object);
   }
 
-  Id putByOwnerUserIdMemberKeySync(
+  Id putByOwnerUserIdGroupIdMemberUserIdSync(
     ChatGroupMemberEntity object, {
     bool saveLinks = true,
   }) {
     return putByIndexSync(
-      r'ownerUserId_memberKey',
+      r'owner_id_group_id_member_id',
       object,
       saveLinks: saveLinks,
     );
   }
 
-  Future<List<Id>> putAllByOwnerUserIdMemberKey(
+  Future<List<Id>> putAllByOwnerUserIdGroupIdMemberUserId(
     List<ChatGroupMemberEntity> objects,
   ) {
-    return putAllByIndex(r'ownerUserId_memberKey', objects);
+    return putAllByIndex(r'owner_id_group_id_member_id', objects);
   }
 
-  List<Id> putAllByOwnerUserIdMemberKeySync(
+  List<Id> putAllByOwnerUserIdGroupIdMemberUserIdSync(
     List<ChatGroupMemberEntity> objects, {
     bool saveLinks = true,
   }) {
     return putAllByIndexSync(
-      r'ownerUserId_memberKey',
+      r'owner_id_group_id_member_id',
       objects,
       saveLinks: saveLinks,
     );
@@ -18966,11 +17511,11 @@ extension ChatGroupMemberEntityQueryWhere
   }
 
   QueryBuilder<ChatGroupMemberEntity, ChatGroupMemberEntity, QAfterWhereClause>
-  ownerUserIdEqualToAnyMemberKey(String ownerUserId) {
+  ownerUserIdEqualToAnyGroupIdMemberUserId(String ownerUserId) {
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         IndexWhereClause.equalTo(
-          indexName: r'ownerUserId_memberKey',
+          indexName: r'owner_id_group_id_member_id',
           value: [ownerUserId],
         ),
       );
@@ -18978,13 +17523,13 @@ extension ChatGroupMemberEntityQueryWhere
   }
 
   QueryBuilder<ChatGroupMemberEntity, ChatGroupMemberEntity, QAfterWhereClause>
-  ownerUserIdNotEqualToAnyMemberKey(String ownerUserId) {
+  ownerUserIdNotEqualToAnyGroupIdMemberUserId(String ownerUserId) {
     return QueryBuilder.apply(this, (query) {
       if (query.whereSort == Sort.asc) {
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_memberKey',
+                indexName: r'owner_id_group_id_member_id',
                 lower: [],
                 upper: [ownerUserId],
                 includeUpper: false,
@@ -18992,7 +17537,7 @@ extension ChatGroupMemberEntityQueryWhere
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_memberKey',
+                indexName: r'owner_id_group_id_member_id',
                 lower: [ownerUserId],
                 includeLower: false,
                 upper: [],
@@ -19002,7 +17547,7 @@ extension ChatGroupMemberEntityQueryWhere
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_memberKey',
+                indexName: r'owner_id_group_id_member_id',
                 lower: [ownerUserId],
                 includeLower: false,
                 upper: [],
@@ -19010,7 +17555,7 @@ extension ChatGroupMemberEntityQueryWhere
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_memberKey',
+                indexName: r'owner_id_group_id_member_id',
                 lower: [],
                 upper: [ownerUserId],
                 includeUpper: false,
@@ -19021,34 +17566,37 @@ extension ChatGroupMemberEntityQueryWhere
   }
 
   QueryBuilder<ChatGroupMemberEntity, ChatGroupMemberEntity, QAfterWhereClause>
-  ownerUserIdMemberKeyEqualTo(String ownerUserId, String memberKey) {
+  ownerUserIdGroupIdEqualToAnyMemberUserId(String ownerUserId, String groupId) {
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         IndexWhereClause.equalTo(
-          indexName: r'ownerUserId_memberKey',
-          value: [ownerUserId, memberKey],
+          indexName: r'owner_id_group_id_member_id',
+          value: [ownerUserId, groupId],
         ),
       );
     });
   }
 
   QueryBuilder<ChatGroupMemberEntity, ChatGroupMemberEntity, QAfterWhereClause>
-  ownerUserIdEqualToMemberKeyNotEqualTo(String ownerUserId, String memberKey) {
+  ownerUserIdEqualToGroupIdNotEqualToAnyMemberUserId(
+    String ownerUserId,
+    String groupId,
+  ) {
     return QueryBuilder.apply(this, (query) {
       if (query.whereSort == Sort.asc) {
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_memberKey',
+                indexName: r'owner_id_group_id_member_id',
                 lower: [ownerUserId],
-                upper: [ownerUserId, memberKey],
+                upper: [ownerUserId, groupId],
                 includeUpper: false,
               ),
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_memberKey',
-                lower: [ownerUserId, memberKey],
+                indexName: r'owner_id_group_id_member_id',
+                lower: [ownerUserId, groupId],
                 includeLower: false,
                 upper: [ownerUserId],
               ),
@@ -19057,17 +17605,80 @@ extension ChatGroupMemberEntityQueryWhere
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_memberKey',
-                lower: [ownerUserId, memberKey],
+                indexName: r'owner_id_group_id_member_id',
+                lower: [ownerUserId, groupId],
                 includeLower: false,
                 upper: [ownerUserId],
               ),
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_memberKey',
+                indexName: r'owner_id_group_id_member_id',
                 lower: [ownerUserId],
-                upper: [ownerUserId, memberKey],
+                upper: [ownerUserId, groupId],
+                includeUpper: false,
+              ),
+            );
+      }
+    });
+  }
+
+  QueryBuilder<ChatGroupMemberEntity, ChatGroupMemberEntity, QAfterWhereClause>
+  ownerUserIdGroupIdMemberUserIdEqualTo(
+    String ownerUserId,
+    String groupId,
+    String memberUserId,
+  ) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(
+        IndexWhereClause.equalTo(
+          indexName: r'owner_id_group_id_member_id',
+          value: [ownerUserId, groupId, memberUserId],
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<ChatGroupMemberEntity, ChatGroupMemberEntity, QAfterWhereClause>
+  ownerUserIdGroupIdEqualToMemberUserIdNotEqualTo(
+    String ownerUserId,
+    String groupId,
+    String memberUserId,
+  ) {
+    return QueryBuilder.apply(this, (query) {
+      if (query.whereSort == Sort.asc) {
+        return query
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'owner_id_group_id_member_id',
+                lower: [ownerUserId, groupId],
+                upper: [ownerUserId, groupId, memberUserId],
+                includeUpper: false,
+              ),
+            )
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'owner_id_group_id_member_id',
+                lower: [ownerUserId, groupId, memberUserId],
+                includeLower: false,
+                upper: [ownerUserId, groupId],
+              ),
+            );
+      } else {
+        return query
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'owner_id_group_id_member_id',
+                lower: [ownerUserId, groupId, memberUserId],
+                includeLower: false,
+                upper: [ownerUserId, groupId],
+              ),
+            )
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'owner_id_group_id_member_id',
+                lower: [ownerUserId, groupId],
+                upper: [ownerUserId, groupId, memberUserId],
                 includeUpper: false,
               ),
             );
@@ -19079,7 +17690,7 @@ extension ChatGroupMemberEntityQueryWhere
   groupIdEqualTo(String groupId) {
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
-        IndexWhereClause.equalTo(indexName: r'groupId', value: [groupId]),
+        IndexWhereClause.equalTo(indexName: r'group_id', value: [groupId]),
       );
     });
   }
@@ -19091,7 +17702,7 @@ extension ChatGroupMemberEntityQueryWhere
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'groupId',
+                indexName: r'group_id',
                 lower: [],
                 upper: [groupId],
                 includeUpper: false,
@@ -19099,7 +17710,7 @@ extension ChatGroupMemberEntityQueryWhere
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'groupId',
+                indexName: r'group_id',
                 lower: [groupId],
                 includeLower: false,
                 upper: [],
@@ -19109,7 +17720,7 @@ extension ChatGroupMemberEntityQueryWhere
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'groupId',
+                indexName: r'group_id',
                 lower: [groupId],
                 includeLower: false,
                 upper: [],
@@ -19117,7 +17728,7 @@ extension ChatGroupMemberEntityQueryWhere
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'groupId',
+                indexName: r'group_id',
                 lower: [],
                 upper: [groupId],
                 includeUpper: false,
@@ -19144,7 +17755,7 @@ extension ChatGroupMemberEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.equalTo(
-          property: r'groupId',
+          property: r'group_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -19166,7 +17777,7 @@ extension ChatGroupMemberEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'groupId',
+          property: r'group_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -19188,7 +17799,7 @@ extension ChatGroupMemberEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'groupId',
+          property: r'group_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -19211,7 +17822,7 @@ extension ChatGroupMemberEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'groupId',
+          property: r'group_id',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -19231,7 +17842,7 @@ extension ChatGroupMemberEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.startsWith(
-          property: r'groupId',
+          property: r'group_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -19248,7 +17859,7 @@ extension ChatGroupMemberEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.endsWith(
-          property: r'groupId',
+          property: r'group_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -19265,7 +17876,7 @@ extension ChatGroupMemberEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.contains(
-          property: r'groupId',
+          property: r'group_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -19282,7 +17893,7 @@ extension ChatGroupMemberEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.matches(
-          property: r'groupId',
+          property: r'group_id',
           wildcard: pattern,
           caseSensitive: caseSensitive,
         ),
@@ -19298,7 +17909,7 @@ extension ChatGroupMemberEntityQueryFilter
   groupIdIsEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'groupId', value: ''),
+        FilterCondition.equalTo(property: r'group_id', value: ''),
       );
     });
   }
@@ -19311,330 +17922,7 @@ extension ChatGroupMemberEntityQueryFilter
   groupIdIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'groupId', value: ''),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatGroupMemberEntity,
-    ChatGroupMemberEntity,
-    QAfterFilterCondition
-  >
-  idEqualTo(Id value) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'id', value: value),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatGroupMemberEntity,
-    ChatGroupMemberEntity,
-    QAfterFilterCondition
-  >
-  idGreaterThan(Id value, {bool include = false}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.greaterThan(
-          include: include,
-          property: r'id',
-          value: value,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatGroupMemberEntity,
-    ChatGroupMemberEntity,
-    QAfterFilterCondition
-  >
-  idLessThan(Id value, {bool include = false}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.lessThan(
-          include: include,
-          property: r'id',
-          value: value,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatGroupMemberEntity,
-    ChatGroupMemberEntity,
-    QAfterFilterCondition
-  >
-  idBetween(
-    Id lower,
-    Id upper, {
-    bool includeLower = true,
-    bool includeUpper = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.between(
-          property: r'id',
-          lower: lower,
-          includeLower: includeLower,
-          upper: upper,
-          includeUpper: includeUpper,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatGroupMemberEntity,
-    ChatGroupMemberEntity,
-    QAfterFilterCondition
-  >
-  joinedAtMillisEqualTo(int value) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'joinedAtMillis', value: value),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatGroupMemberEntity,
-    ChatGroupMemberEntity,
-    QAfterFilterCondition
-  >
-  joinedAtMillisGreaterThan(int value, {bool include = false}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.greaterThan(
-          include: include,
-          property: r'joinedAtMillis',
-          value: value,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatGroupMemberEntity,
-    ChatGroupMemberEntity,
-    QAfterFilterCondition
-  >
-  joinedAtMillisLessThan(int value, {bool include = false}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.lessThan(
-          include: include,
-          property: r'joinedAtMillis',
-          value: value,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatGroupMemberEntity,
-    ChatGroupMemberEntity,
-    QAfterFilterCondition
-  >
-  joinedAtMillisBetween(
-    int lower,
-    int upper, {
-    bool includeLower = true,
-    bool includeUpper = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.between(
-          property: r'joinedAtMillis',
-          lower: lower,
-          includeLower: includeLower,
-          upper: upper,
-          includeUpper: includeUpper,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatGroupMemberEntity,
-    ChatGroupMemberEntity,
-    QAfterFilterCondition
-  >
-  memberKeyEqualTo(String value, {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.equalTo(
-          property: r'memberKey',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatGroupMemberEntity,
-    ChatGroupMemberEntity,
-    QAfterFilterCondition
-  >
-  memberKeyGreaterThan(
-    String value, {
-    bool include = false,
-    bool caseSensitive = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.greaterThan(
-          include: include,
-          property: r'memberKey',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatGroupMemberEntity,
-    ChatGroupMemberEntity,
-    QAfterFilterCondition
-  >
-  memberKeyLessThan(
-    String value, {
-    bool include = false,
-    bool caseSensitive = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.lessThan(
-          include: include,
-          property: r'memberKey',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatGroupMemberEntity,
-    ChatGroupMemberEntity,
-    QAfterFilterCondition
-  >
-  memberKeyBetween(
-    String lower,
-    String upper, {
-    bool includeLower = true,
-    bool includeUpper = true,
-    bool caseSensitive = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.between(
-          property: r'memberKey',
-          lower: lower,
-          includeLower: includeLower,
-          upper: upper,
-          includeUpper: includeUpper,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatGroupMemberEntity,
-    ChatGroupMemberEntity,
-    QAfterFilterCondition
-  >
-  memberKeyStartsWith(String value, {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.startsWith(
-          property: r'memberKey',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatGroupMemberEntity,
-    ChatGroupMemberEntity,
-    QAfterFilterCondition
-  >
-  memberKeyEndsWith(String value, {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.endsWith(
-          property: r'memberKey',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatGroupMemberEntity,
-    ChatGroupMemberEntity,
-    QAfterFilterCondition
-  >
-  memberKeyContains(String value, {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.contains(
-          property: r'memberKey',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatGroupMemberEntity,
-    ChatGroupMemberEntity,
-    QAfterFilterCondition
-  >
-  memberKeyMatches(String pattern, {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.matches(
-          property: r'memberKey',
-          wildcard: pattern,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatGroupMemberEntity,
-    ChatGroupMemberEntity,
-    QAfterFilterCondition
-  >
-  memberKeyIsEmpty() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'memberKey', value: ''),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatGroupMemberEntity,
-    ChatGroupMemberEntity,
-    QAfterFilterCondition
-  >
-  memberKeyIsNotEmpty() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'memberKey', value: ''),
+        FilterCondition.greaterThan(property: r'group_id', value: ''),
       );
     });
   }
@@ -19648,7 +17936,7 @@ extension ChatGroupMemberEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.equalTo(
-          property: r'memberUserId',
+          property: r'member_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -19670,7 +17958,7 @@ extension ChatGroupMemberEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'memberUserId',
+          property: r'member_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -19692,7 +17980,7 @@ extension ChatGroupMemberEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'memberUserId',
+          property: r'member_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -19715,7 +18003,7 @@ extension ChatGroupMemberEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'memberUserId',
+          property: r'member_id',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -19735,7 +18023,7 @@ extension ChatGroupMemberEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.startsWith(
-          property: r'memberUserId',
+          property: r'member_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -19752,7 +18040,7 @@ extension ChatGroupMemberEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.endsWith(
-          property: r'memberUserId',
+          property: r'member_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -19769,7 +18057,7 @@ extension ChatGroupMemberEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.contains(
-          property: r'memberUserId',
+          property: r'member_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -19786,7 +18074,7 @@ extension ChatGroupMemberEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.matches(
-          property: r'memberUserId',
+          property: r'member_id',
           wildcard: pattern,
           caseSensitive: caseSensitive,
         ),
@@ -19802,7 +18090,7 @@ extension ChatGroupMemberEntityQueryFilter
   memberUserIdIsEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'memberUserId', value: ''),
+        FilterCondition.equalTo(property: r'member_id', value: ''),
       );
     });
   }
@@ -19815,188 +18103,7 @@ extension ChatGroupMemberEntityQueryFilter
   memberUserIdIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'memberUserId', value: ''),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatGroupMemberEntity,
-    ChatGroupMemberEntity,
-    QAfterFilterCondition
-  >
-  ownerUserIdEqualTo(String value, {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.equalTo(
-          property: r'ownerUserId',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatGroupMemberEntity,
-    ChatGroupMemberEntity,
-    QAfterFilterCondition
-  >
-  ownerUserIdGreaterThan(
-    String value, {
-    bool include = false,
-    bool caseSensitive = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.greaterThan(
-          include: include,
-          property: r'ownerUserId',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatGroupMemberEntity,
-    ChatGroupMemberEntity,
-    QAfterFilterCondition
-  >
-  ownerUserIdLessThan(
-    String value, {
-    bool include = false,
-    bool caseSensitive = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.lessThan(
-          include: include,
-          property: r'ownerUserId',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatGroupMemberEntity,
-    ChatGroupMemberEntity,
-    QAfterFilterCondition
-  >
-  ownerUserIdBetween(
-    String lower,
-    String upper, {
-    bool includeLower = true,
-    bool includeUpper = true,
-    bool caseSensitive = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.between(
-          property: r'ownerUserId',
-          lower: lower,
-          includeLower: includeLower,
-          upper: upper,
-          includeUpper: includeUpper,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatGroupMemberEntity,
-    ChatGroupMemberEntity,
-    QAfterFilterCondition
-  >
-  ownerUserIdStartsWith(String value, {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.startsWith(
-          property: r'ownerUserId',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatGroupMemberEntity,
-    ChatGroupMemberEntity,
-    QAfterFilterCondition
-  >
-  ownerUserIdEndsWith(String value, {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.endsWith(
-          property: r'ownerUserId',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatGroupMemberEntity,
-    ChatGroupMemberEntity,
-    QAfterFilterCondition
-  >
-  ownerUserIdContains(String value, {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.contains(
-          property: r'ownerUserId',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatGroupMemberEntity,
-    ChatGroupMemberEntity,
-    QAfterFilterCondition
-  >
-  ownerUserIdMatches(String pattern, {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.matches(
-          property: r'ownerUserId',
-          wildcard: pattern,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatGroupMemberEntity,
-    ChatGroupMemberEntity,
-    QAfterFilterCondition
-  >
-  ownerUserIdIsEmpty() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'ownerUserId', value: ''),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatGroupMemberEntity,
-    ChatGroupMemberEntity,
-    QAfterFilterCondition
-  >
-  ownerUserIdIsNotEmpty() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'ownerUserId', value: ''),
+        FilterCondition.greaterThan(property: r'member_id', value: ''),
       );
     });
   }
@@ -20010,7 +18117,7 @@ extension ChatGroupMemberEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.equalTo(
-          property: r'role',
+          property: r'member_role',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -20032,7 +18139,7 @@ extension ChatGroupMemberEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'role',
+          property: r'member_role',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -20054,7 +18161,7 @@ extension ChatGroupMemberEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'role',
+          property: r'member_role',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -20077,7 +18184,7 @@ extension ChatGroupMemberEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'role',
+          property: r'member_role',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -20097,7 +18204,7 @@ extension ChatGroupMemberEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.startsWith(
-          property: r'role',
+          property: r'member_role',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -20114,7 +18221,7 @@ extension ChatGroupMemberEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.endsWith(
-          property: r'role',
+          property: r'member_role',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -20131,7 +18238,7 @@ extension ChatGroupMemberEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.contains(
-          property: r'role',
+          property: r'member_role',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -20148,7 +18255,7 @@ extension ChatGroupMemberEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.matches(
-          property: r'role',
+          property: r'member_role',
           wildcard: pattern,
           caseSensitive: caseSensitive,
         ),
@@ -20164,7 +18271,7 @@ extension ChatGroupMemberEntityQueryFilter
   roleIsEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'role', value: ''),
+        FilterCondition.equalTo(property: r'member_role', value: ''),
       );
     });
   }
@@ -20177,7 +18284,259 @@ extension ChatGroupMemberEntityQueryFilter
   roleIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'role', value: ''),
+        FilterCondition.greaterThan(property: r'member_role', value: ''),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatGroupMemberEntity,
+    ChatGroupMemberEntity,
+    QAfterFilterCondition
+  >
+  ownerUserIdEqualTo(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.equalTo(
+          property: r'owner_id',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatGroupMemberEntity,
+    ChatGroupMemberEntity,
+    QAfterFilterCondition
+  >
+  ownerUserIdGreaterThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(
+          include: include,
+          property: r'owner_id',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatGroupMemberEntity,
+    ChatGroupMemberEntity,
+    QAfterFilterCondition
+  >
+  ownerUserIdLessThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.lessThan(
+          include: include,
+          property: r'owner_id',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatGroupMemberEntity,
+    ChatGroupMemberEntity,
+    QAfterFilterCondition
+  >
+  ownerUserIdBetween(
+    String lower,
+    String upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.between(
+          property: r'owner_id',
+          lower: lower,
+          includeLower: includeLower,
+          upper: upper,
+          includeUpper: includeUpper,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatGroupMemberEntity,
+    ChatGroupMemberEntity,
+    QAfterFilterCondition
+  >
+  ownerUserIdStartsWith(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.startsWith(
+          property: r'owner_id',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatGroupMemberEntity,
+    ChatGroupMemberEntity,
+    QAfterFilterCondition
+  >
+  ownerUserIdEndsWith(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.endsWith(
+          property: r'owner_id',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatGroupMemberEntity,
+    ChatGroupMemberEntity,
+    QAfterFilterCondition
+  >
+  ownerUserIdContains(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.contains(
+          property: r'owner_id',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatGroupMemberEntity,
+    ChatGroupMemberEntity,
+    QAfterFilterCondition
+  >
+  ownerUserIdMatches(String pattern, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.matches(
+          property: r'owner_id',
+          wildcard: pattern,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatGroupMemberEntity,
+    ChatGroupMemberEntity,
+    QAfterFilterCondition
+  >
+  ownerUserIdIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.equalTo(property: r'owner_id', value: ''),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatGroupMemberEntity,
+    ChatGroupMemberEntity,
+    QAfterFilterCondition
+  >
+  ownerUserIdIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(property: r'owner_id', value: ''),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatGroupMemberEntity,
+    ChatGroupMemberEntity,
+    QAfterFilterCondition
+  >
+  idEqualTo(Id value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.equalTo(property: r'row_id', value: value),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatGroupMemberEntity,
+    ChatGroupMemberEntity,
+    QAfterFilterCondition
+  >
+  idGreaterThan(Id value, {bool include = false}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(
+          include: include,
+          property: r'row_id',
+          value: value,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatGroupMemberEntity,
+    ChatGroupMemberEntity,
+    QAfterFilterCondition
+  >
+  idLessThan(Id value, {bool include = false}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.lessThan(
+          include: include,
+          property: r'row_id',
+          value: value,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatGroupMemberEntity,
+    ChatGroupMemberEntity,
+    QAfterFilterCondition
+  >
+  idBetween(
+    Id lower,
+    Id upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.between(
+          property: r'row_id',
+          lower: lower,
+          includeLower: includeLower,
+          upper: upper,
+          includeUpper: includeUpper,
+        ),
       );
     });
   }
@@ -20204,84 +18563,56 @@ extension ChatGroupMemberEntityQuerySortBy
   QueryBuilder<ChatGroupMemberEntity, ChatGroupMemberEntity, QAfterSortBy>
   sortByGroupId() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'groupId', Sort.asc);
+      return query.addSortBy(r'group_id', Sort.asc);
     });
   }
 
   QueryBuilder<ChatGroupMemberEntity, ChatGroupMemberEntity, QAfterSortBy>
   sortByGroupIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'groupId', Sort.desc);
-    });
-  }
-
-  QueryBuilder<ChatGroupMemberEntity, ChatGroupMemberEntity, QAfterSortBy>
-  sortByJoinedAtMillis() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'joinedAtMillis', Sort.asc);
-    });
-  }
-
-  QueryBuilder<ChatGroupMemberEntity, ChatGroupMemberEntity, QAfterSortBy>
-  sortByJoinedAtMillisDesc() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'joinedAtMillis', Sort.desc);
-    });
-  }
-
-  QueryBuilder<ChatGroupMemberEntity, ChatGroupMemberEntity, QAfterSortBy>
-  sortByMemberKey() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'memberKey', Sort.asc);
-    });
-  }
-
-  QueryBuilder<ChatGroupMemberEntity, ChatGroupMemberEntity, QAfterSortBy>
-  sortByMemberKeyDesc() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'memberKey', Sort.desc);
+      return query.addSortBy(r'group_id', Sort.desc);
     });
   }
 
   QueryBuilder<ChatGroupMemberEntity, ChatGroupMemberEntity, QAfterSortBy>
   sortByMemberUserId() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'memberUserId', Sort.asc);
+      return query.addSortBy(r'member_id', Sort.asc);
     });
   }
 
   QueryBuilder<ChatGroupMemberEntity, ChatGroupMemberEntity, QAfterSortBy>
   sortByMemberUserIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'memberUserId', Sort.desc);
-    });
-  }
-
-  QueryBuilder<ChatGroupMemberEntity, ChatGroupMemberEntity, QAfterSortBy>
-  sortByOwnerUserId() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'ownerUserId', Sort.asc);
-    });
-  }
-
-  QueryBuilder<ChatGroupMemberEntity, ChatGroupMemberEntity, QAfterSortBy>
-  sortByOwnerUserIdDesc() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'ownerUserId', Sort.desc);
+      return query.addSortBy(r'member_id', Sort.desc);
     });
   }
 
   QueryBuilder<ChatGroupMemberEntity, ChatGroupMemberEntity, QAfterSortBy>
   sortByRole() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'role', Sort.asc);
+      return query.addSortBy(r'member_role', Sort.asc);
     });
   }
 
   QueryBuilder<ChatGroupMemberEntity, ChatGroupMemberEntity, QAfterSortBy>
   sortByRoleDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'role', Sort.desc);
+      return query.addSortBy(r'member_role', Sort.desc);
+    });
+  }
+
+  QueryBuilder<ChatGroupMemberEntity, ChatGroupMemberEntity, QAfterSortBy>
+  sortByOwnerUserId() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'owner_id', Sort.asc);
+    });
+  }
+
+  QueryBuilder<ChatGroupMemberEntity, ChatGroupMemberEntity, QAfterSortBy>
+  sortByOwnerUserIdDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'owner_id', Sort.desc);
     });
   }
 }
@@ -20291,98 +18622,70 @@ extension ChatGroupMemberEntityQuerySortThenBy
   QueryBuilder<ChatGroupMemberEntity, ChatGroupMemberEntity, QAfterSortBy>
   thenByGroupId() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'groupId', Sort.asc);
+      return query.addSortBy(r'group_id', Sort.asc);
     });
   }
 
   QueryBuilder<ChatGroupMemberEntity, ChatGroupMemberEntity, QAfterSortBy>
   thenByGroupIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'groupId', Sort.desc);
-    });
-  }
-
-  QueryBuilder<ChatGroupMemberEntity, ChatGroupMemberEntity, QAfterSortBy>
-  thenById() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'id', Sort.asc);
-    });
-  }
-
-  QueryBuilder<ChatGroupMemberEntity, ChatGroupMemberEntity, QAfterSortBy>
-  thenByIdDesc() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'id', Sort.desc);
-    });
-  }
-
-  QueryBuilder<ChatGroupMemberEntity, ChatGroupMemberEntity, QAfterSortBy>
-  thenByJoinedAtMillis() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'joinedAtMillis', Sort.asc);
-    });
-  }
-
-  QueryBuilder<ChatGroupMemberEntity, ChatGroupMemberEntity, QAfterSortBy>
-  thenByJoinedAtMillisDesc() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'joinedAtMillis', Sort.desc);
-    });
-  }
-
-  QueryBuilder<ChatGroupMemberEntity, ChatGroupMemberEntity, QAfterSortBy>
-  thenByMemberKey() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'memberKey', Sort.asc);
-    });
-  }
-
-  QueryBuilder<ChatGroupMemberEntity, ChatGroupMemberEntity, QAfterSortBy>
-  thenByMemberKeyDesc() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'memberKey', Sort.desc);
+      return query.addSortBy(r'group_id', Sort.desc);
     });
   }
 
   QueryBuilder<ChatGroupMemberEntity, ChatGroupMemberEntity, QAfterSortBy>
   thenByMemberUserId() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'memberUserId', Sort.asc);
+      return query.addSortBy(r'member_id', Sort.asc);
     });
   }
 
   QueryBuilder<ChatGroupMemberEntity, ChatGroupMemberEntity, QAfterSortBy>
   thenByMemberUserIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'memberUserId', Sort.desc);
-    });
-  }
-
-  QueryBuilder<ChatGroupMemberEntity, ChatGroupMemberEntity, QAfterSortBy>
-  thenByOwnerUserId() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'ownerUserId', Sort.asc);
-    });
-  }
-
-  QueryBuilder<ChatGroupMemberEntity, ChatGroupMemberEntity, QAfterSortBy>
-  thenByOwnerUserIdDesc() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'ownerUserId', Sort.desc);
+      return query.addSortBy(r'member_id', Sort.desc);
     });
   }
 
   QueryBuilder<ChatGroupMemberEntity, ChatGroupMemberEntity, QAfterSortBy>
   thenByRole() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'role', Sort.asc);
+      return query.addSortBy(r'member_role', Sort.asc);
     });
   }
 
   QueryBuilder<ChatGroupMemberEntity, ChatGroupMemberEntity, QAfterSortBy>
   thenByRoleDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'role', Sort.desc);
+      return query.addSortBy(r'member_role', Sort.desc);
+    });
+  }
+
+  QueryBuilder<ChatGroupMemberEntity, ChatGroupMemberEntity, QAfterSortBy>
+  thenByOwnerUserId() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'owner_id', Sort.asc);
+    });
+  }
+
+  QueryBuilder<ChatGroupMemberEntity, ChatGroupMemberEntity, QAfterSortBy>
+  thenByOwnerUserIdDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'owner_id', Sort.desc);
+    });
+  }
+
+  QueryBuilder<ChatGroupMemberEntity, ChatGroupMemberEntity, QAfterSortBy>
+  thenById() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'row_id', Sort.asc);
+    });
+  }
+
+  QueryBuilder<ChatGroupMemberEntity, ChatGroupMemberEntity, QAfterSortBy>
+  thenByIdDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'row_id', Sort.desc);
     });
   }
 }
@@ -20392,42 +18695,28 @@ extension ChatGroupMemberEntityQueryWhereDistinct
   QueryBuilder<ChatGroupMemberEntity, ChatGroupMemberEntity, QDistinct>
   distinctByGroupId({bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'groupId', caseSensitive: caseSensitive);
-    });
-  }
-
-  QueryBuilder<ChatGroupMemberEntity, ChatGroupMemberEntity, QDistinct>
-  distinctByJoinedAtMillis() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'joinedAtMillis');
-    });
-  }
-
-  QueryBuilder<ChatGroupMemberEntity, ChatGroupMemberEntity, QDistinct>
-  distinctByMemberKey({bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'memberKey', caseSensitive: caseSensitive);
+      return query.addDistinctBy(r'group_id', caseSensitive: caseSensitive);
     });
   }
 
   QueryBuilder<ChatGroupMemberEntity, ChatGroupMemberEntity, QDistinct>
   distinctByMemberUserId({bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'memberUserId', caseSensitive: caseSensitive);
-    });
-  }
-
-  QueryBuilder<ChatGroupMemberEntity, ChatGroupMemberEntity, QDistinct>
-  distinctByOwnerUserId({bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'ownerUserId', caseSensitive: caseSensitive);
+      return query.addDistinctBy(r'member_id', caseSensitive: caseSensitive);
     });
   }
 
   QueryBuilder<ChatGroupMemberEntity, ChatGroupMemberEntity, QDistinct>
   distinctByRole({bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'role', caseSensitive: caseSensitive);
+      return query.addDistinctBy(r'member_role', caseSensitive: caseSensitive);
+    });
+  }
+
+  QueryBuilder<ChatGroupMemberEntity, ChatGroupMemberEntity, QDistinct>
+  distinctByOwnerUserId({bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'owner_id', caseSensitive: caseSensitive);
     });
   }
 }
@@ -20441,48 +18730,34 @@ extension ChatGroupMemberEntityQueryProperty
         > {
   QueryBuilder<ChatGroupMemberEntity, int, QQueryOperations> idProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'id');
+      return query.addPropertyName(r'row_id');
     });
   }
 
   QueryBuilder<ChatGroupMemberEntity, String, QQueryOperations>
   groupIdProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'groupId');
-    });
-  }
-
-  QueryBuilder<ChatGroupMemberEntity, int, QQueryOperations>
-  joinedAtMillisProperty() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'joinedAtMillis');
-    });
-  }
-
-  QueryBuilder<ChatGroupMemberEntity, String, QQueryOperations>
-  memberKeyProperty() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'memberKey');
+      return query.addPropertyName(r'group_id');
     });
   }
 
   QueryBuilder<ChatGroupMemberEntity, String, QQueryOperations>
   memberUserIdProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'memberUserId');
+      return query.addPropertyName(r'member_id');
+    });
+  }
+
+  QueryBuilder<ChatGroupMemberEntity, String, QQueryOperations> roleProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'member_role');
     });
   }
 
   QueryBuilder<ChatGroupMemberEntity, String, QQueryOperations>
   ownerUserIdProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'ownerUserId');
-    });
-  }
-
-  QueryBuilder<ChatGroupMemberEntity, String, QQueryOperations> roleProperty() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'role');
+      return query.addPropertyName(r'owner_id');
     });
   }
 }
@@ -20496,33 +18771,37 @@ extension GetChatGroupPendingCommitEntityCollection on Isar {
 }
 
 const ChatGroupPendingCommitEntitySchema = CollectionSchema(
-  name: r'ChatGroupPendingCommitEntity',
-  id: 4467971278504501601,
+  name: r'commit',
+  id: -1623704559087056712,
   properties: {
-    r'createdAtMillis': PropertySchema(
+    r'created_at': PropertySchema(
       id: 0,
-      name: r'createdAtMillis',
+      name: r'created_at',
       type: IsarType.long,
     ),
-    r'groupId': PropertySchema(id: 1, name: r'groupId', type: IsarType.string),
-    r'messageBytesHex': PropertySchema(
+    r'group_id': PropertySchema(
+      id: 1,
+      name: r'group_id',
+      type: IsarType.string,
+    ),
+    r'message_bytes': PropertySchema(
       id: 2,
-      name: r'messageBytesHex',
+      name: r'message_bytes',
       type: IsarType.string,
     ),
-    r'messageEpoch': PropertySchema(
+    r'message_epoch': PropertySchema(
       id: 3,
-      name: r'messageEpoch',
+      name: r'message_epoch',
       type: IsarType.long,
     ),
-    r'messageId': PropertySchema(
+    r'message_id': PropertySchema(
       id: 4,
-      name: r'messageId',
+      name: r'message_id',
       type: IsarType.string,
     ),
-    r'ownerUserId': PropertySchema(
+    r'owner_id': PropertySchema(
       id: 5,
-      name: r'ownerUserId',
+      name: r'owner_id',
       type: IsarType.string,
     ),
   },
@@ -20531,47 +18810,47 @@ const ChatGroupPendingCommitEntitySchema = CollectionSchema(
   serialize: _chatGroupPendingCommitEntitySerialize,
   deserialize: _chatGroupPendingCommitEntityDeserialize,
   deserializeProp: _chatGroupPendingCommitEntityDeserializeProp,
-  idName: r'id',
+  idName: r'row_id',
   indexes: {
-    r'ownerUserId_messageId': IndexSchema(
-      id: 6423036073976843555,
-      name: r'ownerUserId_messageId',
+    r'owner_id_message_id': IndexSchema(
+      id: -5137609912169235308,
+      name: r'owner_id_message_id',
       unique: true,
       replace: true,
       properties: [
         IndexPropertySchema(
-          name: r'ownerUserId',
+          name: r'owner_id',
           type: IndexType.hash,
           caseSensitive: true,
         ),
         IndexPropertySchema(
-          name: r'messageId',
-          type: IndexType.hash,
-          caseSensitive: true,
-        ),
-      ],
-    ),
-    r'groupId': IndexSchema(
-      id: -8523216633229774932,
-      name: r'groupId',
-      unique: false,
-      replace: false,
-      properties: [
-        IndexPropertySchema(
-          name: r'groupId',
+          name: r'message_id',
           type: IndexType.hash,
           caseSensitive: true,
         ),
       ],
     ),
-    r'messageEpoch': IndexSchema(
-      id: 2696323681374748078,
-      name: r'messageEpoch',
+    r'group_id': IndexSchema(
+      id: 8896262069560657725,
+      name: r'group_id',
       unique: false,
       replace: false,
       properties: [
         IndexPropertySchema(
-          name: r'messageEpoch',
+          name: r'group_id',
+          type: IndexType.hash,
+          caseSensitive: true,
+        ),
+      ],
+    ),
+    r'message_epoch': IndexSchema(
+      id: 6817274195912465953,
+      name: r'message_epoch',
+      unique: false,
+      replace: false,
+      properties: [
+        IndexPropertySchema(
+          name: r'message_epoch',
           type: IndexType.value,
           caseSensitive: false,
         ),
@@ -20623,11 +18902,11 @@ ChatGroupPendingCommitEntity _chatGroupPendingCommitEntityDeserialize(
   final object = ChatGroupPendingCommitEntity();
   object.createdAtMillis = reader.readLong(offsets[0]);
   object.groupId = reader.readString(offsets[1]);
-  object.id = id;
   object.messageBytesHex = reader.readString(offsets[2]);
   object.messageEpoch = reader.readLong(offsets[3]);
   object.messageId = reader.readString(offsets[4]);
   object.ownerUserId = reader.readString(offsets[5]);
+  object.id = id;
   return object;
 }
 
@@ -20679,28 +18958,25 @@ extension ChatGroupPendingCommitEntityByIndex
     String ownerUserId,
     String messageId,
   ) {
-    return getByIndex(r'ownerUserId_messageId', [ownerUserId, messageId]);
+    return getByIndex(r'owner_id_message_id', [ownerUserId, messageId]);
   }
 
   ChatGroupPendingCommitEntity? getByOwnerUserIdMessageIdSync(
     String ownerUserId,
     String messageId,
   ) {
-    return getByIndexSync(r'ownerUserId_messageId', [ownerUserId, messageId]);
+    return getByIndexSync(r'owner_id_message_id', [ownerUserId, messageId]);
   }
 
   Future<bool> deleteByOwnerUserIdMessageId(
     String ownerUserId,
     String messageId,
   ) {
-    return deleteByIndex(r'ownerUserId_messageId', [ownerUserId, messageId]);
+    return deleteByIndex(r'owner_id_message_id', [ownerUserId, messageId]);
   }
 
   bool deleteByOwnerUserIdMessageIdSync(String ownerUserId, String messageId) {
-    return deleteByIndexSync(r'ownerUserId_messageId', [
-      ownerUserId,
-      messageId,
-    ]);
+    return deleteByIndexSync(r'owner_id_message_id', [ownerUserId, messageId]);
   }
 
   Future<List<ChatGroupPendingCommitEntity?>> getAllByOwnerUserIdMessageId(
@@ -20717,7 +18993,7 @@ extension ChatGroupPendingCommitEntityByIndex
       values.add([ownerUserIdValues[i], messageIdValues[i]]);
     }
 
-    return getAllByIndex(r'ownerUserId_messageId', values);
+    return getAllByIndex(r'owner_id_message_id', values);
   }
 
   List<ChatGroupPendingCommitEntity?> getAllByOwnerUserIdMessageIdSync(
@@ -20734,7 +19010,7 @@ extension ChatGroupPendingCommitEntityByIndex
       values.add([ownerUserIdValues[i], messageIdValues[i]]);
     }
 
-    return getAllByIndexSync(r'ownerUserId_messageId', values);
+    return getAllByIndexSync(r'owner_id_message_id', values);
   }
 
   Future<int> deleteAllByOwnerUserIdMessageId(
@@ -20751,7 +19027,7 @@ extension ChatGroupPendingCommitEntityByIndex
       values.add([ownerUserIdValues[i], messageIdValues[i]]);
     }
 
-    return deleteAllByIndex(r'ownerUserId_messageId', values);
+    return deleteAllByIndex(r'owner_id_message_id', values);
   }
 
   int deleteAllByOwnerUserIdMessageIdSync(
@@ -20768,28 +19044,24 @@ extension ChatGroupPendingCommitEntityByIndex
       values.add([ownerUserIdValues[i], messageIdValues[i]]);
     }
 
-    return deleteAllByIndexSync(r'ownerUserId_messageId', values);
+    return deleteAllByIndexSync(r'owner_id_message_id', values);
   }
 
   Future<Id> putByOwnerUserIdMessageId(ChatGroupPendingCommitEntity object) {
-    return putByIndex(r'ownerUserId_messageId', object);
+    return putByIndex(r'owner_id_message_id', object);
   }
 
   Id putByOwnerUserIdMessageIdSync(
     ChatGroupPendingCommitEntity object, {
     bool saveLinks = true,
   }) {
-    return putByIndexSync(
-      r'ownerUserId_messageId',
-      object,
-      saveLinks: saveLinks,
-    );
+    return putByIndexSync(r'owner_id_message_id', object, saveLinks: saveLinks);
   }
 
   Future<List<Id>> putAllByOwnerUserIdMessageId(
     List<ChatGroupPendingCommitEntity> objects,
   ) {
-    return putAllByIndex(r'ownerUserId_messageId', objects);
+    return putAllByIndex(r'owner_id_message_id', objects);
   }
 
   List<Id> putAllByOwnerUserIdMessageIdSync(
@@ -20797,7 +19069,7 @@ extension ChatGroupPendingCommitEntityByIndex
     bool saveLinks = true,
   }) {
     return putAllByIndexSync(
-      r'ownerUserId_messageId',
+      r'owner_id_message_id',
       objects,
       saveLinks: saveLinks,
     );
@@ -20830,7 +19102,7 @@ extension ChatGroupPendingCommitEntityQueryWhereSort
   anyMessageEpoch() {
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
-        const IndexWhereClause.any(indexName: r'messageEpoch'),
+        const IndexWhereClause.any(indexName: r'message_epoch'),
       );
     });
   }
@@ -20939,7 +19211,7 @@ extension ChatGroupPendingCommitEntityQueryWhere
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         IndexWhereClause.equalTo(
-          indexName: r'ownerUserId_messageId',
+          indexName: r'owner_id_message_id',
           value: [ownerUserId],
         ),
       );
@@ -20957,7 +19229,7 @@ extension ChatGroupPendingCommitEntityQueryWhere
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_messageId',
+                indexName: r'owner_id_message_id',
                 lower: [],
                 upper: [ownerUserId],
                 includeUpper: false,
@@ -20965,7 +19237,7 @@ extension ChatGroupPendingCommitEntityQueryWhere
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_messageId',
+                indexName: r'owner_id_message_id',
                 lower: [ownerUserId],
                 includeLower: false,
                 upper: [],
@@ -20975,7 +19247,7 @@ extension ChatGroupPendingCommitEntityQueryWhere
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_messageId',
+                indexName: r'owner_id_message_id',
                 lower: [ownerUserId],
                 includeLower: false,
                 upper: [],
@@ -20983,7 +19255,7 @@ extension ChatGroupPendingCommitEntityQueryWhere
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_messageId',
+                indexName: r'owner_id_message_id',
                 lower: [],
                 upper: [ownerUserId],
                 includeUpper: false,
@@ -21002,7 +19274,7 @@ extension ChatGroupPendingCommitEntityQueryWhere
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         IndexWhereClause.equalTo(
-          indexName: r'ownerUserId_messageId',
+          indexName: r'owner_id_message_id',
           value: [ownerUserId, messageId],
         ),
       );
@@ -21020,7 +19292,7 @@ extension ChatGroupPendingCommitEntityQueryWhere
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_messageId',
+                indexName: r'owner_id_message_id',
                 lower: [ownerUserId],
                 upper: [ownerUserId, messageId],
                 includeUpper: false,
@@ -21028,7 +19300,7 @@ extension ChatGroupPendingCommitEntityQueryWhere
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_messageId',
+                indexName: r'owner_id_message_id',
                 lower: [ownerUserId, messageId],
                 includeLower: false,
                 upper: [ownerUserId],
@@ -21038,7 +19310,7 @@ extension ChatGroupPendingCommitEntityQueryWhere
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_messageId',
+                indexName: r'owner_id_message_id',
                 lower: [ownerUserId, messageId],
                 includeLower: false,
                 upper: [ownerUserId],
@@ -21046,7 +19318,7 @@ extension ChatGroupPendingCommitEntityQueryWhere
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId_messageId',
+                indexName: r'owner_id_message_id',
                 lower: [ownerUserId],
                 upper: [ownerUserId, messageId],
                 includeUpper: false,
@@ -21064,7 +19336,7 @@ extension ChatGroupPendingCommitEntityQueryWhere
   groupIdEqualTo(String groupId) {
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
-        IndexWhereClause.equalTo(indexName: r'groupId', value: [groupId]),
+        IndexWhereClause.equalTo(indexName: r'group_id', value: [groupId]),
       );
     });
   }
@@ -21080,7 +19352,7 @@ extension ChatGroupPendingCommitEntityQueryWhere
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'groupId',
+                indexName: r'group_id',
                 lower: [],
                 upper: [groupId],
                 includeUpper: false,
@@ -21088,7 +19360,7 @@ extension ChatGroupPendingCommitEntityQueryWhere
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'groupId',
+                indexName: r'group_id',
                 lower: [groupId],
                 includeLower: false,
                 upper: [],
@@ -21098,7 +19370,7 @@ extension ChatGroupPendingCommitEntityQueryWhere
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'groupId',
+                indexName: r'group_id',
                 lower: [groupId],
                 includeLower: false,
                 upper: [],
@@ -21106,7 +19378,7 @@ extension ChatGroupPendingCommitEntityQueryWhere
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'groupId',
+                indexName: r'group_id',
                 lower: [],
                 upper: [groupId],
                 includeUpper: false,
@@ -21125,7 +19397,7 @@ extension ChatGroupPendingCommitEntityQueryWhere
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         IndexWhereClause.equalTo(
-          indexName: r'messageEpoch',
+          indexName: r'message_epoch',
           value: [messageEpoch],
         ),
       );
@@ -21143,7 +19415,7 @@ extension ChatGroupPendingCommitEntityQueryWhere
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'messageEpoch',
+                indexName: r'message_epoch',
                 lower: [],
                 upper: [messageEpoch],
                 includeUpper: false,
@@ -21151,7 +19423,7 @@ extension ChatGroupPendingCommitEntityQueryWhere
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'messageEpoch',
+                indexName: r'message_epoch',
                 lower: [messageEpoch],
                 includeLower: false,
                 upper: [],
@@ -21161,7 +19433,7 @@ extension ChatGroupPendingCommitEntityQueryWhere
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'messageEpoch',
+                indexName: r'message_epoch',
                 lower: [messageEpoch],
                 includeLower: false,
                 upper: [],
@@ -21169,7 +19441,7 @@ extension ChatGroupPendingCommitEntityQueryWhere
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'messageEpoch',
+                indexName: r'message_epoch',
                 lower: [],
                 upper: [messageEpoch],
                 includeUpper: false,
@@ -21188,7 +19460,7 @@ extension ChatGroupPendingCommitEntityQueryWhere
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         IndexWhereClause.between(
-          indexName: r'messageEpoch',
+          indexName: r'message_epoch',
           lower: [messageEpoch],
           includeLower: include,
           upper: [],
@@ -21206,7 +19478,7 @@ extension ChatGroupPendingCommitEntityQueryWhere
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         IndexWhereClause.between(
-          indexName: r'messageEpoch',
+          indexName: r'message_epoch',
           lower: [],
           upper: [messageEpoch],
           includeUpper: include,
@@ -21229,7 +19501,7 @@ extension ChatGroupPendingCommitEntityQueryWhere
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         IndexWhereClause.between(
-          indexName: r'messageEpoch',
+          indexName: r'message_epoch',
           lower: [lowerMessageEpoch],
           includeLower: includeLower,
           upper: [upperMessageEpoch],
@@ -21255,7 +19527,7 @@ extension ChatGroupPendingCommitEntityQueryFilter
   createdAtMillisEqualTo(int value) {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'createdAtMillis', value: value),
+        FilterCondition.equalTo(property: r'created_at', value: value),
       );
     });
   }
@@ -21270,7 +19542,7 @@ extension ChatGroupPendingCommitEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'createdAtMillis',
+          property: r'created_at',
           value: value,
         ),
       );
@@ -21287,7 +19559,7 @@ extension ChatGroupPendingCommitEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'createdAtMillis',
+          property: r'created_at',
           value: value,
         ),
       );
@@ -21308,7 +19580,7 @@ extension ChatGroupPendingCommitEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'createdAtMillis',
+          property: r'created_at',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -21327,7 +19599,7 @@ extension ChatGroupPendingCommitEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.equalTo(
-          property: r'groupId',
+          property: r'group_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -21349,7 +19621,7 @@ extension ChatGroupPendingCommitEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'groupId',
+          property: r'group_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -21371,7 +19643,7 @@ extension ChatGroupPendingCommitEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'groupId',
+          property: r'group_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -21394,7 +19666,7 @@ extension ChatGroupPendingCommitEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'groupId',
+          property: r'group_id',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -21414,7 +19686,7 @@ extension ChatGroupPendingCommitEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.startsWith(
-          property: r'groupId',
+          property: r'group_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -21431,7 +19703,7 @@ extension ChatGroupPendingCommitEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.endsWith(
-          property: r'groupId',
+          property: r'group_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -21448,7 +19720,7 @@ extension ChatGroupPendingCommitEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.contains(
-          property: r'groupId',
+          property: r'group_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -21465,7 +19737,7 @@ extension ChatGroupPendingCommitEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.matches(
-          property: r'groupId',
+          property: r'group_id',
           wildcard: pattern,
           caseSensitive: caseSensitive,
         ),
@@ -21481,7 +19753,7 @@ extension ChatGroupPendingCommitEntityQueryFilter
   groupIdIsEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'groupId', value: ''),
+        FilterCondition.equalTo(property: r'group_id', value: ''),
       );
     });
   }
@@ -21494,78 +19766,7 @@ extension ChatGroupPendingCommitEntityQueryFilter
   groupIdIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'groupId', value: ''),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatGroupPendingCommitEntity,
-    ChatGroupPendingCommitEntity,
-    QAfterFilterCondition
-  >
-  idEqualTo(Id value) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'id', value: value),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatGroupPendingCommitEntity,
-    ChatGroupPendingCommitEntity,
-    QAfterFilterCondition
-  >
-  idGreaterThan(Id value, {bool include = false}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.greaterThan(
-          include: include,
-          property: r'id',
-          value: value,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatGroupPendingCommitEntity,
-    ChatGroupPendingCommitEntity,
-    QAfterFilterCondition
-  >
-  idLessThan(Id value, {bool include = false}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.lessThan(
-          include: include,
-          property: r'id',
-          value: value,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatGroupPendingCommitEntity,
-    ChatGroupPendingCommitEntity,
-    QAfterFilterCondition
-  >
-  idBetween(
-    Id lower,
-    Id upper, {
-    bool includeLower = true,
-    bool includeUpper = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.between(
-          property: r'id',
-          lower: lower,
-          includeLower: includeLower,
-          upper: upper,
-          includeUpper: includeUpper,
-        ),
+        FilterCondition.greaterThan(property: r'group_id', value: ''),
       );
     });
   }
@@ -21579,7 +19780,7 @@ extension ChatGroupPendingCommitEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.equalTo(
-          property: r'messageBytesHex',
+          property: r'message_bytes',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -21601,7 +19802,7 @@ extension ChatGroupPendingCommitEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'messageBytesHex',
+          property: r'message_bytes',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -21623,7 +19824,7 @@ extension ChatGroupPendingCommitEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'messageBytesHex',
+          property: r'message_bytes',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -21646,7 +19847,7 @@ extension ChatGroupPendingCommitEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'messageBytesHex',
+          property: r'message_bytes',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -21666,7 +19867,7 @@ extension ChatGroupPendingCommitEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.startsWith(
-          property: r'messageBytesHex',
+          property: r'message_bytes',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -21683,7 +19884,7 @@ extension ChatGroupPendingCommitEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.endsWith(
-          property: r'messageBytesHex',
+          property: r'message_bytes',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -21700,7 +19901,7 @@ extension ChatGroupPendingCommitEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.contains(
-          property: r'messageBytesHex',
+          property: r'message_bytes',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -21717,7 +19918,7 @@ extension ChatGroupPendingCommitEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.matches(
-          property: r'messageBytesHex',
+          property: r'message_bytes',
           wildcard: pattern,
           caseSensitive: caseSensitive,
         ),
@@ -21733,7 +19934,7 @@ extension ChatGroupPendingCommitEntityQueryFilter
   messageBytesHexIsEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'messageBytesHex', value: ''),
+        FilterCondition.equalTo(property: r'message_bytes', value: ''),
       );
     });
   }
@@ -21746,7 +19947,7 @@ extension ChatGroupPendingCommitEntityQueryFilter
   messageBytesHexIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'messageBytesHex', value: ''),
+        FilterCondition.greaterThan(property: r'message_bytes', value: ''),
       );
     });
   }
@@ -21759,7 +19960,7 @@ extension ChatGroupPendingCommitEntityQueryFilter
   messageEpochEqualTo(int value) {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'messageEpoch', value: value),
+        FilterCondition.equalTo(property: r'message_epoch', value: value),
       );
     });
   }
@@ -21774,7 +19975,7 @@ extension ChatGroupPendingCommitEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'messageEpoch',
+          property: r'message_epoch',
           value: value,
         ),
       );
@@ -21791,7 +19992,7 @@ extension ChatGroupPendingCommitEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'messageEpoch',
+          property: r'message_epoch',
           value: value,
         ),
       );
@@ -21812,7 +20013,7 @@ extension ChatGroupPendingCommitEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'messageEpoch',
+          property: r'message_epoch',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -21831,7 +20032,7 @@ extension ChatGroupPendingCommitEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.equalTo(
-          property: r'messageId',
+          property: r'message_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -21853,7 +20054,7 @@ extension ChatGroupPendingCommitEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'messageId',
+          property: r'message_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -21875,7 +20076,7 @@ extension ChatGroupPendingCommitEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'messageId',
+          property: r'message_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -21898,7 +20099,7 @@ extension ChatGroupPendingCommitEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'messageId',
+          property: r'message_id',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -21918,7 +20119,7 @@ extension ChatGroupPendingCommitEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.startsWith(
-          property: r'messageId',
+          property: r'message_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -21935,7 +20136,7 @@ extension ChatGroupPendingCommitEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.endsWith(
-          property: r'messageId',
+          property: r'message_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -21952,7 +20153,7 @@ extension ChatGroupPendingCommitEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.contains(
-          property: r'messageId',
+          property: r'message_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -21969,7 +20170,7 @@ extension ChatGroupPendingCommitEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.matches(
-          property: r'messageId',
+          property: r'message_id',
           wildcard: pattern,
           caseSensitive: caseSensitive,
         ),
@@ -21985,7 +20186,7 @@ extension ChatGroupPendingCommitEntityQueryFilter
   messageIdIsEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'messageId', value: ''),
+        FilterCondition.equalTo(property: r'message_id', value: ''),
       );
     });
   }
@@ -21998,7 +20199,7 @@ extension ChatGroupPendingCommitEntityQueryFilter
   messageIdIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'messageId', value: ''),
+        FilterCondition.greaterThan(property: r'message_id', value: ''),
       );
     });
   }
@@ -22012,7 +20213,7 @@ extension ChatGroupPendingCommitEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.equalTo(
-          property: r'ownerUserId',
+          property: r'owner_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -22034,7 +20235,7 @@ extension ChatGroupPendingCommitEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'ownerUserId',
+          property: r'owner_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -22056,7 +20257,7 @@ extension ChatGroupPendingCommitEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'ownerUserId',
+          property: r'owner_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -22079,7 +20280,7 @@ extension ChatGroupPendingCommitEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'ownerUserId',
+          property: r'owner_id',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -22099,7 +20300,7 @@ extension ChatGroupPendingCommitEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.startsWith(
-          property: r'ownerUserId',
+          property: r'owner_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -22116,7 +20317,7 @@ extension ChatGroupPendingCommitEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.endsWith(
-          property: r'ownerUserId',
+          property: r'owner_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -22133,7 +20334,7 @@ extension ChatGroupPendingCommitEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.contains(
-          property: r'ownerUserId',
+          property: r'owner_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -22150,7 +20351,7 @@ extension ChatGroupPendingCommitEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.matches(
-          property: r'ownerUserId',
+          property: r'owner_id',
           wildcard: pattern,
           caseSensitive: caseSensitive,
         ),
@@ -22166,7 +20367,7 @@ extension ChatGroupPendingCommitEntityQueryFilter
   ownerUserIdIsEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'ownerUserId', value: ''),
+        FilterCondition.equalTo(property: r'owner_id', value: ''),
       );
     });
   }
@@ -22179,7 +20380,78 @@ extension ChatGroupPendingCommitEntityQueryFilter
   ownerUserIdIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'ownerUserId', value: ''),
+        FilterCondition.greaterThan(property: r'owner_id', value: ''),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatGroupPendingCommitEntity,
+    ChatGroupPendingCommitEntity,
+    QAfterFilterCondition
+  >
+  idEqualTo(Id value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.equalTo(property: r'row_id', value: value),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatGroupPendingCommitEntity,
+    ChatGroupPendingCommitEntity,
+    QAfterFilterCondition
+  >
+  idGreaterThan(Id value, {bool include = false}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(
+          include: include,
+          property: r'row_id',
+          value: value,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatGroupPendingCommitEntity,
+    ChatGroupPendingCommitEntity,
+    QAfterFilterCondition
+  >
+  idLessThan(Id value, {bool include = false}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.lessThan(
+          include: include,
+          property: r'row_id',
+          value: value,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatGroupPendingCommitEntity,
+    ChatGroupPendingCommitEntity,
+    QAfterFilterCondition
+  >
+  idBetween(
+    Id lower,
+    Id upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.between(
+          property: r'row_id',
+          lower: lower,
+          includeLower: includeLower,
+          upper: upper,
+          includeUpper: includeUpper,
+        ),
       );
     });
   }
@@ -22215,7 +20487,7 @@ extension ChatGroupPendingCommitEntityQuerySortBy
   >
   sortByCreatedAtMillis() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'createdAtMillis', Sort.asc);
+      return query.addSortBy(r'created_at', Sort.asc);
     });
   }
 
@@ -22226,7 +20498,7 @@ extension ChatGroupPendingCommitEntityQuerySortBy
   >
   sortByCreatedAtMillisDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'createdAtMillis', Sort.desc);
+      return query.addSortBy(r'created_at', Sort.desc);
     });
   }
 
@@ -22237,7 +20509,7 @@ extension ChatGroupPendingCommitEntityQuerySortBy
   >
   sortByGroupId() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'groupId', Sort.asc);
+      return query.addSortBy(r'group_id', Sort.asc);
     });
   }
 
@@ -22248,7 +20520,7 @@ extension ChatGroupPendingCommitEntityQuerySortBy
   >
   sortByGroupIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'groupId', Sort.desc);
+      return query.addSortBy(r'group_id', Sort.desc);
     });
   }
 
@@ -22259,7 +20531,7 @@ extension ChatGroupPendingCommitEntityQuerySortBy
   >
   sortByMessageBytesHex() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'messageBytesHex', Sort.asc);
+      return query.addSortBy(r'message_bytes', Sort.asc);
     });
   }
 
@@ -22270,7 +20542,7 @@ extension ChatGroupPendingCommitEntityQuerySortBy
   >
   sortByMessageBytesHexDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'messageBytesHex', Sort.desc);
+      return query.addSortBy(r'message_bytes', Sort.desc);
     });
   }
 
@@ -22281,7 +20553,7 @@ extension ChatGroupPendingCommitEntityQuerySortBy
   >
   sortByMessageEpoch() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'messageEpoch', Sort.asc);
+      return query.addSortBy(r'message_epoch', Sort.asc);
     });
   }
 
@@ -22292,7 +20564,7 @@ extension ChatGroupPendingCommitEntityQuerySortBy
   >
   sortByMessageEpochDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'messageEpoch', Sort.desc);
+      return query.addSortBy(r'message_epoch', Sort.desc);
     });
   }
 
@@ -22303,7 +20575,7 @@ extension ChatGroupPendingCommitEntityQuerySortBy
   >
   sortByMessageId() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'messageId', Sort.asc);
+      return query.addSortBy(r'message_id', Sort.asc);
     });
   }
 
@@ -22314,7 +20586,7 @@ extension ChatGroupPendingCommitEntityQuerySortBy
   >
   sortByMessageIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'messageId', Sort.desc);
+      return query.addSortBy(r'message_id', Sort.desc);
     });
   }
 
@@ -22325,7 +20597,7 @@ extension ChatGroupPendingCommitEntityQuerySortBy
   >
   sortByOwnerUserId() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'ownerUserId', Sort.asc);
+      return query.addSortBy(r'owner_id', Sort.asc);
     });
   }
 
@@ -22336,7 +20608,7 @@ extension ChatGroupPendingCommitEntityQuerySortBy
   >
   sortByOwnerUserIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'ownerUserId', Sort.desc);
+      return query.addSortBy(r'owner_id', Sort.desc);
     });
   }
 }
@@ -22355,7 +20627,7 @@ extension ChatGroupPendingCommitEntityQuerySortThenBy
   >
   thenByCreatedAtMillis() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'createdAtMillis', Sort.asc);
+      return query.addSortBy(r'created_at', Sort.asc);
     });
   }
 
@@ -22366,7 +20638,7 @@ extension ChatGroupPendingCommitEntityQuerySortThenBy
   >
   thenByCreatedAtMillisDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'createdAtMillis', Sort.desc);
+      return query.addSortBy(r'created_at', Sort.desc);
     });
   }
 
@@ -22377,7 +20649,7 @@ extension ChatGroupPendingCommitEntityQuerySortThenBy
   >
   thenByGroupId() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'groupId', Sort.asc);
+      return query.addSortBy(r'group_id', Sort.asc);
     });
   }
 
@@ -22388,29 +20660,7 @@ extension ChatGroupPendingCommitEntityQuerySortThenBy
   >
   thenByGroupIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'groupId', Sort.desc);
-    });
-  }
-
-  QueryBuilder<
-    ChatGroupPendingCommitEntity,
-    ChatGroupPendingCommitEntity,
-    QAfterSortBy
-  >
-  thenById() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'id', Sort.asc);
-    });
-  }
-
-  QueryBuilder<
-    ChatGroupPendingCommitEntity,
-    ChatGroupPendingCommitEntity,
-    QAfterSortBy
-  >
-  thenByIdDesc() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'id', Sort.desc);
+      return query.addSortBy(r'group_id', Sort.desc);
     });
   }
 
@@ -22421,7 +20671,7 @@ extension ChatGroupPendingCommitEntityQuerySortThenBy
   >
   thenByMessageBytesHex() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'messageBytesHex', Sort.asc);
+      return query.addSortBy(r'message_bytes', Sort.asc);
     });
   }
 
@@ -22432,7 +20682,7 @@ extension ChatGroupPendingCommitEntityQuerySortThenBy
   >
   thenByMessageBytesHexDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'messageBytesHex', Sort.desc);
+      return query.addSortBy(r'message_bytes', Sort.desc);
     });
   }
 
@@ -22443,7 +20693,7 @@ extension ChatGroupPendingCommitEntityQuerySortThenBy
   >
   thenByMessageEpoch() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'messageEpoch', Sort.asc);
+      return query.addSortBy(r'message_epoch', Sort.asc);
     });
   }
 
@@ -22454,7 +20704,7 @@ extension ChatGroupPendingCommitEntityQuerySortThenBy
   >
   thenByMessageEpochDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'messageEpoch', Sort.desc);
+      return query.addSortBy(r'message_epoch', Sort.desc);
     });
   }
 
@@ -22465,7 +20715,7 @@ extension ChatGroupPendingCommitEntityQuerySortThenBy
   >
   thenByMessageId() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'messageId', Sort.asc);
+      return query.addSortBy(r'message_id', Sort.asc);
     });
   }
 
@@ -22476,7 +20726,7 @@ extension ChatGroupPendingCommitEntityQuerySortThenBy
   >
   thenByMessageIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'messageId', Sort.desc);
+      return query.addSortBy(r'message_id', Sort.desc);
     });
   }
 
@@ -22487,7 +20737,7 @@ extension ChatGroupPendingCommitEntityQuerySortThenBy
   >
   thenByOwnerUserId() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'ownerUserId', Sort.asc);
+      return query.addSortBy(r'owner_id', Sort.asc);
     });
   }
 
@@ -22498,7 +20748,29 @@ extension ChatGroupPendingCommitEntityQuerySortThenBy
   >
   thenByOwnerUserIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'ownerUserId', Sort.desc);
+      return query.addSortBy(r'owner_id', Sort.desc);
+    });
+  }
+
+  QueryBuilder<
+    ChatGroupPendingCommitEntity,
+    ChatGroupPendingCommitEntity,
+    QAfterSortBy
+  >
+  thenById() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'row_id', Sort.asc);
+    });
+  }
+
+  QueryBuilder<
+    ChatGroupPendingCommitEntity,
+    ChatGroupPendingCommitEntity,
+    QAfterSortBy
+  >
+  thenByIdDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'row_id', Sort.desc);
     });
   }
 }
@@ -22517,7 +20789,7 @@ extension ChatGroupPendingCommitEntityQueryWhereDistinct
   >
   distinctByCreatedAtMillis() {
     return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'createdAtMillis');
+      return query.addDistinctBy(r'created_at');
     });
   }
 
@@ -22528,7 +20800,7 @@ extension ChatGroupPendingCommitEntityQueryWhereDistinct
   >
   distinctByGroupId({bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'groupId', caseSensitive: caseSensitive);
+      return query.addDistinctBy(r'group_id', caseSensitive: caseSensitive);
     });
   }
 
@@ -22540,7 +20812,7 @@ extension ChatGroupPendingCommitEntityQueryWhereDistinct
   distinctByMessageBytesHex({bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(
-        r'messageBytesHex',
+        r'message_bytes',
         caseSensitive: caseSensitive,
       );
     });
@@ -22553,7 +20825,7 @@ extension ChatGroupPendingCommitEntityQueryWhereDistinct
   >
   distinctByMessageEpoch() {
     return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'messageEpoch');
+      return query.addDistinctBy(r'message_epoch');
     });
   }
 
@@ -22564,7 +20836,7 @@ extension ChatGroupPendingCommitEntityQueryWhereDistinct
   >
   distinctByMessageId({bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'messageId', caseSensitive: caseSensitive);
+      return query.addDistinctBy(r'message_id', caseSensitive: caseSensitive);
     });
   }
 
@@ -22575,7 +20847,7 @@ extension ChatGroupPendingCommitEntityQueryWhereDistinct
   >
   distinctByOwnerUserId({bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'ownerUserId', caseSensitive: caseSensitive);
+      return query.addDistinctBy(r'owner_id', caseSensitive: caseSensitive);
     });
   }
 }
@@ -22590,49 +20862,49 @@ extension ChatGroupPendingCommitEntityQueryProperty
   QueryBuilder<ChatGroupPendingCommitEntity, int, QQueryOperations>
   idProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'id');
+      return query.addPropertyName(r'row_id');
     });
   }
 
   QueryBuilder<ChatGroupPendingCommitEntity, int, QQueryOperations>
   createdAtMillisProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'createdAtMillis');
+      return query.addPropertyName(r'created_at');
     });
   }
 
   QueryBuilder<ChatGroupPendingCommitEntity, String, QQueryOperations>
   groupIdProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'groupId');
+      return query.addPropertyName(r'group_id');
     });
   }
 
   QueryBuilder<ChatGroupPendingCommitEntity, String, QQueryOperations>
   messageBytesHexProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'messageBytesHex');
+      return query.addPropertyName(r'message_bytes');
     });
   }
 
   QueryBuilder<ChatGroupPendingCommitEntity, int, QQueryOperations>
   messageEpochProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'messageEpoch');
+      return query.addPropertyName(r'message_epoch');
     });
   }
 
   QueryBuilder<ChatGroupPendingCommitEntity, String, QQueryOperations>
   messageIdProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'messageId');
+      return query.addPropertyName(r'message_id');
     });
   }
 
   QueryBuilder<ChatGroupPendingCommitEntity, String, QQueryOperations>
   ownerUserIdProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'ownerUserId');
+      return query.addPropertyName(r'owner_id');
     });
   }
 }
@@ -22646,37 +20918,33 @@ extension GetChatBindingFenceEntityCollection on Isar {
 }
 
 const ChatBindingFenceEntitySchema = CollectionSchema(
-  name: r'ChatBindingFenceEntity',
-  id: -7632451107539516192,
+  name: r'fence',
+  id: -2181333600854589627,
   properties: {
-    r'accountId': PropertySchema(
+    r'account_id': PropertySchema(
       id: 0,
-      name: r'accountId',
+      name: r'account_id',
       type: IsarType.string,
     ),
-    r'bindingRevision': PropertySchema(
-      id: 1,
-      name: r'bindingRevision',
-      type: IsarType.long,
-    ),
-    r'bindingScope': PropertySchema(
+    r'bind_rev': PropertySchema(id: 1, name: r'bind_rev', type: IsarType.long),
+    r'bind_scope': PropertySchema(
       id: 2,
-      name: r'bindingScope',
+      name: r'bind_scope',
       type: IsarType.string,
     ),
-    r'fenceState': PropertySchema(
+    r'fence_rev': PropertySchema(
       id: 3,
-      name: r'fenceState',
-      type: IsarType.string,
-    ),
-    r'generation': PropertySchema(
-      id: 4,
-      name: r'generation',
+      name: r'fence_rev',
       type: IsarType.long,
     ),
-    r'ownerUserId': PropertySchema(
+    r'fence_state': PropertySchema(
+      id: 4,
+      name: r'fence_state',
+      type: IsarType.string,
+    ),
+    r'owner_id': PropertySchema(
       id: 5,
-      name: r'ownerUserId',
+      name: r'owner_id',
       type: IsarType.string,
     ),
   },
@@ -22685,16 +20953,16 @@ const ChatBindingFenceEntitySchema = CollectionSchema(
   serialize: _chatBindingFenceEntitySerialize,
   deserialize: _chatBindingFenceEntityDeserialize,
   deserializeProp: _chatBindingFenceEntityDeserializeProp,
-  idName: r'id',
+  idName: r'row_id',
   indexes: {
-    r'ownerUserId': IndexSchema(
-      id: 1631799950038639233,
-      name: r'ownerUserId',
+    r'owner_id': IndexSchema(
+      id: -3543161581123061232,
+      name: r'owner_id',
       unique: true,
       replace: false,
       properties: [
         IndexPropertySchema(
-          name: r'ownerUserId',
+          name: r'owner_id',
           type: IndexType.hash,
           caseSensitive: true,
         ),
@@ -22742,8 +21010,8 @@ void _chatBindingFenceEntitySerialize(
   writer.writeString(offsets[0], object.accountId);
   writer.writeLong(offsets[1], object.bindingRevision);
   writer.writeString(offsets[2], object.bindingScope);
-  writer.writeString(offsets[3], object.fenceState);
-  writer.writeLong(offsets[4], object.generation);
+  writer.writeLong(offsets[3], object.generation);
+  writer.writeString(offsets[4], object.fenceState);
   writer.writeString(offsets[5], object.ownerUserId);
 }
 
@@ -22757,10 +21025,10 @@ ChatBindingFenceEntity _chatBindingFenceEntityDeserialize(
   object.accountId = reader.readStringOrNull(offsets[0]);
   object.bindingRevision = reader.readLongOrNull(offsets[1]);
   object.bindingScope = reader.readStringOrNull(offsets[2]);
-  object.fenceState = reader.readString(offsets[3]);
-  object.generation = reader.readLong(offsets[4]);
-  object.id = id;
+  object.generation = reader.readLong(offsets[3]);
+  object.fenceState = reader.readString(offsets[4]);
   object.ownerUserId = reader.readString(offsets[5]);
+  object.id = id;
   return object;
 }
 
@@ -22778,9 +21046,9 @@ P _chatBindingFenceEntityDeserializeProp<P>(
     case 2:
       return (reader.readStringOrNull(offset)) as P;
     case 3:
-      return (reader.readString(offset)) as P;
-    case 4:
       return (reader.readLong(offset)) as P;
+    case 4:
+      return (reader.readString(offset)) as P;
     case 5:
       return (reader.readString(offset)) as P;
     default:
@@ -22809,65 +21077,65 @@ void _chatBindingFenceEntityAttach(
 extension ChatBindingFenceEntityByIndex
     on IsarCollection<ChatBindingFenceEntity> {
   Future<ChatBindingFenceEntity?> getByOwnerUserId(String ownerUserId) {
-    return getByIndex(r'ownerUserId', [ownerUserId]);
+    return getByIndex(r'owner_id', [ownerUserId]);
   }
 
   ChatBindingFenceEntity? getByOwnerUserIdSync(String ownerUserId) {
-    return getByIndexSync(r'ownerUserId', [ownerUserId]);
+    return getByIndexSync(r'owner_id', [ownerUserId]);
   }
 
   Future<bool> deleteByOwnerUserId(String ownerUserId) {
-    return deleteByIndex(r'ownerUserId', [ownerUserId]);
+    return deleteByIndex(r'owner_id', [ownerUserId]);
   }
 
   bool deleteByOwnerUserIdSync(String ownerUserId) {
-    return deleteByIndexSync(r'ownerUserId', [ownerUserId]);
+    return deleteByIndexSync(r'owner_id', [ownerUserId]);
   }
 
   Future<List<ChatBindingFenceEntity?>> getAllByOwnerUserId(
     List<String> ownerUserIdValues,
   ) {
     final values = ownerUserIdValues.map((e) => [e]).toList();
-    return getAllByIndex(r'ownerUserId', values);
+    return getAllByIndex(r'owner_id', values);
   }
 
   List<ChatBindingFenceEntity?> getAllByOwnerUserIdSync(
     List<String> ownerUserIdValues,
   ) {
     final values = ownerUserIdValues.map((e) => [e]).toList();
-    return getAllByIndexSync(r'ownerUserId', values);
+    return getAllByIndexSync(r'owner_id', values);
   }
 
   Future<int> deleteAllByOwnerUserId(List<String> ownerUserIdValues) {
     final values = ownerUserIdValues.map((e) => [e]).toList();
-    return deleteAllByIndex(r'ownerUserId', values);
+    return deleteAllByIndex(r'owner_id', values);
   }
 
   int deleteAllByOwnerUserIdSync(List<String> ownerUserIdValues) {
     final values = ownerUserIdValues.map((e) => [e]).toList();
-    return deleteAllByIndexSync(r'ownerUserId', values);
+    return deleteAllByIndexSync(r'owner_id', values);
   }
 
   Future<Id> putByOwnerUserId(ChatBindingFenceEntity object) {
-    return putByIndex(r'ownerUserId', object);
+    return putByIndex(r'owner_id', object);
   }
 
   Id putByOwnerUserIdSync(
     ChatBindingFenceEntity object, {
     bool saveLinks = true,
   }) {
-    return putByIndexSync(r'ownerUserId', object, saveLinks: saveLinks);
+    return putByIndexSync(r'owner_id', object, saveLinks: saveLinks);
   }
 
   Future<List<Id>> putAllByOwnerUserId(List<ChatBindingFenceEntity> objects) {
-    return putAllByIndex(r'ownerUserId', objects);
+    return putAllByIndex(r'owner_id', objects);
   }
 
   List<Id> putAllByOwnerUserIdSync(
     List<ChatBindingFenceEntity> objects, {
     bool saveLinks = true,
   }) {
-    return putAllByIndexSync(r'ownerUserId', objects, saveLinks: saveLinks);
+    return putAllByIndexSync(r'owner_id', objects, saveLinks: saveLinks);
   }
 }
 
@@ -22983,10 +21251,7 @@ extension ChatBindingFenceEntityQueryWhere
   ownerUserIdEqualTo(String ownerUserId) {
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
-        IndexWhereClause.equalTo(
-          indexName: r'ownerUserId',
-          value: [ownerUserId],
-        ),
+        IndexWhereClause.equalTo(indexName: r'owner_id', value: [ownerUserId]),
       );
     });
   }
@@ -23002,7 +21267,7 @@ extension ChatBindingFenceEntityQueryWhere
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId',
+                indexName: r'owner_id',
                 lower: [],
                 upper: [ownerUserId],
                 includeUpper: false,
@@ -23010,7 +21275,7 @@ extension ChatBindingFenceEntityQueryWhere
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId',
+                indexName: r'owner_id',
                 lower: [ownerUserId],
                 includeLower: false,
                 upper: [],
@@ -23020,7 +21285,7 @@ extension ChatBindingFenceEntityQueryWhere
         return query
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId',
+                indexName: r'owner_id',
                 lower: [ownerUserId],
                 includeLower: false,
                 upper: [],
@@ -23028,7 +21293,7 @@ extension ChatBindingFenceEntityQueryWhere
             )
             .addWhereClause(
               IndexWhereClause.between(
-                indexName: r'ownerUserId',
+                indexName: r'owner_id',
                 lower: [],
                 upper: [ownerUserId],
                 includeUpper: false,
@@ -23054,7 +21319,7 @@ extension ChatBindingFenceEntityQueryFilter
   accountIdIsNull() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        const FilterCondition.isNull(property: r'accountId'),
+        const FilterCondition.isNull(property: r'account_id'),
       );
     });
   }
@@ -23067,7 +21332,7 @@ extension ChatBindingFenceEntityQueryFilter
   accountIdIsNotNull() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        const FilterCondition.isNotNull(property: r'accountId'),
+        const FilterCondition.isNotNull(property: r'account_id'),
       );
     });
   }
@@ -23081,7 +21346,7 @@ extension ChatBindingFenceEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.equalTo(
-          property: r'accountId',
+          property: r'account_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -23103,7 +21368,7 @@ extension ChatBindingFenceEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'accountId',
+          property: r'account_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -23125,7 +21390,7 @@ extension ChatBindingFenceEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'accountId',
+          property: r'account_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -23148,7 +21413,7 @@ extension ChatBindingFenceEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'accountId',
+          property: r'account_id',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -23168,7 +21433,7 @@ extension ChatBindingFenceEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.startsWith(
-          property: r'accountId',
+          property: r'account_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -23185,7 +21450,7 @@ extension ChatBindingFenceEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.endsWith(
-          property: r'accountId',
+          property: r'account_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -23202,7 +21467,7 @@ extension ChatBindingFenceEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.contains(
-          property: r'accountId',
+          property: r'account_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -23219,7 +21484,7 @@ extension ChatBindingFenceEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.matches(
-          property: r'accountId',
+          property: r'account_id',
           wildcard: pattern,
           caseSensitive: caseSensitive,
         ),
@@ -23235,7 +21500,7 @@ extension ChatBindingFenceEntityQueryFilter
   accountIdIsEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'accountId', value: ''),
+        FilterCondition.equalTo(property: r'account_id', value: ''),
       );
     });
   }
@@ -23248,7 +21513,7 @@ extension ChatBindingFenceEntityQueryFilter
   accountIdIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'accountId', value: ''),
+        FilterCondition.greaterThan(property: r'account_id', value: ''),
       );
     });
   }
@@ -23261,7 +21526,7 @@ extension ChatBindingFenceEntityQueryFilter
   bindingRevisionIsNull() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        const FilterCondition.isNull(property: r'bindingRevision'),
+        const FilterCondition.isNull(property: r'bind_rev'),
       );
     });
   }
@@ -23274,7 +21539,7 @@ extension ChatBindingFenceEntityQueryFilter
   bindingRevisionIsNotNull() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        const FilterCondition.isNotNull(property: r'bindingRevision'),
+        const FilterCondition.isNotNull(property: r'bind_rev'),
       );
     });
   }
@@ -23287,7 +21552,7 @@ extension ChatBindingFenceEntityQueryFilter
   bindingRevisionEqualTo(int? value) {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'bindingRevision', value: value),
+        FilterCondition.equalTo(property: r'bind_rev', value: value),
       );
     });
   }
@@ -23302,7 +21567,7 @@ extension ChatBindingFenceEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'bindingRevision',
+          property: r'bind_rev',
           value: value,
         ),
       );
@@ -23319,7 +21584,7 @@ extension ChatBindingFenceEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'bindingRevision',
+          property: r'bind_rev',
           value: value,
         ),
       );
@@ -23340,7 +21605,7 @@ extension ChatBindingFenceEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'bindingRevision',
+          property: r'bind_rev',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -23358,7 +21623,7 @@ extension ChatBindingFenceEntityQueryFilter
   bindingScopeIsNull() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        const FilterCondition.isNull(property: r'bindingScope'),
+        const FilterCondition.isNull(property: r'bind_scope'),
       );
     });
   }
@@ -23371,7 +21636,7 @@ extension ChatBindingFenceEntityQueryFilter
   bindingScopeIsNotNull() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        const FilterCondition.isNotNull(property: r'bindingScope'),
+        const FilterCondition.isNotNull(property: r'bind_scope'),
       );
     });
   }
@@ -23385,7 +21650,7 @@ extension ChatBindingFenceEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.equalTo(
-          property: r'bindingScope',
+          property: r'bind_scope',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -23407,7 +21672,7 @@ extension ChatBindingFenceEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'bindingScope',
+          property: r'bind_scope',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -23429,7 +21694,7 @@ extension ChatBindingFenceEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'bindingScope',
+          property: r'bind_scope',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -23452,7 +21717,7 @@ extension ChatBindingFenceEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'bindingScope',
+          property: r'bind_scope',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -23472,7 +21737,7 @@ extension ChatBindingFenceEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.startsWith(
-          property: r'bindingScope',
+          property: r'bind_scope',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -23489,7 +21754,7 @@ extension ChatBindingFenceEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.endsWith(
-          property: r'bindingScope',
+          property: r'bind_scope',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -23506,7 +21771,7 @@ extension ChatBindingFenceEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.contains(
-          property: r'bindingScope',
+          property: r'bind_scope',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -23523,7 +21788,7 @@ extension ChatBindingFenceEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.matches(
-          property: r'bindingScope',
+          property: r'bind_scope',
           wildcard: pattern,
           caseSensitive: caseSensitive,
         ),
@@ -23539,7 +21804,7 @@ extension ChatBindingFenceEntityQueryFilter
   bindingScopeIsEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'bindingScope', value: ''),
+        FilterCondition.equalTo(property: r'bind_scope', value: ''),
       );
     });
   }
@@ -23552,7 +21817,78 @@ extension ChatBindingFenceEntityQueryFilter
   bindingScopeIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'bindingScope', value: ''),
+        FilterCondition.greaterThan(property: r'bind_scope', value: ''),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatBindingFenceEntity,
+    ChatBindingFenceEntity,
+    QAfterFilterCondition
+  >
+  generationEqualTo(int value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.equalTo(property: r'fence_rev', value: value),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatBindingFenceEntity,
+    ChatBindingFenceEntity,
+    QAfterFilterCondition
+  >
+  generationGreaterThan(int value, {bool include = false}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(
+          include: include,
+          property: r'fence_rev',
+          value: value,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatBindingFenceEntity,
+    ChatBindingFenceEntity,
+    QAfterFilterCondition
+  >
+  generationLessThan(int value, {bool include = false}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.lessThan(
+          include: include,
+          property: r'fence_rev',
+          value: value,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatBindingFenceEntity,
+    ChatBindingFenceEntity,
+    QAfterFilterCondition
+  >
+  generationBetween(
+    int lower,
+    int upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.between(
+          property: r'fence_rev',
+          lower: lower,
+          includeLower: includeLower,
+          upper: upper,
+          includeUpper: includeUpper,
+        ),
       );
     });
   }
@@ -23566,7 +21902,7 @@ extension ChatBindingFenceEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.equalTo(
-          property: r'fenceState',
+          property: r'fence_state',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -23588,7 +21924,7 @@ extension ChatBindingFenceEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'fenceState',
+          property: r'fence_state',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -23610,7 +21946,7 @@ extension ChatBindingFenceEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'fenceState',
+          property: r'fence_state',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -23633,7 +21969,7 @@ extension ChatBindingFenceEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'fenceState',
+          property: r'fence_state',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -23653,7 +21989,7 @@ extension ChatBindingFenceEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.startsWith(
-          property: r'fenceState',
+          property: r'fence_state',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -23670,7 +22006,7 @@ extension ChatBindingFenceEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.endsWith(
-          property: r'fenceState',
+          property: r'fence_state',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -23687,7 +22023,7 @@ extension ChatBindingFenceEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.contains(
-          property: r'fenceState',
+          property: r'fence_state',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -23704,7 +22040,7 @@ extension ChatBindingFenceEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.matches(
-          property: r'fenceState',
+          property: r'fence_state',
           wildcard: pattern,
           caseSensitive: caseSensitive,
         ),
@@ -23720,7 +22056,7 @@ extension ChatBindingFenceEntityQueryFilter
   fenceStateIsEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'fenceState', value: ''),
+        FilterCondition.equalTo(property: r'fence_state', value: ''),
       );
     });
   }
@@ -23733,149 +22069,7 @@ extension ChatBindingFenceEntityQueryFilter
   fenceStateIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'fenceState', value: ''),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatBindingFenceEntity,
-    ChatBindingFenceEntity,
-    QAfterFilterCondition
-  >
-  generationEqualTo(int value) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'generation', value: value),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatBindingFenceEntity,
-    ChatBindingFenceEntity,
-    QAfterFilterCondition
-  >
-  generationGreaterThan(int value, {bool include = false}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.greaterThan(
-          include: include,
-          property: r'generation',
-          value: value,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatBindingFenceEntity,
-    ChatBindingFenceEntity,
-    QAfterFilterCondition
-  >
-  generationLessThan(int value, {bool include = false}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.lessThan(
-          include: include,
-          property: r'generation',
-          value: value,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatBindingFenceEntity,
-    ChatBindingFenceEntity,
-    QAfterFilterCondition
-  >
-  generationBetween(
-    int lower,
-    int upper, {
-    bool includeLower = true,
-    bool includeUpper = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.between(
-          property: r'generation',
-          lower: lower,
-          includeLower: includeLower,
-          upper: upper,
-          includeUpper: includeUpper,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatBindingFenceEntity,
-    ChatBindingFenceEntity,
-    QAfterFilterCondition
-  >
-  idEqualTo(Id value) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'id', value: value),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatBindingFenceEntity,
-    ChatBindingFenceEntity,
-    QAfterFilterCondition
-  >
-  idGreaterThan(Id value, {bool include = false}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.greaterThan(
-          include: include,
-          property: r'id',
-          value: value,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatBindingFenceEntity,
-    ChatBindingFenceEntity,
-    QAfterFilterCondition
-  >
-  idLessThan(Id value, {bool include = false}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.lessThan(
-          include: include,
-          property: r'id',
-          value: value,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<
-    ChatBindingFenceEntity,
-    ChatBindingFenceEntity,
-    QAfterFilterCondition
-  >
-  idBetween(
-    Id lower,
-    Id upper, {
-    bool includeLower = true,
-    bool includeUpper = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.between(
-          property: r'id',
-          lower: lower,
-          includeLower: includeLower,
-          upper: upper,
-          includeUpper: includeUpper,
-        ),
+        FilterCondition.greaterThan(property: r'fence_state', value: ''),
       );
     });
   }
@@ -23889,7 +22083,7 @@ extension ChatBindingFenceEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.equalTo(
-          property: r'ownerUserId',
+          property: r'owner_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -23911,7 +22105,7 @@ extension ChatBindingFenceEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.greaterThan(
           include: include,
-          property: r'ownerUserId',
+          property: r'owner_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -23933,7 +22127,7 @@ extension ChatBindingFenceEntityQueryFilter
       return query.addFilterCondition(
         FilterCondition.lessThan(
           include: include,
-          property: r'ownerUserId',
+          property: r'owner_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -23956,7 +22150,7 @@ extension ChatBindingFenceEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.between(
-          property: r'ownerUserId',
+          property: r'owner_id',
           lower: lower,
           includeLower: includeLower,
           upper: upper,
@@ -23976,7 +22170,7 @@ extension ChatBindingFenceEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.startsWith(
-          property: r'ownerUserId',
+          property: r'owner_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -23993,7 +22187,7 @@ extension ChatBindingFenceEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.endsWith(
-          property: r'ownerUserId',
+          property: r'owner_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -24010,7 +22204,7 @@ extension ChatBindingFenceEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.contains(
-          property: r'ownerUserId',
+          property: r'owner_id',
           value: value,
           caseSensitive: caseSensitive,
         ),
@@ -24027,7 +22221,7 @@ extension ChatBindingFenceEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.matches(
-          property: r'ownerUserId',
+          property: r'owner_id',
           wildcard: pattern,
           caseSensitive: caseSensitive,
         ),
@@ -24043,7 +22237,7 @@ extension ChatBindingFenceEntityQueryFilter
   ownerUserIdIsEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'ownerUserId', value: ''),
+        FilterCondition.equalTo(property: r'owner_id', value: ''),
       );
     });
   }
@@ -24056,7 +22250,78 @@ extension ChatBindingFenceEntityQueryFilter
   ownerUserIdIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'ownerUserId', value: ''),
+        FilterCondition.greaterThan(property: r'owner_id', value: ''),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatBindingFenceEntity,
+    ChatBindingFenceEntity,
+    QAfterFilterCondition
+  >
+  idEqualTo(Id value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.equalTo(property: r'row_id', value: value),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatBindingFenceEntity,
+    ChatBindingFenceEntity,
+    QAfterFilterCondition
+  >
+  idGreaterThan(Id value, {bool include = false}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(
+          include: include,
+          property: r'row_id',
+          value: value,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatBindingFenceEntity,
+    ChatBindingFenceEntity,
+    QAfterFilterCondition
+  >
+  idLessThan(Id value, {bool include = false}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.lessThan(
+          include: include,
+          property: r'row_id',
+          value: value,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<
+    ChatBindingFenceEntity,
+    ChatBindingFenceEntity,
+    QAfterFilterCondition
+  >
+  idBetween(
+    Id lower,
+    Id upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.between(
+          property: r'row_id',
+          lower: lower,
+          includeLower: includeLower,
+          upper: upper,
+          includeUpper: includeUpper,
+        ),
       );
     });
   }
@@ -24083,84 +22348,84 @@ extension ChatBindingFenceEntityQuerySortBy
   QueryBuilder<ChatBindingFenceEntity, ChatBindingFenceEntity, QAfterSortBy>
   sortByAccountId() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'accountId', Sort.asc);
+      return query.addSortBy(r'account_id', Sort.asc);
     });
   }
 
   QueryBuilder<ChatBindingFenceEntity, ChatBindingFenceEntity, QAfterSortBy>
   sortByAccountIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'accountId', Sort.desc);
+      return query.addSortBy(r'account_id', Sort.desc);
     });
   }
 
   QueryBuilder<ChatBindingFenceEntity, ChatBindingFenceEntity, QAfterSortBy>
   sortByBindingRevision() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'bindingRevision', Sort.asc);
+      return query.addSortBy(r'bind_rev', Sort.asc);
     });
   }
 
   QueryBuilder<ChatBindingFenceEntity, ChatBindingFenceEntity, QAfterSortBy>
   sortByBindingRevisionDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'bindingRevision', Sort.desc);
+      return query.addSortBy(r'bind_rev', Sort.desc);
     });
   }
 
   QueryBuilder<ChatBindingFenceEntity, ChatBindingFenceEntity, QAfterSortBy>
   sortByBindingScope() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'bindingScope', Sort.asc);
+      return query.addSortBy(r'bind_scope', Sort.asc);
     });
   }
 
   QueryBuilder<ChatBindingFenceEntity, ChatBindingFenceEntity, QAfterSortBy>
   sortByBindingScopeDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'bindingScope', Sort.desc);
-    });
-  }
-
-  QueryBuilder<ChatBindingFenceEntity, ChatBindingFenceEntity, QAfterSortBy>
-  sortByFenceState() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'fenceState', Sort.asc);
-    });
-  }
-
-  QueryBuilder<ChatBindingFenceEntity, ChatBindingFenceEntity, QAfterSortBy>
-  sortByFenceStateDesc() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'fenceState', Sort.desc);
+      return query.addSortBy(r'bind_scope', Sort.desc);
     });
   }
 
   QueryBuilder<ChatBindingFenceEntity, ChatBindingFenceEntity, QAfterSortBy>
   sortByGeneration() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'generation', Sort.asc);
+      return query.addSortBy(r'fence_rev', Sort.asc);
     });
   }
 
   QueryBuilder<ChatBindingFenceEntity, ChatBindingFenceEntity, QAfterSortBy>
   sortByGenerationDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'generation', Sort.desc);
+      return query.addSortBy(r'fence_rev', Sort.desc);
+    });
+  }
+
+  QueryBuilder<ChatBindingFenceEntity, ChatBindingFenceEntity, QAfterSortBy>
+  sortByFenceState() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'fence_state', Sort.asc);
+    });
+  }
+
+  QueryBuilder<ChatBindingFenceEntity, ChatBindingFenceEntity, QAfterSortBy>
+  sortByFenceStateDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'fence_state', Sort.desc);
     });
   }
 
   QueryBuilder<ChatBindingFenceEntity, ChatBindingFenceEntity, QAfterSortBy>
   sortByOwnerUserId() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'ownerUserId', Sort.asc);
+      return query.addSortBy(r'owner_id', Sort.asc);
     });
   }
 
   QueryBuilder<ChatBindingFenceEntity, ChatBindingFenceEntity, QAfterSortBy>
   sortByOwnerUserIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'ownerUserId', Sort.desc);
+      return query.addSortBy(r'owner_id', Sort.desc);
     });
   }
 }
@@ -24175,98 +22440,98 @@ extension ChatBindingFenceEntityQuerySortThenBy
   QueryBuilder<ChatBindingFenceEntity, ChatBindingFenceEntity, QAfterSortBy>
   thenByAccountId() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'accountId', Sort.asc);
+      return query.addSortBy(r'account_id', Sort.asc);
     });
   }
 
   QueryBuilder<ChatBindingFenceEntity, ChatBindingFenceEntity, QAfterSortBy>
   thenByAccountIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'accountId', Sort.desc);
+      return query.addSortBy(r'account_id', Sort.desc);
     });
   }
 
   QueryBuilder<ChatBindingFenceEntity, ChatBindingFenceEntity, QAfterSortBy>
   thenByBindingRevision() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'bindingRevision', Sort.asc);
+      return query.addSortBy(r'bind_rev', Sort.asc);
     });
   }
 
   QueryBuilder<ChatBindingFenceEntity, ChatBindingFenceEntity, QAfterSortBy>
   thenByBindingRevisionDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'bindingRevision', Sort.desc);
+      return query.addSortBy(r'bind_rev', Sort.desc);
     });
   }
 
   QueryBuilder<ChatBindingFenceEntity, ChatBindingFenceEntity, QAfterSortBy>
   thenByBindingScope() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'bindingScope', Sort.asc);
+      return query.addSortBy(r'bind_scope', Sort.asc);
     });
   }
 
   QueryBuilder<ChatBindingFenceEntity, ChatBindingFenceEntity, QAfterSortBy>
   thenByBindingScopeDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'bindingScope', Sort.desc);
-    });
-  }
-
-  QueryBuilder<ChatBindingFenceEntity, ChatBindingFenceEntity, QAfterSortBy>
-  thenByFenceState() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'fenceState', Sort.asc);
-    });
-  }
-
-  QueryBuilder<ChatBindingFenceEntity, ChatBindingFenceEntity, QAfterSortBy>
-  thenByFenceStateDesc() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'fenceState', Sort.desc);
+      return query.addSortBy(r'bind_scope', Sort.desc);
     });
   }
 
   QueryBuilder<ChatBindingFenceEntity, ChatBindingFenceEntity, QAfterSortBy>
   thenByGeneration() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'generation', Sort.asc);
+      return query.addSortBy(r'fence_rev', Sort.asc);
     });
   }
 
   QueryBuilder<ChatBindingFenceEntity, ChatBindingFenceEntity, QAfterSortBy>
   thenByGenerationDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'generation', Sort.desc);
+      return query.addSortBy(r'fence_rev', Sort.desc);
     });
   }
 
   QueryBuilder<ChatBindingFenceEntity, ChatBindingFenceEntity, QAfterSortBy>
-  thenById() {
+  thenByFenceState() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'id', Sort.asc);
+      return query.addSortBy(r'fence_state', Sort.asc);
     });
   }
 
   QueryBuilder<ChatBindingFenceEntity, ChatBindingFenceEntity, QAfterSortBy>
-  thenByIdDesc() {
+  thenByFenceStateDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'id', Sort.desc);
+      return query.addSortBy(r'fence_state', Sort.desc);
     });
   }
 
   QueryBuilder<ChatBindingFenceEntity, ChatBindingFenceEntity, QAfterSortBy>
   thenByOwnerUserId() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'ownerUserId', Sort.asc);
+      return query.addSortBy(r'owner_id', Sort.asc);
     });
   }
 
   QueryBuilder<ChatBindingFenceEntity, ChatBindingFenceEntity, QAfterSortBy>
   thenByOwnerUserIdDesc() {
     return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'ownerUserId', Sort.desc);
+      return query.addSortBy(r'owner_id', Sort.desc);
+    });
+  }
+
+  QueryBuilder<ChatBindingFenceEntity, ChatBindingFenceEntity, QAfterSortBy>
+  thenById() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'row_id', Sort.asc);
+    });
+  }
+
+  QueryBuilder<ChatBindingFenceEntity, ChatBindingFenceEntity, QAfterSortBy>
+  thenByIdDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'row_id', Sort.desc);
     });
   }
 }
@@ -24276,42 +22541,42 @@ extension ChatBindingFenceEntityQueryWhereDistinct
   QueryBuilder<ChatBindingFenceEntity, ChatBindingFenceEntity, QDistinct>
   distinctByAccountId({bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'accountId', caseSensitive: caseSensitive);
+      return query.addDistinctBy(r'account_id', caseSensitive: caseSensitive);
     });
   }
 
   QueryBuilder<ChatBindingFenceEntity, ChatBindingFenceEntity, QDistinct>
   distinctByBindingRevision() {
     return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'bindingRevision');
+      return query.addDistinctBy(r'bind_rev');
     });
   }
 
   QueryBuilder<ChatBindingFenceEntity, ChatBindingFenceEntity, QDistinct>
   distinctByBindingScope({bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'bindingScope', caseSensitive: caseSensitive);
-    });
-  }
-
-  QueryBuilder<ChatBindingFenceEntity, ChatBindingFenceEntity, QDistinct>
-  distinctByFenceState({bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'fenceState', caseSensitive: caseSensitive);
+      return query.addDistinctBy(r'bind_scope', caseSensitive: caseSensitive);
     });
   }
 
   QueryBuilder<ChatBindingFenceEntity, ChatBindingFenceEntity, QDistinct>
   distinctByGeneration() {
     return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'generation');
+      return query.addDistinctBy(r'fence_rev');
+    });
+  }
+
+  QueryBuilder<ChatBindingFenceEntity, ChatBindingFenceEntity, QDistinct>
+  distinctByFenceState({bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'fence_state', caseSensitive: caseSensitive);
     });
   }
 
   QueryBuilder<ChatBindingFenceEntity, ChatBindingFenceEntity, QDistinct>
   distinctByOwnerUserId({bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'ownerUserId', caseSensitive: caseSensitive);
+      return query.addDistinctBy(r'owner_id', caseSensitive: caseSensitive);
     });
   }
 }
@@ -24325,49 +22590,49 @@ extension ChatBindingFenceEntityQueryProperty
         > {
   QueryBuilder<ChatBindingFenceEntity, int, QQueryOperations> idProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'id');
+      return query.addPropertyName(r'row_id');
     });
   }
 
   QueryBuilder<ChatBindingFenceEntity, String?, QQueryOperations>
   accountIdProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'accountId');
+      return query.addPropertyName(r'account_id');
     });
   }
 
   QueryBuilder<ChatBindingFenceEntity, int?, QQueryOperations>
   bindingRevisionProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'bindingRevision');
+      return query.addPropertyName(r'bind_rev');
     });
   }
 
   QueryBuilder<ChatBindingFenceEntity, String?, QQueryOperations>
   bindingScopeProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'bindingScope');
-    });
-  }
-
-  QueryBuilder<ChatBindingFenceEntity, String, QQueryOperations>
-  fenceStateProperty() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'fenceState');
+      return query.addPropertyName(r'bind_scope');
     });
   }
 
   QueryBuilder<ChatBindingFenceEntity, int, QQueryOperations>
   generationProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'generation');
+      return query.addPropertyName(r'fence_rev');
+    });
+  }
+
+  QueryBuilder<ChatBindingFenceEntity, String, QQueryOperations>
+  fenceStateProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'fence_state');
     });
   }
 
   QueryBuilder<ChatBindingFenceEntity, String, QQueryOperations>
   ownerUserIdProperty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'ownerUserId');
+      return query.addPropertyName(r'owner_id');
     });
   }
 }

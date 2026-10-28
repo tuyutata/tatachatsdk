@@ -175,22 +175,22 @@ class MlsStateStore {
       'user_id': ownerUserId,
       'action': 'sign_authentication',
       'account_id': accountId,
-      'binding_revision': bindingRevision,
+      'bind_rev': bindingRevision,
       'request': request.toJson(),
     });
-    final bodySha256 = '0x${crypto_hash.sha256.convert(request.bodyBytes)}';
+    final bodyHash = '0x${crypto_hash.sha256.convert(request.bodyBytes)}';
     final expected = <String, Object>{
       'user_id': ownerUserId,
       'device_id': identity.deviceId,
       'public_key': identity.publicKey!,
       'account_id': accountId,
-      'binding_revision': bindingRevision,
+      'bind_rev': bindingRevision,
       'service_origin': request.serviceOrigin,
-      'challenge': request.challenge,
-      'expires_at_millis': request.expiresAtMillis,
-      'method': request.method,
+      'nonce_id': request.nonceId,
+      'expires_at': request.expiresAt,
+      'http_method': request.httpMethod,
       'request_target': request.requestTarget,
-      'body_sha256': bodySha256,
+      'body_hash': bodyHash,
     };
     final signature = response['signature'];
     if (response.length != expected.length + 1 ||
@@ -199,21 +199,8 @@ class MlsStateStore {
         !RegExp(r'^0x[0-9a-f]{128}$').hasMatch(signature)) {
       throw StateError('MLS认证证明结果无效');
     }
-    MlsAuthenticationRequest.validateExpiry(request.expiresAtMillis);
-    return MlsAuthenticationProof(
-      userId: ownerUserId,
-      deviceId: identity.deviceId,
-      publicKey: identity.publicKey!,
-      accountId: accountId,
-      bindingRevision: bindingRevision,
-      serviceOrigin: request.serviceOrigin,
-      challenge: request.challenge,
-      expiresAtMillis: request.expiresAtMillis,
-      method: request.method,
-      requestTarget: request.requestTarget,
-      bodySha256: bodySha256,
-      signature: signature,
-    );
+    MlsAuthenticationRequest.validateExpiry(request.expiresAt);
+    return MlsAuthenticationProof.fromJson(response.cast<String, Object>());
   }
 
   Map<String, dynamic> _call(bool identity, Map<String, Object?> request) {

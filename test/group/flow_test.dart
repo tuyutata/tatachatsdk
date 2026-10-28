@@ -532,7 +532,7 @@ void main() {
       attachmentGroupId: 'attachment:CID-A:${'11' * 32}:att-group-1',
       attachmentWelcome: 'AQID',
       attachmentMemberIdentities: ['CID-A:${'11' * 32}', 'CID-B:${'22' * 32}'],
-      attachmentSenderMemberIdentity: 'CID-A:${'11' * 32}',
+      senderIdentity: 'CID-A:${'11' * 32}',
       attachmentChunkCount: ((byteSize) + 1024 * 1024 - 1) ~/ (1024 * 1024),
       plainSha256: '00' * 32,
       cipherByteSize: byteSize + 16,

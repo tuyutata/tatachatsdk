@@ -53,7 +53,7 @@ ChatContent _content(
   attachmentGroupId: d.groupId,
   attachmentWelcome: base64UrlEncode(d.welcome).replaceAll('=', ''),
   attachmentMemberIdentities: d.members,
-  attachmentSenderMemberIdentity: d.sender,
+  senderIdentity: d.sender,
   attachmentChunkCount: d.chunkCount,
   plainSha256: d.plainSha256,
   cipherByteSize: d.cipherByteSize,
@@ -75,7 +75,7 @@ ChatContent _copy(
   attachmentGroupId: c.attachmentGroupId!,
   attachmentWelcome: c.attachmentWelcome!,
   attachmentMemberIdentities: members ?? c.attachmentMemberIdentities!,
-  attachmentSenderMemberIdentity: c.attachmentSenderMemberIdentity!,
+  senderIdentity: c.senderIdentity!,
   attachmentChunkCount: c.attachmentChunkCount!,
   plainSha256: c.plainSha256!,
   cipherByteSize: cipherByteSize ?? c.cipherByteSize!,
@@ -351,22 +351,20 @@ void main() {
       );
       await expectLater(seal(a.attachment(state: hooked)), throwsStateError);
       final prefix = await cipher.readAsBytes();
-      final nativeBefore = await a.store.attachmentAction(
-        'attachment_progress',
-        {
-          'group_id': MlsAttachment.groupId(
-            roster.firstWhere((m) => m.endsWith(a.identity.deviceId)),
-            'file-1',
-          ),
-        },
-      );
+      final nativeBefore = await a.store
+          .attachmentAction('attachment_progress', {
+            'group_id': MlsAttachment.groupId(
+              roster.firstWhere((m) => m.endsWith(a.identity.deviceId)),
+              'file-1',
+            ),
+          });
       expect(nativeBefore['next_chunk'], committed ? 1 : 0);
       final control = await seal(a.attachment());
       final complete = await cipher.readAsBytes();
       expect(complete.sublist(0, prefix.length), prefix);
-      final state = jsonDecode(
-        await File('${a.store.path}/state.bin').readAsString(),
-      ) as Map;
+      final state =
+          jsonDecode(await File('${a.store.path}/state.bin').readAsString())
+              as Map;
       expect(
         (state['results'] as Map).values.where(
           (v) => (v as Map)['request']['group_id'] == control.attachmentGroupId,
@@ -658,82 +656,78 @@ void main() {
     );
   });
 
-  test(
-    '真实72MiB附件按块流式处理，归档状态不随文件正文增长',
-    () async {
-      final dir = await root(),
-          a = await _device(dir, 'a'),
-          b = await _device(dir, 'b');
-      final package = await b.crypto.createKeyPackage(
-        b.identity,
-        lastResort: true,
-      );
-      final source = File('${a.root.path}/large'),
-          target = File('${a.root.path}/cipher');
-      final file = await source.open(mode: FileMode.write);
-      final block = Uint8List.fromList(
-        List.generate(MlsAttachment.chunkBytes, (i) => i % 251),
-      );
-      try {
-        for (var i = 0; i < 72; i++) {
-          await file.writeFrom(block);
-        }
-        await file.flush();
-      } finally {
-        await file.close();
+  test('真实72MiB附件按块流式处理，归档状态不随文件正文增长', () async {
+    final dir = await root(),
+        a = await _device(dir, 'a'),
+        b = await _device(dir, 'b');
+    final package = await b.crypto.createKeyPackage(
+      b.identity,
+      lastResort: true,
+    );
+    final source = File('${a.root.path}/large'),
+        target = File('${a.root.path}/cipher');
+    final file = await source.open(mode: FileMode.write);
+    final block = Uint8List.fromList(
+      List.generate(MlsAttachment.chunkBytes, (i) => i % 251),
+    );
+    try {
+      for (var i = 0; i < 72; i++) {
+        await file.writeFrom(block);
       }
-      final bindings = MlsNativeBindings.load();
-      var confirmed = 0;
-      final hooked = MlsStateStore(
-        a.store.directory,
-        ownerUserId: a.identity.userId,
-        debugCallJson: (r) {
-          final result = bindings.callJson(bindings.store, r);
-          if (r['action'] == 'confirm_attachment_chunk') {
-            confirmed++;
-            expect(
-              File('${a.store.path}/state.bin').lengthSync(),
-              lessThan(256 * 1024),
-            );
-            final pending = bindings.callJson(bindings.store, {
-              'state_store_dir': a.store.path,
-              'user_id': a.identity.userId,
-              'action': 'pending_results',
-              'message_id': MlsAttachment.chunkMessageId(
-                (r['attachment'] as Map)['group_id'] as String,
-                confirmed - 1,
-              ),
-            });
-            expect(pending['results'], isEmpty);
-          }
-          return result;
-        },
-      );
-      final roster = [
-        '${a.identity.userId}:${a.identity.deviceId}',
-        '${b.identity.userId}:${b.identity.deviceId}',
-      ]..sort();
-      final control = await a
-          .attachment(state: hooked)
-          .seal(
-            attachmentId: 'file-1',
-            byteSize: 72 * MlsAttachment.chunkBytes,
-            source: source,
-            target: target,
-            members: roster,
-            keyPackages: [package],
-            contentBuilder: (d) => _content(d, 72 * MlsAttachment.chunkBytes),
+      await file.flush();
+    } finally {
+      await file.close();
+    }
+    final bindings = MlsNativeBindings.load();
+    var confirmed = 0;
+    final hooked = MlsStateStore(
+      a.store.directory,
+      ownerUserId: a.identity.userId,
+      debugCallJson: (r) {
+        final result = bindings.callJson(bindings.store, r);
+        if (r['action'] == 'confirm_attachment_chunk') {
+          confirmed++;
+          expect(
+            File('${a.store.path}/state.bin').lengthSync(),
+            lessThan(256 * 1024),
           );
-      expect(confirmed, 72);
-      final output = await b.attachment().open(
-        content: control,
-        cipher: target,
-        target: File('${b.root.path}/plain'),
-      );
-      expect(await MlsAttachment.digest(output), control.plainSha256);
-      await b.attachment().finish(control.attachmentGroupId!);
-      // 72MiB真实FFI包含144次块验密和磁盘提交，给予有限独立预算，断言不变。
-    },
-    timeout: const Timeout(Duration(minutes: 3)),
-  );
+          final pending = bindings.callJson(bindings.store, {
+            'state_store_dir': a.store.path,
+            'user_id': a.identity.userId,
+            'action': 'pending_results',
+            'message_id': MlsAttachment.chunkMessageId(
+              (r['attachment'] as Map)['group_id'] as String,
+              confirmed - 1,
+            ),
+          });
+          expect(pending['results'], isEmpty);
+        }
+        return result;
+      },
+    );
+    final roster = [
+      '${a.identity.userId}:${a.identity.deviceId}',
+      '${b.identity.userId}:${b.identity.deviceId}',
+    ]..sort();
+    final control = await a
+        .attachment(state: hooked)
+        .seal(
+          attachmentId: 'file-1',
+          byteSize: 72 * MlsAttachment.chunkBytes,
+          source: source,
+          target: target,
+          members: roster,
+          keyPackages: [package],
+          contentBuilder: (d) => _content(d, 72 * MlsAttachment.chunkBytes),
+        );
+    expect(confirmed, 72);
+    final output = await b.attachment().open(
+      content: control,
+      cipher: target,
+      target: File('${b.root.path}/plain'),
+    );
+    expect(await MlsAttachment.digest(output), control.plainSha256);
+    await b.attachment().finish(control.attachmentGroupId!);
+    // 72MiB真实FFI包含144次块验密和磁盘提交，给予有限独立预算，断言不变。
+  }, timeout: const Timeout(Duration(minutes: 3)));
 }

@@ -19,7 +19,7 @@ final class MediaContent {
     required String attachmentGroupId,
     required List<int> attachmentWelcome,
     required List<String> attachmentMemberIdentities,
-    required String attachmentSenderMemberIdentity,
+    required String senderIdentity,
     required int attachmentChunkCount,
     required List<int> plainSha256,
     required int cipherByteSize,
@@ -40,7 +40,7 @@ final class MediaContent {
     attachmentMemberIdentities: List<String>.unmodifiable(
       attachmentMemberIdentities,
     ),
-    attachmentSenderMemberIdentity: attachmentSenderMemberIdentity,
+    senderIdentity: senderIdentity,
     attachmentChunkCount: attachmentChunkCount,
     plainSha256: List<int>.unmodifiable(plainSha256),
     cipherByteSize: cipherByteSize,
@@ -61,7 +61,7 @@ final class MediaContent {
     required this.attachmentGroupId,
     required this.attachmentWelcome,
     required this.attachmentMemberIdentities,
-    required this.attachmentSenderMemberIdentity,
+    required this.senderIdentity,
     required this.attachmentChunkCount,
     required this.plainSha256,
     required this.cipherByteSize,
@@ -85,7 +85,7 @@ final class MediaContent {
   final String attachmentGroupId;
   final List<int> attachmentWelcome;
   final List<String> attachmentMemberIdentities;
-  final String attachmentSenderMemberIdentity;
+  final String senderIdentity;
   final int attachmentChunkCount;
   final List<int> plainSha256;
   final int cipherByteSize;
@@ -113,7 +113,7 @@ final class MediaContentCodec {
       ..attachmentGroupId = content.attachmentGroupId
       ..attachmentWelcome = content.attachmentWelcome
       ..attachmentMemberIdentities.addAll(content.attachmentMemberIdentities)
-      ..attachmentSenderMemberIdentity = content.attachmentSenderMemberIdentity
+      ..senderIdentity = content.senderIdentity
       ..attachmentChunkCount = content.attachmentChunkCount
       ..plainSha256 = content.plainSha256
       ..cipherByteSize = Int64(content.cipherByteSize)
@@ -191,7 +191,7 @@ final class MediaContentCodec {
       attachmentGroupId: descriptor.attachmentGroupId,
       attachmentWelcome: descriptor.attachmentWelcome,
       attachmentMemberIdentities: descriptor.attachmentMemberIdentities,
-      attachmentSenderMemberIdentity: descriptor.attachmentSenderMemberIdentity,
+      senderIdentity: descriptor.senderIdentity,
       attachmentChunkCount: descriptor.attachmentChunkCount,
       plainSha256: descriptor.plainSha256,
       cipherByteSize: descriptor.cipherByteSize.toInt(),
@@ -238,13 +238,13 @@ final class MediaContentCodec {
         content.plainSha256.length != 32 ||
         content.cipherSha256.length != 32 ||
         content.attachmentGroupId !=
-            'attachment:${content.attachmentSenderMemberIdentity}:${content.attachmentId}' ||
+            'attachment:${content.senderIdentity}:${content.attachmentId}' ||
         content.attachmentWelcome.isEmpty ||
         content.attachmentWelcome.length > 48 * 1024 ||
         members.length < 2 ||
         members.length > 1989 ||
         members.toSet().length != members.length ||
-        !members.contains(content.attachmentSenderMemberIdentity) ||
+        !members.contains(content.senderIdentity) ||
         !_sameStrings(members, sorted) ||
         members.any(
           (m) => !RegExp(r'^[^:\x00-\x20]{1,256}:[0-9a-f]{64}$').hasMatch(m),

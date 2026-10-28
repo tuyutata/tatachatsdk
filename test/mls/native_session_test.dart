@@ -42,14 +42,14 @@ void main() {
       bindingRevision: 1,
       request: MlsAuthenticationRequest(
         serviceOrigin: 'https://api.example.test',
-        challenge: '0x${List.filled(32, '22').join()}',
-        expiresAtMillis: DateTime.now().millisecondsSinceEpoch + 120000,
-        method: 'POST',
+        nonceId: '0x${List.filled(32, '22').join()}',
+        expiresAt: DateTime.now().millisecondsSinceEpoch + 120000,
+        httpMethod: 'POST',
         requestTarget: '/auth/session',
         bodyBytes: utf8.encode('synthetic request'),
       ),
     );
-    expect(authentication.deviceId, aId.deviceId);
+    expect(authentication.toJson()['device_id'], aId.deviceId);
     expect(await snapshot.readAsBytes(), beforeAuthentication);
     final first = await a.withMessage(
       'message-a',

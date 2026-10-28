@@ -319,7 +319,6 @@ class ChatFlow<TBindingToken> {
           message: message,
           messageBytes: message.writeToBuffer(),
           recipientUserId: member.userId,
-          deliveryState: ChatMessageDeliveryState.queued,
         );
         queued.add(message);
       }
@@ -473,7 +472,6 @@ class ChatFlow<TBindingToken> {
           message: message,
           messageBytes: messageBytes,
           recipientUserId: target.recipient.userId,
-          deliveryState: ChatMessageDeliveryState.queued,
         );
       }
       queued.add((message: message, messageBytes: messageBytes));
@@ -566,7 +564,6 @@ class ChatFlow<TBindingToken> {
           ownerUserId: _ownerUserId,
           message: message,
           messageBytes: messageBytes,
-          reason: 'mls_out_of_order',
         );
         return ChatIncomingProcessResult(
           messageId: message.messageId,
@@ -615,8 +612,7 @@ class ChatFlow<TBindingToken> {
       if (content.isMedia &&
           (inbound.senderMemberIdentity !=
                   '${message.senderUserId}:${message.senderDeviceId}' ||
-              content.attachmentSenderMemberIdentity !=
-                  inbound.senderMemberIdentity)) {
+              content.senderIdentity != inbound.senderMemberIdentity)) {
         throw StateError('附件控制实际MLS发送者不一致');
       }
       await _store.saveIncomingMessage(
@@ -661,7 +657,6 @@ class ChatFlow<TBindingToken> {
           ownerUserId: _ownerUserId,
           message: message,
           messageBytes: messageBytes,
-          reason: 'mls_welcome_required',
         );
         return ChatIncomingProcessResult(
           messageId: message.messageId,
