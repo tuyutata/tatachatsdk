@@ -1,6 +1,7 @@
 import 'package:tatachat_core/chat_message.dart';
 import 'package:tatachat_group/model.dart';
 import 'package:tatachat_protocol/message.dart';
+
 import 'records.dart';
 
 /// Storage operations required by the direct and group message state machines.
@@ -122,7 +123,6 @@ abstract interface class ChatFlowStore<TBindingToken> {
     required String payload,
     required int createdAtMillis,
     required List<EncryptedMessage> messages,
-    required Map<String, String> recipientUserByUserId,
     String? pendingLocalMessageId,
   });
 

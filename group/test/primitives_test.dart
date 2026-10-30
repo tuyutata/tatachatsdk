@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:tatachat_group/attachment/fanout.dart';
 import 'package:tatachat_group/epoch_ordering.dart';
 import 'package:tatachat_group/limits.dart';
 import 'package:tatachat_group/membership.dart';
@@ -8,7 +9,6 @@ import 'package:tatachat_mls/mls_session.dart';
 import 'package:tatachat_protocol/message.dart';
 
 void main() {
-
   group('GroupMessageFanout', () {
     test('one ciphertext fans out to stable recipient messages', () {
       const wire = MlsWireMessage(
@@ -75,6 +75,66 @@ void main() {
         isEmpty,
       );
     });
+  });
+
+  test('群附件入口保留相同用户其他设备、去重及失败边界', () {
+    const wire = MlsWireMessage(
+      wireBytes: [1, 2, 3],
+      conversationId: 'grp:owner:fanout',
+      messageKind: MlsMessageKind.application,
+    );
+    const recipients = [
+      MlsMemberIdentity(userId: 'owner', deviceId: 'phone'),
+      MlsMemberIdentity(userId: 'owner', deviceId: 'tablet'),
+      MlsMemberIdentity(userId: 'peer', deviceId: 'phone'),
+      MlsMemberIdentity(userId: 'peer', deviceId: 'phone'),
+      MlsMemberIdentity(userId: '', deviceId: 'phone'),
+      MlsMemberIdentity(userId: 'peer', deviceId: ''),
+    ];
+    final messages = GroupAttachmentFanout.fanOut(
+      wire: wire,
+      recipients: recipients,
+      senderUserId: 'owner',
+      senderDeviceId: 'phone',
+      createdAtMillis: 10,
+    );
+    expect(messages.map((m) => (m.recipientUserId, m.recipientDeviceId)), [
+      ('owner', 'tablet'),
+      ('peer', 'phone'),
+    ]);
+    expect(messages.map((m) => m.openmlsCiphertext), everyElement([1, 2, 3]));
+    expect(messages.map((m) => m.messageId).toSet(), hasLength(2));
+    final ordinary = GroupMessageFanout.fanOut(
+      wire: wire,
+      recipients: recipients,
+      senderUserId: 'owner',
+      senderDeviceId: 'phone',
+      createdAtMillis: 10,
+    );
+    expect(
+      messages.map((m) => m.writeToBuffer()),
+      ordinary.map((m) => m.writeToBuffer()),
+    );
+    expect(
+      GroupAttachmentFanout.fanOut(
+        wire: wire,
+        recipients: const [],
+        senderUserId: 'owner',
+        senderDeviceId: 'phone',
+        createdAtMillis: 10,
+      ),
+      isEmpty,
+    );
+    expect(
+      () => GroupAttachmentFanout.fanOut(
+        wire: wire,
+        recipients: recipients,
+        senderUserId: '',
+        senderDeviceId: 'phone',
+        createdAtMillis: 10,
+      ),
+      throwsArgumentError,
+    );
   });
 
   group('GroupMembership', () {
@@ -249,4 +309,3 @@ void main() {
     expect(first[0].messageId, isNot(first[1].messageId));
   });
 }
-

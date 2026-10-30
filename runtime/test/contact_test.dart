@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tatachat_mls/mls_boundary.dart';
 import 'package:tatachat_mls/mls_native.dart';
@@ -29,66 +30,75 @@ class _ContactHost implements ChatRuntimeHost {
 }
 
 void main() {
-
   useIsolatedChatIsar();
   requireChatSdkNative();
   // 公共运行时真实调用与应用集成共享入口，避免只验证内部引擎而漏接能力。
-  for (final change in [false, true]) {
-    test('公开通讯录入口复用已有MLS身份，账户${change ? '变化拒绝晚回' : '不变完成同步'}', () async {
-      final temp = await Directory.systemTemp.createTemp('contact_runtime_');
-      final root = Directory(await temp.resolveSymbolicLinks());
-      addTearDown(() => root.delete(recursive: true));
-      final initial = MlsStateStore(root, ownerUserId: 'user-a');
-      final identity = await initial.prepareIdentity();
-      final host = _ContactHost(), relay = TestContactRelay();
-      final runtime = ChatSdk(
-        host: host,
-        documentsDirectoryProvider: () async => root,
-        stateStoreFactory: (_) async =>
-            MlsStateStore(root, ownerUserId: 'user-a'),
-      );
-      var requests = 0, applied = 0, snapshotsRead = 0;
-      final payload = utf8.encode('snapshot');
-      Future<List<List<int>>> synchronize() => runtime.synchronizeContacts(
-        exchange: (request) async {
-          requests++;
-          final result = await relay.call(identity.deviceId, request);
-          if (change) {
-            host.account = const ChatRuntimeAccount(
-              hostIndex: 1,
-              bindingScope: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-              userId: 'other-user',
-              bindingRevision: 1,
-              accountId: '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
-              displayName: 'other',
-            );
-          }
-          return result;
-        },
-        snapshots: () async {
-          snapshotsRead++;
-          return [payload];
-        },
-        apply: (_) async {
-          applied++;
-        },
-      );
-      if (change) {
+  for (final change in [
+    'none',
+    'user',
+    'account',
+    'binding',
+    'domain',
+    'host',
+  ]) {
+    test(
+      '公开通讯录入口复用已有MLS身份，账户${change == 'none' ? '不变完成同步' : '$change变化拒绝晚回'}',
+      () async {
+        final temp = await Directory.systemTemp.createTemp('contact_runtime_');
+        final root = Directory(await temp.resolveSymbolicLinks());
+        addTearDown(() => root.delete(recursive: true));
+        final initial = MlsStateStore(root, ownerUserId: 'user-a');
+        final identity = await initial.prepareIdentity();
+        final host = _ContactHost(), relay = TestContactRelay();
+        final runtime = ChatSdk(
+          host: host,
+          documentsDirectoryProvider: () async => root,
+          stateStoreFactory: (_) async =>
+              MlsStateStore(root, ownerUserId: 'user-a'),
+        );
+        var requests = 0, applied = 0, snapshotsRead = 0;
+        final payload = utf8.encode('snapshot');
+        Future<List<List<int>>> synchronize() => runtime.synchronizeContacts(
+          exchange: (request) async {
+            requests++;
+            final result = await relay.call(identity.deviceId, request);
+            if (change != 'none') {
+              host.account = ChatRuntimeAccount(
+                hostIndex: change == 'host' ? 2 : 1,
+                bindingScope: change == 'domain' ? 'other' : '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+                userId: change == 'user' ? 'other-user' : 'user-a',
+                bindingRevision: change == 'binding' ? 2 : 1,
+                accountId: change == 'account' ? '0x${'cc' * 32}' : '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+                displayName: 'other',
+              );
+            }
+            return result;
+          },
+          snapshots: () async {
+            snapshotsRead++;
+            return [payload];
+          },
+          apply: (_) async {
+            applied++;
+          },
+        );
+        if (change != 'none') {
+          await expectLater(synchronize(), throwsStateError);
+          expect(requests, 1);
+          expect(snapshotsRead, 0);
+        } else {
+          expect(await synchronize(), [payload]);
+          expect(snapshotsRead, 1);
+          expect(relay.members, [identity.deviceId]);
+          expect((await initial.readIdentity()).publicKey, identity.publicKey);
+        }
+        expect(applied, 0);
+        await runtime.close();
+        final before = requests;
         await expectLater(synchronize(), throwsStateError);
-        expect(requests, 1);
-        expect(snapshotsRead, 0);
-      } else {
-        expect(await synchronize(), [payload]);
-        expect(snapshotsRead, 1);
-        expect(relay.members, [identity.deviceId]);
-        expect((await initial.readIdentity()).publicKey, identity.publicKey);
-      }
-      expect(applied, 0);
-      await runtime.close();
-      final before = requests;
-      await expectLater(synchronize(), throwsStateError);
-      expect(requests, before);
-    });
+        expect(requests, before);
+      },
+    );
   }
   test('通讯录签读不补密钥，统一离线自动准备后复用同一设备同步', () async {
     final temporary = await Directory.systemTemp.createTemp(
@@ -148,4 +158,3 @@ void main() {
     await runtime.close();
   });
 }
-

@@ -441,30 +441,15 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
     }
   }
 
-  /// 正文按唯一目标载荷保存于系统保护数据库，搜索索引只保存去重 bigram。
-  Future<_StoredMessageContent> _prepareMessage({
-    required String ownerUserId,
-    required String currentAccountId,
-    required String messageId,
-    required String? plaintext,
-    required ChatBinding binding,
-  }) async {
-    if (plaintext == null || plaintext.isEmpty) {
-      return const _StoredMessageContent(payload: null, tokens: <String>[]);
-    }
+  /// 同步解码一次正文，摘要与去重 bigram 共用同一结果；绑定仍由写入边界核验。
+  _StoredMessageContent _prepareMessage(String? plaintext) {
+    final summary = _messageSummary(plaintext);
     return _StoredMessageContent(
       payload: plaintext,
-      tokens: _searchTokens(_messageSummary(plaintext)),
+      summary: summary,
+      tokens: _searchTokens(summary),
     );
   }
-
-  Future<String> _prepareSummary({
-    required String ownerUserId,
-    required String currentAccountId,
-    required String conversationId,
-    required String? plaintext,
-    required ChatBinding binding,
-  }) async => _messageSummary(plaintext);
 
   Future<List<ChatConversationPreview>> readConversationPreviews({
     required String ownerUserId,
@@ -979,20 +964,8 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
         expectedBindingScope: bindingToken.bindingScope,
       );
       _requireResolvedBinding(bindingToken: bindingToken, binding: binding);
-      final prepared = await _prepareMessage(
-        ownerUserId: ownerUserId,
-        currentAccountId: currentAccountId,
-        messageId: localMessageId,
-        plaintext: payload,
-        binding: binding,
-      );
-      final summary = await _prepareSummary(
-        ownerUserId: ownerUserId,
-        currentAccountId: currentAccountId,
-        conversationId: conversationId,
-        plaintext: payload,
-        binding: binding,
-      );
+      final prepared = _prepareMessage(payload);
+      final summary = prepared.summary;
       await _chatIsar.writeTxn((isar) async {
         await _requireBindingTokenInTxn(isar, bindingToken);
         await _putConversationInTxn(
@@ -1150,20 +1123,8 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
       );
       _requireResolvedBinding(bindingToken: bindingToken, binding: binding);
       // 载荷校验在事务外完成，最终写入仍须复核持久绑定代次。
-      final prepared = await _prepareMessage(
-        ownerUserId: ownerUserId,
-        currentAccountId: currentAccountId,
-        messageId: message.messageId,
-        plaintext: plaintext,
-        binding: binding,
-      );
-      final summary = await _prepareSummary(
-        ownerUserId: ownerUserId,
-        currentAccountId: currentAccountId,
-        conversationId: message.conversationId,
-        plaintext: plaintext,
-        binding: binding,
-      );
+      final prepared = _prepareMessage(plaintext);
+      final summary = prepared.summary;
       await _chatIsar.writeTxn((isar) async {
         await _requireBindingTokenInTxn(isar, bindingToken);
         var messageAtMillis = message.createdAtMillis.toInt();
@@ -1311,20 +1272,8 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
         expectedBindingScope: bindingToken.bindingScope,
       );
       _requireResolvedBinding(bindingToken: bindingToken, binding: binding);
-      final prepared = await _prepareMessage(
-        ownerUserId: ownerUserId,
-        currentAccountId: currentAccountId,
-        messageId: message.messageId,
-        plaintext: plaintext,
-        binding: binding,
-      );
-      final summary = await _prepareSummary(
-        ownerUserId: ownerUserId,
-        currentAccountId: currentAccountId,
-        conversationId: message.conversationId,
-        plaintext: plaintext,
-        binding: binding,
-      );
+      final prepared = _prepareMessage(plaintext);
+      final summary = prepared.summary;
       await _chatIsar.writeTxn((isar) async {
         await _requireBindingTokenInTxn(isar, bindingToken);
         final existing = await isar.chatMessageEntitys
@@ -1881,7 +1830,7 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
 
   /// 群发出:一条逻辑消息 + N 条按收件人的出站队列(投递/重试复用 1:1 路径)。
   ///
-  /// [recipientUserByUserId] 固定按成员 user ID 建立队列路由；账户不进入群消息身份。
+  /// 收件人直接使用冻结设备消息的路由，不另建 user ID 自映射。
   @override
   Future<void> saveOutgoingGroupMessage({
     required ChatBindingFenceToken bindingToken,
@@ -1895,7 +1844,6 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
     required String payload,
     required int createdAtMillis,
     required List<EncryptedMessage> messages,
-    required Map<String, String> recipientUserByUserId,
     String? pendingLocalMessageId,
   }) async {
     _requireWriterContext(
@@ -1910,20 +1858,8 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
         expectedBindingScope: bindingToken.bindingScope,
       );
       _requireResolvedBinding(bindingToken: bindingToken, binding: binding);
-      final prepared = await _prepareMessage(
-        ownerUserId: ownerUserId,
-        currentAccountId: currentAccountId,
-        messageId: logicalMessageId,
-        plaintext: payload,
-        binding: binding,
-      );
-      final summary = await _prepareSummary(
-        ownerUserId: ownerUserId,
-        currentAccountId: currentAccountId,
-        conversationId: groupId,
-        plaintext: payload,
-        binding: binding,
-      );
+      final prepared = _prepareMessage(payload);
+      final summary = prepared.summary;
       await _chatIsar.writeTxn((isar) async {
         await _requireBindingTokenInTxn(isar, bindingToken);
         if (pendingLocalMessageId != null) {
@@ -1973,12 +1909,9 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
             ..createdAtMillis = createdAtMillis,
         );
         for (final message in messages) {
-          final recipientUserId =
-              recipientUserByUserId[message.recipientUserId];
-          if (recipientUserId == null || recipientUserId.isEmpty) {
-            throw StateError(
-              '群出站队列缺少收件人 user ID 映射: ${message.recipientUserId}',
-            );
+          final recipientUserId = message.recipientUserId;
+          if (recipientUserId.isEmpty) {
+            throw StateError('群出站队列收件人 user ID 不能为空');
           }
           await isar.chatOutboundQueueEntitys.putByOwnerUserIdMessageId(
             ChatOutboundQueueEntity()
@@ -2017,20 +1950,8 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
         expectedBindingScope: bindingToken.bindingScope,
       );
       _requireResolvedBinding(bindingToken: bindingToken, binding: binding);
-      final prepared = await _prepareMessage(
-        ownerUserId: ownerUserId,
-        currentAccountId: currentAccountId,
-        messageId: message.messageId,
-        plaintext: plaintext,
-        binding: binding,
-      );
-      final summary = await _prepareSummary(
-        ownerUserId: ownerUserId,
-        currentAccountId: currentAccountId,
-        conversationId: message.conversationId,
-        plaintext: plaintext,
-        binding: binding,
-      );
+      final prepared = _prepareMessage(plaintext);
+      final summary = prepared.summary;
       await _chatIsar.writeTxn((isar) async {
         await _requireBindingTokenInTxn(isar, bindingToken);
         final existing = await isar.chatMessageEntitys
@@ -2332,10 +2253,15 @@ List<int> _hexToBytes(String value) {
   return bytes;
 }
 
-/// 一条消息的系统保护存储正文与明文索引。
+/// 一条消息的正文、摘要与搜索索引，只保存单次同步准备结果。
 class _StoredMessageContent {
-  const _StoredMessageContent({required this.payload, required this.tokens});
+  const _StoredMessageContent({
+    required this.payload,
+    required this.summary,
+    required this.tokens,
+  });
   final String? payload;
+  final String summary;
   final List<String> tokens;
 }
 

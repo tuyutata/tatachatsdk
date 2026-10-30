@@ -4999,8 +4999,9 @@ class ChatRuntimeCore {
 
   Future<void> _requireCurrentAccount(
     ChatRuntimeAccount frozen,
-    int generation,
-  ) async {
+    int generation, {
+    String changedMessage = '聊天账户绑定已变化，拒绝旧请求结果',
+  }) async {
     _ensureActive();
     final current = await _readAccount(expectedAccountId: frozen.accountId);
     _ensureActive();
@@ -5011,7 +5012,7 @@ class ChatRuntimeCore {
         current.bindingScope != frozen.bindingScope ||
         current.bindingRevision != frozen.bindingRevision ||
         current.hostIndex != frozen.hostIndex) {
-      throw StateError('聊天账户绑定已变化，拒绝旧请求结果');
+      throw StateError(changedMessage);
     }
   }
 
@@ -5322,19 +5323,12 @@ class ChatRuntimeCore {
     final generation = _accountGenerations[account.accountId] ?? 0;
     final token = await _convergeBindingFence(account);
     Future<void> requireCurrent() async {
-      final current = await _readAccountInternal(
-        expectedAccountId: account.accountId,
+      // 账户判定复用唯一守卫，网络与业务落库前后的检查时点保持。
+      await _requireCurrentAccount(
+        account,
+        generation,
+        changedMessage: '通讯录同步期间宿主账户已失效',
       );
-      _ensureActive();
-      if (_blockedAccountIds.contains(account.accountId) ||
-          (_accountGenerations[account.accountId] ?? 0) != generation ||
-          current.userId != account.userId ||
-          current.accountId != account.accountId ||
-          current.bindingRevision != account.bindingRevision ||
-          current.bindingScope != account.bindingScope ||
-          current.hostIndex != account.hostIndex) {
-        throw StateError('通讯录同步期间宿主账户已失效');
-      }
       await _runBindingFileMutation(token, () async {});
     }
 
@@ -5395,21 +5389,12 @@ class ChatRuntimeCore {
     final account = await _readAccountInternal();
     _ensureActive();
     final generation = _accountGenerations[account.accountId] ?? 0;
-    Future<void> requireCurrentAccount() async {
-      final current = await _readAccountInternal(
-        expectedAccountId: account.accountId,
-      );
-      _ensureActive();
-      if (_blockedAccountIds.contains(account.accountId) ||
-          (_accountGenerations[account.accountId] ?? 0) != generation ||
-          current.userId != account.userId ||
-          current.accountId != account.accountId ||
-          current.bindingRevision != account.bindingRevision ||
-          current.bindingScope != account.bindingScope ||
-          current.hostIndex != account.hostIndex) {
-        throw StateError('MLS认证期间宿主账户已失效');
-      }
-    }
+    // 只复用判断实现，签名前后及文件屏障退出后的复核均保留。
+    Future<void> requireCurrentAccount() => _requireCurrentAccount(
+      account,
+      generation,
+      changedMessage: 'MLS认证期间宿主账户已失效',
+    );
 
     await requireCurrentAccount();
     final proof = await _runUserFileMutation(

@@ -1,9 +1,10 @@
-import 'package:tatachat_core/message_id.dart';
 import 'package:tatachat_mls/mls_group_boundary.dart';
 import 'package:tatachat_mls/mls_session.dart';
 import 'package:tatachat_protocol/message.dart';
 
-/// 一份群 OpenMLS 密文按成员生成独立路由消息，密文绝不重复加密。
+import '../message/fanout.dart';
+
+/// 群附件保留独立入口，复用群内统一设备扇出；不参与私聊流程。
 final class GroupAttachmentFanout {
   GroupAttachmentFanout._();
 
@@ -14,37 +15,12 @@ final class GroupAttachmentFanout {
     required String senderDeviceId,
     required int createdAtMillis,
   }) {
-    if (senderUserId.isEmpty || senderDeviceId.isEmpty) {
-      throw ArgumentError('群消息发送身份不完整');
-    }
-    final unique = <String, MlsMemberIdentity>{};
-    for (final recipient in recipients) {
-      if (recipient.userId.isEmpty ||
-          recipient.deviceId.isEmpty ||
-          (recipient.userId == senderUserId &&
-              recipient.deviceId == senderDeviceId)) {
-        continue;
-      }
-      unique[recipient.wireValue] = recipient;
-    }
-    return unique.values
-        .map((recipient) {
-          final messageId = MessageId.derive(
-            conversationId: wire.conversationId,
-            senderUserId: senderUserId,
-            recipientUserId: '${recipient.userId}:${recipient.deviceId}',
-            createdAtMillis: createdAtMillis,
-            encryptedMessage: wire.wireBytes,
-          );
-          return wire.toEncryptedMessage(
-            messageId: messageId,
-            senderUserId: senderUserId,
-            recipientUserId: recipient.userId,
-            senderDeviceId: senderDeviceId,
-            recipientDeviceId: recipient.deviceId,
-            createdAtMillis: createdAtMillis,
-          );
-        })
-        .toList(growable: false);
+    return GroupMessageFanout.fanOut(
+      wire: wire,
+      recipients: recipients,
+      senderUserId: senderUserId,
+      senderDeviceId: senderDeviceId,
+      createdAtMillis: createdAtMillis,
+    );
   }
 }

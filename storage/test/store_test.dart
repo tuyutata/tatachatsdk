@@ -255,6 +255,106 @@ void main() {
     },
   );
 
+  test('群存储直接保留冻结设备路由、摘要和索引，坏路由整笔回滚', () async {
+    final store = ChatStore();
+    final token = await store.activateBindingFence(_testBinding);
+    const groupId = 'grp:owner:routes';
+    await store.upsertGroupShell(
+      bindingToken: token,
+      ownerUserId: _ownerUserId,
+      currentAccountId: _aliceAccountId,
+      groupId: groupId,
+      groupName: '测试群',
+      creatorUserId: _ownerUserId,
+      epoch: 1,
+    );
+    // 消息时间晚于新建群会话，旧消息不得覆盖较新的摘要规则仍保持。
+    final createdAtMillis = DateTime.now().millisecondsSinceEpoch + 1;
+    const wire = MlsWireMessage(
+      wireBytes: [1, 2, 3],
+      conversationId: groupId,
+      messageKind: MlsMessageKind.application,
+    );
+    final messages = [
+      for (final device in ['phone', 'tablet'])
+        wire.toEncryptedMessage(
+          messageId: 'delivery-$device',
+          senderUserId: _ownerUserId,
+          senderDeviceId: 'owner-phone',
+          recipientUserId: _bobUserId,
+          recipientDeviceId: device,
+          createdAtMillis: createdAtMillis,
+        ),
+    ];
+    Future<void> save(
+      String id,
+      List<EncryptedMessage> deliveries,
+      String payload,
+    ) => store.saveOutgoingGroupMessage(
+      bindingToken: token,
+      ownerUserId: _ownerUserId,
+      currentAccountId: _aliceAccountId,
+      groupId: groupId,
+      senderUserId: _ownerUserId,
+      logicalMessageId: id,
+      messageKind: ChatMessageKind.text,
+      payload: payload,
+      createdAtMillis: createdAtMillis,
+      messages: deliveries,
+    );
+    final payload = _payload('Hello 群消息');
+    await save('logical', messages, payload);
+    final queued = await store.readQueuedMessages(
+      bindingToken: token,
+      ownerUserId: _ownerUserId,
+      conversationId: groupId,
+    );
+    expect(queued.map((m) => m.recipientUserId), [_bobUserId, _bobUserId]);
+    final decoded = queued.map(
+      (m) => EncryptedMessage.fromBuffer(m.messageBytes),
+    );
+    expect(decoded.map((m) => m.recipientDeviceId).toSet(), {
+      'phone',
+      'tablet',
+    });
+    expect(
+      queued.map((m) => m.messageBytes),
+      messages.map((m) => m.writeToBuffer()),
+    );
+    expect(
+      (await store.readConversationPreviews(
+        ownerUserId: _ownerUserId,
+        currentAccountId: _aliceAccountId,
+      )).single.lastMessage,
+      'Hello 群消息',
+    );
+    expect(
+      await store.searchMessages(
+        ownerUserId: _ownerUserId,
+        currentAccountId: _aliceAccountId,
+        keyword: 'hello',
+      ),
+      hasLength(1),
+    );
+    final bad = messages.first.deepCopy()
+      ..messageId = 'bad-delivery'
+      ..deliveries.single.recipient.userId = '';
+    await expectLater(save('bad-route', [bad], payload), throwsStateError);
+    await expectLater(
+      save('bad-payload', messages, 'invalid'),
+      throwsFormatException,
+    );
+    expect(await store.outboundQueueCount(_ownerUserId), 2);
+    expect(
+      await store.readMessages(
+        ownerUserId: _ownerUserId,
+        currentAccountId: _aliceAccountId,
+        conversationId: groupId,
+      ),
+      hasLength(1),
+    );
+  });
+
   test('队列与待投递媒体动作读取拒绝 fence generation 推进前的旧 token', () async {
     final store = ChatStore();
     final oldToken = await store.activateBindingFence(_testBinding);

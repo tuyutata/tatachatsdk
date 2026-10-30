@@ -494,9 +494,6 @@ class ChatGroupFlow<TBindingToken> {
       payload: payload,
       createdAtMillis: nowMillis,
       messages: messages,
-      recipientUserByUserId: {
-        for (final member in recipients) member.userId: member.userId,
-      },
       pendingLocalMessageId: pendingLocalMessageId,
     );
     await _crypto.acknowledgeMessage(nativeMessageId);
