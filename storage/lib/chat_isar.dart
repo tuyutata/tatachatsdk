@@ -12,7 +12,7 @@ part 'chat_isar.g.dart';
 @Name('conversation')
 @collection
 class ChatConversationEntity {
-  @Name('row_id')
+  @Name('id')
   Id id = Isar.autoIncrement;
 
   /// 本机聊天数据的永久属主 user ID；与会话 ID 组成复合唯一键。
@@ -42,11 +42,11 @@ class ChatConversationEntity {
   late String peerUserId;
 
   /// 私聊标题；群名只归group记录。
-  @Name('chat_title')
+  @Name('title')
   String? title;
 
   /// 系统保护数据库内的会话摘要，不另设应用加密密钥。
-  @Name('message_summary')
+  @Name('summary')
   late String lastMessageSummary;
 
   @Index()
@@ -59,7 +59,7 @@ class ChatConversationEntity {
   late String lastDeliveryState;
 
   /// 会话类型:null/"dm"=私聊,"group"=私密小群。免每次 join 群表判定。
-  @Name('chat_kind')
+  @Name('kind')
   String? conversationKind;
 }
 
@@ -68,7 +68,7 @@ class ChatConversationEntity {
 @Name('message')
 @collection
 class ChatMessageEntity {
-  @Name('row_id')
+  @Name('id')
   Id id = Isar.autoIncrement;
 
   /// 本机聊天数据的永久属主 user ID；与 message ID 组成复合唯一键。
@@ -91,13 +91,13 @@ class ChatMessageEntity {
   @Name('conversation_id')
   late String conversationId;
 
-  @Name('message_direction')
+  @Name('direction')
   late String direction;
   @Name('sender_id')
   late String senderUserId;
   @Name('recipient_id')
   late String recipientUserId;
-  @Name('message_kind')
+  @Name('kind')
   late String messageKind;
   @Name('delivery_state')
   late String deliveryState;
@@ -126,7 +126,7 @@ class ChatMessageEntity {
 @Name('outbound')
 @collection
 class ChatOutboundQueueEntity {
-  @Name('row_id')
+  @Name('id')
   Id id = Isar.autoIncrement;
 
   /// 本机出站队列的永久属主 user ID。
@@ -159,7 +159,7 @@ class ChatOutboundQueueEntity {
 @Name('media')
 @collection
 class ChatOutgoingMediaEntity {
-  @Name('row_id')
+  @Name('id')
   Id id = Isar.autoIncrement;
 
   /// 本机待投递媒体的永久属主 user ID。
@@ -202,7 +202,7 @@ class ChatOutgoingMediaEntity {
 @Name('inbound')
 @collection
 class ChatPendingInboundEntity {
-  @Name('row_id')
+  @Name('id')
   Id id = Isar.autoIncrement;
 
   /// 本机入站缓冲的永久属主 user ID。
@@ -232,7 +232,7 @@ class ChatPendingInboundEntity {
 @Name('route')
 @collection
 class ChatRouteCacheEntity {
-  @Name('row_id')
+  @Name('id')
   Id id = Isar.autoIncrement;
 
   /// 本机路由缓存的永久属主 user ID；与对方 user ID 组成复合唯一键。
@@ -265,7 +265,7 @@ class ChatRouteCacheEntity {
 @Name('group')
 @collection
 class ChatGroupEntity {
-  @Name('row_id')
+  @Name('id')
   Id id = Isar.autoIncrement;
 
   /// 本机群聊镜像的永久属主 user ID。
@@ -295,7 +295,7 @@ class ChatGroupEntity {
 @Name('member')
 @collection
 class ChatGroupMemberEntity {
-  @Name('row_id')
+  @Name('id')
   Id id = Isar.autoIncrement;
 
   /// 本机群成员镜像的永久属主 user ID。
@@ -323,7 +323,7 @@ class ChatGroupMemberEntity {
 @Name('commit')
 @collection
 class ChatGroupPendingCommitEntity {
-  @Name('row_id')
+  @Name('id')
   Id id = Isar.autoIncrement;
 
   /// 本机乱序 Commit 缓冲的永久属主 user ID。
@@ -356,7 +356,7 @@ class ChatGroupPendingCommitEntity {
 @Name('fence')
 @collection
 class ChatBindingFenceEntity {
-  @Name('row_id')
+  @Name('id')
   Id id = Isar.autoIncrement;
 
   /// 本机 Chat 数据永久属主 user ID。安全门闩禁止 replace，更新必须保留原行与 generation。
@@ -607,7 +607,7 @@ class ChatIsar {
     final directory = IsarCoreBootstrap.isFlutterTest
         ? await IsarCoreBootstrap.resolveDirectory()
         : (await ChatSystemProtectedStorage.prepare()).path;
-    final existing = Isar.getInstance('tatachat_sdk_chat');
+    final existing = Isar.getInstance('tatachatsdk_chat');
     if (existing != null && existing.isOpen) {
       try {
         existing.chatConversationEntitys;
@@ -633,7 +633,7 @@ class ChatIsar {
     // 仅句柄创建同步执行，系统保护回读与本域生命周期继续沿用原有异步路径。
     final opened = Isar.openSync(
       _schemas,
-      name: 'tatachat_sdk_chat',
+      name: 'tatachatsdk_chat',
       directory: directory,
     );
     try {
@@ -717,7 +717,7 @@ class ChatIsar {
 
     final candidates = <Isar>[];
     final tracked = _isar;
-    final registered = Isar.getInstance('tatachat_sdk_chat');
+    final registered = Isar.getInstance('tatachatsdk_chat');
     if (tracked != null) candidates.add(tracked);
     if (registered != null && !identical(registered, tracked)) {
       candidates.add(registered);

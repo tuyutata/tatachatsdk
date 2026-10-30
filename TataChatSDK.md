@@ -96,7 +96,7 @@ ChatRuntimeAccount 只携带通用字段。运行时不得出现宿主身份格�
 
 ## 6. 本机存储
 
-SDK 数据根唯一为系统准备的 tatachat_sdk_data。ChatIsar 数据库名为 tatachat_sdk_chat；本地附件目录为 chat/by_user/<UTF-8用户标识hex>/attachments，文件锁与清理使用同一用户编码。MLS身份和协议状态独立位于 tatachat_sdk_mls，同一用户绑定变化不更换MLS身份。
+SDK 数据根唯一为系统准备的 tatachat_sdk_data。ChatIsar 数据库名为 tatachatsdk_chat；本地附件目录为 chat/by_user/<UTF-8用户标识hex>/attachments，文件锁与清理使用同一用户编码。MLS身份和协议状态独立位于 tatachat_sdk_mls，同一用户绑定变化不更换MLS身份。
 
 本地正文、会话摘要、待发载荷和字符 bigram 索引保存在 SDK 自有系统保护数据库中；搜索命中后复核实际子串。附件缓存直接复制到同一受保护域，不增加应用加密密钥。缓存读写只接受绝对规范路径，点路径段及已有父项链接在创建目录之前拒绝。binding_scope由CitizenApp与TataChatSDK的实际公开接口定义，表示宿主公开隔离范围，Dart拼写为bindingScope。读写复核公开 binding_scope、user_id、account_id、binding_revision 和持久 generation；finalized 换绑在事务内保留同CID历史、更新公开绑定并清理短期队列。
 

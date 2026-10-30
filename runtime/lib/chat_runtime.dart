@@ -271,13 +271,13 @@ class _ChatCrossIsolateCoordinator {
   static const String _pendingMarkerPayload = 'pending\n';
   static const String _completeMarkerName = '.tatachat_sdk_data_wipe.complete';
   static const String _completeMarkerPayload = 'complete\n';
-  static const String _leasePrefix = '.tatachat_sdk_chat_lease_';
+  static const String _leasePrefix = '.tatachatsdk_chat_lease_';
   static const String _leaseSuffix = '.lease';
-  static const String _userMutationLeasePrefix = '.tatachat_sdk_chat_user_';
+  static const String _userMutationLeasePrefix = '.tatachatsdk_chat_user_';
   static const String _userMutationLeaseSuffix = '.mutation_lease';
   static const String _userMutationStaleSuffix = '.stale';
   static const String _startupBarrierName =
-      '.tatachat_sdk_chat_startup.barrier';
+      '.tatachatsdk_chat_startup.barrier';
   static const Duration _leaseDrainTimeout = Duration(seconds: 5);
   static const Duration _leasePollInterval = Duration(milliseconds: 20);
   static const Duration _leaseStaleAfter = Duration(seconds: 30);

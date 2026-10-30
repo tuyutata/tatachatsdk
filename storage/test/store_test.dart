@@ -64,9 +64,9 @@ void main() {
       'fence',
     });
     for (final schema in schemas) {
-      expect(schema.idName, 'row_id');
+      expect(schema.idName, 'id');
       for (final name in schema.properties.keys) {
-        expect(name, matches(RegExp(r'^[a-z]+_[a-z]+$')));
+        expect(name, matches(RegExp(r'^[a-z]+(?:_[a-z]+)*$')));
       }
     }
     expect(
