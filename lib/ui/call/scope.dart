@@ -1,6 +1,5 @@
 import 'package:flutter/widgets.dart';
-
-import '../../call/coordinator.dart';
+import 'package:tatachat_call/coordinator.dart';
 
 class ChatCallScope extends InheritedWidget {
   const ChatCallScope({

@@ -4,7 +4,7 @@ TataChatSDK独立拥有聊天客户端逻辑、原生引擎、公开接口、原
 
 ## 编译与塔塔自动化
 
-编译入口为scripts/build.mjs；工具及纯版本声明归scripts/config.mjs，独立构建测试归test/build.test.mjs；公开流程声明及实现归本仓scripts/config.mjs，控制台只调用声明和显示公开状态。SDK是唯一公共平台，Android、iOS、macOS只是内部编译目标；它们不产生独立版本或独立平台Artifact。
+编译入口为scripts/build.mjs；工具及纯版本声明归scripts/config.mjs，独立构建测试归lib/test/build.test.mjs；公开流程声明及实现归本仓scripts/config.mjs，控制台只调用声明和显示公开状态。SDK是唯一公共平台，Android、iOS、macOS只是内部编译目标；它们不产生独立版本或独立平台Artifact。
 
 公开命令：node scripts/build.mjs test执行Rust测试、宿主库编译、Dart严格分析及全部Flutter真实测试；默认命令编译三端并交付完整SDK目录；归档、正式版本和网络请求由GitHub工作流的官方命令执行；native android/ios/macos只用于独立核验内部目标；protocol直接调用显式交付的官方protoc和Dart插件。编译命令输出JSON只包含本轮work和output目录，失败退出非零。不接受控制台任务宿主、资源回执、供给路径或旧固定现场协议。
 
@@ -18,7 +18,7 @@ TataChatSDK独立拥有聊天客户端逻辑、原生引擎、公开接口、原
 
 真实公共布局接口createFlutterSourceView、assertFlutterSourceView和analysisOptionsBytes继续由SDK持有，供现有公民、途遇消费者调用。Android扁平源码仅在本轮工程映射到Flutter要求的src/main路径，分析配置直接生成正常YAML，不解析内嵌Shell或复制旧资源框架。
 
-GitHub只有sdk.yml一个工作流、一个SDK执行Job：读取SDK公开声明核对版本→test/build.test.mjs代码回归→Rust/Dart真实测试→三端编译汇总→ditto与shasum生成归档清单→单一Artifact→gh原生命令生成正式Tag和Release、下载附件逐件cmp核对。编译脚本不包含GitHub API、Release/Tag、历史版本清理和内嵌测试。固定Workflow为塔塔聊天·SDK，所有逐次Job、Run、Artifact、Tag、Release均为塔塔聊天·SDK·vX.Y.Z。压缩包、JSON清单和SHA256文件使用相同前缀并保留扩展名；GitHub会规范化下载文件名，Release附件以官方label保留完整中文显示名，回读按唯一标签定位实际下载名并逐字节核对。
+GitHub只有sdk.yml一个工作流、一个SDK执行Job：读取SDK公开声明核对版本→唯一test流程执行Rust、Node及全部workspace包真实测试→三端编译汇总→ditto与shasum生成归档清单→单一Artifact→gh原生命令生成正式Tag和Release、下载附件逐件cmp核对。编译脚本不包含GitHub API、Release/Tag、历史版本清理和内嵌测试。固定Workflow为塔塔聊天·SDK，所有逐次Job、Run、Artifact、Tag、Release均为塔塔聊天·SDK·vX.Y.Z。压缩包、JSON清单和SHA256文件使用相同前缀并保留扩展名；GitHub会规范化下载文件名，Release附件以官方label保留完整中文显示名，回读按唯一标签定位实际下载名并逐字节核对。
 
 版本从最新成功Run读取并仅增加补丁号；失败不消耗候选版本，不以Release创建时间或运行次数推算。没有成功Run时以pubspec.yaml.version为首次候选；存在无法识别的成功Run时拒绝猜测。SDK同一时间只允许一个活动任务，重连仅核对原Run。新正式版本附件全部上传、回读并核对Run/SHA/摘要后才成功；失败候选只能在核对原失败Run后清理重试，禁止覆盖成功版本。
 
@@ -55,24 +55,11 @@ TataChatSDK 负责：
 - 业务专属身份、发送授权、支付、位置和转账。
 
 
-## 3. 当前源码结构
+## 3. 包与测试归属
 
-- tatachatsdk/lib/tatachat_sdk.dart：lib根层唯一文件与SDK公开聚合入口。
-- tatachatsdk/lib/attachment：附件密文、分块和文件库。
-- tatachatsdk/lib/call：私聊通话状态机、会话、协调器、信令与客户端边界；状态和会话类型统一定义在coordinator.dart。
-- tatachatsdk/lib/transport：WSS 控制面与同源 HTTPS 附件数据面。
-- tatachatsdk/lib/core：通用消息、内容、会话与范围模型；basic_content.dart与media_content.dart分别拥有对应私聊入站消息类型。
-- tatachatsdk/lib/group：群聊模型与 OpenMLS 群流程。
-- tatachatsdk/lib/mls：OpenMLS 会话、状态库和原生边界。
-- tatachatsdk/lib/protocol：Protobuf 生成代码与严格编解码。
-- tatachatsdk/lib/runtime：唯一运行编排、队列、同步和账户生命周期。
-- tatachatsdk/lib/storage：唯一 Isar、系统保护记录、索引和公开绑定围栏。
-- tatachatsdk/lib/ui：通用聊天界面。
-- tatachatsdk/android、ios：SDK自己的Flutter平台插件与iOS集成资源；宿主不实现通用聊天媒体能力。
-- tatachatsdk/native、native/tatachat_sdk.h、lib/protocol、scripts、test：独立原生、协议、构建与测试。
+根tatachat_sdk包拥有lib/tatachat_sdk.dart唯一对外聚合入口和lib/ui完整通用界面。core、protocol、mls、group、storage、transport、attachment、call、runtime各有pubspec.yaml、lib和test；assets拥有贴纸模型、唯一清单、PNG和装载测试；testing只供开发测试使用。成员间直接导入真实所有者，不导入根聚合入口，不保留旧路径转发。
 
-lib根层只保留tatachat_sdk.dart一个公开聚合入口，直接导出各所属模块，不设置分散聚合文件或旧路径转发。私聊收发编排与ChatSdk生命周期归runtime/chat_runtime.dart及既有收发模块，内容模型与入站消息归core，语音/视频会话和状态归call/coordinator.dart。保留原公开类型名称、构造函数及行为；内部源码直接导入所属模块，消费者继续从唯一总入口取得SDK公开能力。
-
+整个Dart workspace使用根pubspec.lock；Rust继续使用native/Cargo.lock。Proto唯一源位于protocol/proto，生成Dart及协议视图位于protocol/lib，Isar生成代码与storage/lib/chat_isar.dart相邻。界面、公开入口、Node构建测试和测试调度统一归lib/test，产品根目录不设test，业务测试和金标归所属包test；公共隔离数据库和原生库检查归testing。根插件继续登记android/ios原生实现，成员包不重复登记。
 
 ## 4. 运行时合同
 
@@ -98,7 +85,7 @@ ChatRuntimeAccount 只携带通用字段。运行时不得出现宿主身份格�
 
 ## 5. 消息与 OpenMLS
 
-- 一个逻辑消息只有一个 message_id。
+- 一个逻辑消息只保存一条历史记录；每个收件设备使用稳定、唯一的投递 message_id。
 - 同一MLS消息生成一份协议密文，按该次提交的成员设备集合扇出投递；重试不能换用当前名册。
 - 普通消息、附件消息和群消息都使用同一套 OpenMLS 边界。
 - 邮箱消息必须先完成验密和本机持久化，随后才允许 ACK。
@@ -139,15 +126,15 @@ MlsContactSync 使用与聊天及普通认证相同的持久MLS身份，业务�
 
 CitizenServe按当前MLS会话派生CID和设备，闭集动作publish/state/reserve/commit/ack。组版本CAS、operation_id幂等和原生精确请求/结果共同覆盖提交中断。实际应用消息发送者必须与队列公开发送设备一致；application只接受operation_id、owner_cid_number和规范payload_base64，32KiB业务载荷由SDK编码后封装。业务落库后才确认原生结果，再确认设备队列；已确认原生结果的队列重放只补ACK，不重复合并或消耗发送链。新设备只能经有效成员Welcome加入；全部MLS状态丢失无法用钱包恢复旧组。未完成预留操作必须由原设备恢复，不能通过重新建组跳过已推进的协议状态。
 
-网络附件协议替换尚属第6步；本步源变更未经运行验证。全部七步源码、注释、测试源码及残留清理完成之后统一测试与两平台真实验收。
+网络附件协议与普通聊天共用已有持久MLS身份；运行验证及平台验收结果仅在当前任务卡记录。
 
 ### 同一MLS身份的受限应用认证（第2步）
 
-唯一宿主入口为ChatRuntimeCore.createMlsAuthenticationProof(MlsAuthenticationRequest)。请求只包含service_origin、challenge、expires_at_millis、method、request_target及正文body_hex；Dart模型接收并复制不可变bodyBytes，JSON编码由SDK产生。调用方不能提供用户、设备、密钥、签名标签或任意待签字节。当前user_id、account_id与binding_revision来自宿主账户，device_id与public_key来自已存在的MLS状态。公民宿主的user_id继续是CID，SDK仍使用中性字段。
+唯一宿主入口为ChatRuntimeCore.createMlsAuthenticationProof(MlsAuthenticationRequest)。请求只包含service_origin、nonce_id、expires_at、http_method、request_target及正文body_hex；Dart模型接收并复制不可变bodyBytes，JSON编码由SDK产生。调用方不能提供用户、设备、密钥、签名标签或任意待签字节。当前user_id、account_id与binding_revision来自宿主账户，device_id与public_key来自已存在的MLS状态。公民宿主的user_id继续是CID，SDK仍使用中性字段。
 
 底层MlsStateStore.signAuthentication复用tatachat_sdk_mls_identity_json的sign_authentication动作；prepare、read、sign_authentication各自严格限制字段，未知字段和动作直接拒绝。认证只加载已有身份，即使目录刚创建也不初始化。丢失快照、缺签名身份、损坏、保护不符或错误所有者均失败，错误不携带账户、挑战、正文或秘密。原生还检查签名身份算法并使用登记公钥本机验签，私有材料损坏但仍可解析时也不交付证明。认证不持久化证明，不修改MLS快照、处理结果、群epoch或ratchet，不需要生物识别。
 
-认证使用RFC9420的SignWithLabel结构，固定应用标签TataChatAuthentication，实际外层为SignContent { label&lt;V&gt; = "MLS 1.0 TataChatAuthentication", content&lt;V&gt; }，由已锁定OpenMLS的SignContent与TLS编码器生成。这是应用认证扩展，MLS协议本身不提供HTTP会话登录；CitizenServe源码使用相同认证编码并校验当前登记授权；验证统一延后。[RFC9420签名定义](https://www.rfc-editor.org/rfc/rfc9420.html#section-5.1.2)是外层编码依据。钱包业务签名合同不在本步修改范围。
+认证使用RFC9420的SignWithLabel结构，固定应用标签TataChatAuthentication，实际外层为SignContent { label&lt;V&gt; = "MLS 1.0 TataChatAuthentication", content&lt;V&gt; }，由已锁定OpenMLS的SignContent与TLS编码器生成。这是应用认证扩展，MLS协议本身不提供HTTP会话登录；CitizenServe源码使用相同认证编码并校验当前登记授权；验证结果按当前任务卡中的实际证据报告。[RFC9420签名定义](https://www.rfc-editor.org/rfc/rfc9420.html#section-5.1.2)是外层编码依据。钱包业务签名合同不在本步修改范围。
 
 content按以下顺序拼接，没有JSON字段排序或隐式地址规范化：
 
@@ -156,25 +143,25 @@ content按以下顺序拼接，没有JSON字段排序或隐式地址规范化：
 | user_id | UTF-8字节，MLS TLS &lt;V&gt;最短变长长度编码 |
 | device_id | 解码后的32字节MLS公钥 |
 | account_id | 解码后的32字节账户标识 |
-| binding_revision | uint64大端 |
+| bind_rev | uint64大端 |
 | service_origin | UTF-8字节，TLS &lt;V&gt; |
-| challenge | 解码后的32字节一次性挑战 |
-| expires_at_millis | uint64大端Unix毫秒 |
-| method | ASCII字节，TLS &lt;V&gt; |
+| nonce_id | 解码后的32字节一次性挑战 |
+| expires_at | uint64大端Unix毫秒 |
+| http_method | ASCII字节，TLS &lt;V&gt; |
 | request_target | 实际传输的已编码路径及查询ASCII字节，TLS &lt;V&gt; |
-| body_sha256 | 原始请求正文的SHA-256，32字节 |
+| body_hash | 原始请求正文的SHA-256，32字节 |
 
 目标为规范HTTPS源：小写DNS标签或规范压缩IPv6，省略默认443端口，其他端口为1—65535的规范十进制；不含凭据、路径、查询或片段。服务地址不能接受HTTP/WS。WSS连接认证使用其所属HTTPS服务源及对应GET路径。方法只允许GET、HEAD、POST、PUT、PATCH、DELETE、OPTIONS。目标路径以单个/开始，最多8192字节，不能包含空白、控制字符、反斜杠、片段或非法百分号编码；验签与实际请求逐字比较，不解码再重编码。
 
 挑战为服务端生成的32字节一次性随机数，只接受未来五分钟以内的过期时间；签名后和返回前再次检查有效期。绑定代次与时间不超过JSON精确整数上限2^53−1。认证正文最多1MiB，摘要由已有OpenMLS SHA-256计算，Dart复核相同正文摘要。该限制约束认证证明输入，不改变现有媒体上传流程。正文及证明不写日志或状态。
 
-证明只返回user_id、device_id、public_key、account_id、binding_revision、service_origin、challenge、expires_at_millis、method、request_target、body_sha256、signature。32字节值使用小写0x加64位hex，device_id为无前缀64位hex且等于public_key去前缀；Ed25519签名为小写0x加128位hex。Dart逐项复核返回值与原请求、账户和存储身份一致，并拒绝额外字段、正文或私钥夹带。
+证明只返回user_id、device_id、public_key、account_id、bind_rev、service_origin、nonce_id、expires_at、http_method、request_target、body_hash、signature。32字节值使用小写0x加64位hex，device_id为无前缀64位hex且等于public_key去前缀；Ed25519签名为小写0x加128位hex。Dart逐项复核返回值与原请求、账户和存储身份一致，并拒绝额外字段、正文或私钥夹带。
 
 运行时与用户文件擦除共用屏障。开始、取得存储后、签名后和文件屏障退出后重新检查宿主当前账户、CID映射、绑定代次、宿主索引、域及账户失效代次；切换、换绑、失效或关闭时不交付证明。认证过程中不连接聊天服务、不查询权益、不调用供钥能力。
 
 CitizenServe源码验证可信登记的MLS公钥与设备关系、当前CID/账户/绑定代次、固定签名域、目标服务、实际方法/路径/正文摘要、挑战归属与有效期，并原子消费一次性挑战；App已接入同一MLS认证能力。公开公钥和自报身份不能自行取得会话，不存在认证兼容入口或回退；源码切换尚未经过全部步骤完成后的统一验证。
 
-本步已补测试源码：原生真实验签及逐字段篡改、签名域隔离、持久身份重建、认证不改群快照、非法请求、未知字段、缺签名身份/损坏/缺快照不恢复；Dart真实FFI重建、继续MLS收发、不可变正文、返回边界和账户变化/关闭竞态。按用户要求，测试、静态分析、编译和真实验收统一延后到全部七步实现完成后执行；当前不报告本步测试通过。
+本步已补测试源码：原生真实验签及逐字段篡改、签名域隔离、持久身份重建、认证不改群快照、非法请求、未知字段、缺签名身份/损坏/缺快照不恢复；Dart真实FFI重建、继续MLS收发、不可变正文、返回边界和账户变化/关闭竞态。运行验证及平台验收结果按任务卡中的实际证据报告。
 
 
 ## 7. 可靠投递与七天规则
@@ -241,9 +228,11 @@ TataChatSDK 原生库必须独立构建、独立加载、独立测试。任何�
 
 ## 11. 测试规范
 
+唯一test流程在本轮独占工程准备原锁依赖及宿主原生库，执行Rust内部与C ABI测试、Node构建与发现测试、严格分析，再按官方workspace列表执行根SDK的lib/test及成员包test下的真实用例。lib/test/run.mjs核对文件加载、每个测试结束事件、失败、跳过和done结果；根主包只发现lib/test，成员包发现各自test。共享夹具只作为开发依赖，Isar夹具实际隔离、删除并重开数据库。原生编译、平台测试及真实设备业务结果分别验收。
+
 必须覆盖 OpenMLS 唯一实现、设备投递、四类消息、邮箱落盘后 ACK、重试、去重、未读、附件失败隔离、七天清理、私聊、群聊、通用 UI、公开绑定代次、系统文件保护、存储隔离以及 HTTPS/WSS 安全门禁。
 
-生成的 chat_isar.g.dart 由 Isar 官方生成器维护；分析器只排除该生成文件自身的 experimental API 告警，手写代码仍执行严格分析。
+storage/lib/chat_isar.g.dart由Isar官方生成器维护；分析器只排除该生成文件自身的 experimental API 告警，手写代码仍执行严格分析。
 
 
 ## 16. pub.dev 发布边界
@@ -295,7 +284,7 @@ TataChatSDK 原生库必须独立构建、独立加载、独立测试。任何�
 
 附件网络密文由真正OpenMLS application message生成。每文件使用独立MLS组，复用当前CID本设备的同一持久签名身份和Last Resort KeyPackage；不得创建、导出或派生应用密钥。文件组名册取普通聊天当前获准的精确设备叶子，逐枚核验KeyPackage的credential及签名公钥。首次私聊先持久化真实Welcome并排入保序投递队列，再固定名册；Welcome和附件控制分别按精确收件设备生成稳定队列键，防止同CID不同设备互相覆盖。文件控制不能重新建会话、补新人或扩大原受众。
 
-普通聊天MLS媒体描述包含attachment_group_id、attachment_welcome、attachment_member_identities、attachment_sender_member_identity、attachment_chat_epoch、attachment_chunk_count、明文字节数与plain_sha256，以及密文字节数与摘要。媒体protobuf采用唯一合同，数字9保留且禁止复用；未知字段、重复/非规范编码、错误成员排序、空Welcome、错组、错误块数和超过64KiB的控制描述都拒绝。附件id仅1至128位ASCII字母、数字、下划线或连字符；组标识UTF8最多320字节。成员按字典序排列且不重复，设备标识为64位小写hex；Welcome最多48KiB，块数不超过uint32，epoch和明文字节不超过安全JSON整数。Welcome由OpenMLS验证实际创建者及全部成员；SDK同时要求每个实际叶子的签名公钥等于设备标识，普通Commit提交前同样复核，不能用伪造credential引入第二个签名身份。接收块同样核验真实MLS发送者，不能用外层自报身份替代。
+普通聊天MLS媒体描述包含attachment_group_id、attachment_welcome、attachment_member_identities、sender_identity、attachment_chat_epoch、attachment_chunk_count、明文字节数与plain_sha256，以及密文字节数与摘要。媒体protobuf采用唯一合同，数字9保留且禁止复用；未知字段、重复/非规范编码、错误成员排序、空Welcome、错组、错误块数和超过64KiB的控制描述都拒绝。附件id仅1至128位ASCII字母、数字、下划线或连字符；组标识UTF8最多320字节。成员按字典序排列且不重复，设备标识为64位小写hex；Welcome最多48KiB，块数不超过uint32，epoch和明文字节不超过安全JSON整数。Welcome由OpenMLS验证实际创建者及全部成员；SDK同时要求每个实际叶子的签名公钥等于设备标识，普通Commit提交前同样复核，不能用伪造credential引入第二个签名身份。接收块同样核验真实MLS发送者，不能用外层自报身份替代。
 
 文件明文每块最多1MiB。块载荷由四字节业务头长度、闭集JSON头和当前明文组成；头绑定组、附件、实际发送设备、块序号、总块数、总明文字节。它只是业务绑定，全部加解密与验签由OpenMLS完成。文件帧为四字节MLS消息长度加真实MLS application字节；每帧包含业务头、MLS和长度字段的总开销最多4KiB。接收严格按序拒绝Commit、错序、缺块、多块、跨附件帧、未知字段、伪造发送者及摘要错误。原聊天的epoch、乱序窗口和发送链不被文件块推进。
 
@@ -317,7 +306,7 @@ SDK直接依赖cryptography已删除，锁中该无其他父依赖的包一并�
 
 ## 2026-10-08 服务模块接线与 lib 目录收口
 
-lib 下直接按 attachment、call、core、group、mls、protocol、runtime、storage、transport、ui 分工，公开入口保留 lib/tatachat_sdk.dart。原 src 层已删除，没有旧路径别名；五份 proto 及生成代码仅移动，不改变协议字节或存储 schema。
+源码包与测试归属统一见第3节；公开入口仍为lib/tatachat_sdk.dart，完整界面仍归根包lib/ui。Proto与生成代码只调整归属，不改变协议字节或存储schema。
 
 Host.requestChatAccess 返回 ChatAccess(realtimeUrl, accessToken, expiresAtMillis)。地址必须是完整 wss://<origin>/api/tatachat/realtime，无用户信息、查询或片段；SDK 不解析不透明 accessToken，不落盘或输出它。每次物理连接取得新许可，账户、绑定范围和修订在请求前后固定复核。附件地址由同主机/端口派生 https://<origin>/api/tatachat/attachments/{id}/chunks/{index}，TLS 和禁止重定向在实际请求上执行。
 
@@ -390,3 +379,25 @@ SDK继续只交付实际连接、命令及附件传输事实，不定义会员�
 出站队列仅表示真实待投递事实，不复制消息展示状态，也不保存无人消费的尝试计数、末次错误。入站缓冲不保存不参与回放的原因文本；群与成员镜像删除无人消费的创建/更新时间和加入时间，内部存储参数及实际调用同步删除。消息发送设备保留在冻结MLS原字节，不另存无人读取的列。epoch、角色、退群状态、Commit到达顺序、签发绑定、围栏和逐收件人重试密文保留；失败分类、重试、ACK及原收件集合保持。真实旧库不由普通打开迁移或清除。
 
 媒体描述发送成员身份统一senderIdentity/sender_identity，Proto字段15、类型及原字节保持。MLS认证证明由原生Serde唯一编码，字段为user_id/device_id/public_key/account_id/bind_rev/service_origin/nonce_id/expires_at/http_method/request_target/body_hash/signature。user_id保持部署中性的宿主身份，原签名域、顺序、毫秒单位及签名字节保持；Dart只持有原生唯一字段集，宿主可验证而不回抄另一份证明。ResourceUsage沿原Proto类型与编号，由宿主直接消费公开类型，不另建计量模型。
+
+## 正式源与工具状态隔离
+
+正式源码禁止生成或保留.dart_tool。包声明收集、源码装配、版本写入与布局核对只使用文件读取，不在正式源启动Dart或Pub。官方Pub、workspace核对、严格分析与Flutter测试只在target下本轮独占工程执行；测试结束清空本轮工程，SDK交付前移除其中全部.dart_tool。源码与最终交付验收包含隐藏目录，不以Git忽略代替删除。根SDK的Dart界面及公开入口测试唯一位于lib/test；产品根目录不设test；构建与调度mjs也归lib/test，不保留旧目录或副本。
+
+Flutter对lib下导入按生产依赖检查；根SDK测试正式归属lib/test不改变。唯一test流程只在本轮独占工程将这些原字节文件移动至工具要求的test目录，保持开发依赖语义并完整执行严格分析；没有第二份实现，正式源和最终SDK交付不做此映射。测试发现使用明确的本轮测试位置，不保留旧源码目录或转发入口。
+
+用户明确要求产品根目录没有test目录；主包的全部测试与调度统一位于lib/test。仅临时验证工程为Flutter装配Dart标准test位置，Node脚本继续留在lib/test；正式源与SDK交付不采用该临时布局。
+
+## 复审最小修复
+
+普通存储准备只核验当前系统保护目录，不删除旧数据。同用户finalized换绑保留群资料和名册，清除旧绑定短期任务；群会话历史仍可读取。每台收件设备的投递编号稳定且唯一，文字、贴纸和附件共用该规则。本地媒体缓存读取只复核本机绑定，不等待聊天连接；缺失缓存另行后台补取。正式源测试布局保护比较真实路径，包含末尾分隔符及链接别名。
+
+群改名的发送和接收均校验管理员，所有群消息核对OpenMLS实际发送设备与投递外层一致。普通grp群的成员变更Commit在原生提交前核对创建者身份；通讯录和附件仍遵循各自协议。不同群控制操作使用不同编号，同一操作的原密文投递重试复用可靠队列。握手控制先保存全部设备队列再执行网络。
+
+通话协调器关闭后拒绝新会话，身份读取后复核活动通话。挂断同步进入终态，本机资源清理不等待信令或串行网络任务；建立连接的超时从开始计时。各子资源独立释放并记忆成功，失败可重试；晚到的平台资源在关闭状态下继续回收，不交付新offer。
+
+复审回归覆盖多设备待发唯一键、换绑后群列表读取、群控制越权/外层冒名、重复改名、离线缓存、来电并发和关闭晚回、信令挂起挂断、关闭失败重试，以及正式路径别名。公开入口回归直接导入根聚合入口。全部验证仅在target本轮工程执行。
+
+本次复审最小修复在现有文件内补行为回归：真实MLS重复改名与两设备文字/贴纸队列及重放、原生非管理员成员Commit拒绝且快照不变、换绑后的群会话列表、离线冷启动缓存及实际贴纸气泡资源键。原生平台属性、设备权限与真实业务验收仍须分别报告，不由模拟通道或源码断言代替。
+
+通话终态事件不等于资源清理完成：协调器保留清理失败的句柄，dispose继续重试；已结束会话不重新建立超时。平台资源在已有关闭快照之后晚回时，等待该关闭收口再接管新返回资源。

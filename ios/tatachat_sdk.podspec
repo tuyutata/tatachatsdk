@@ -9,7 +9,7 @@ Pod::Spec.new do |spec|
   spec.summary = 'TataChatSDK OpenMLS native engine'
   spec.description = 'The independently built TataChatSDK OpenMLS dynamic framework.'
   spec.homepage = 'https://github.com/tuyutata/tatachatsdk'
-  spec.license = { :type => 'AGPL-3.0-only' }
+  spec.license = { :type => 'MIT', :file => '../LICENSE' }
   spec.author = { 'TataChatSDK' => 'devnull@example.invalid' }
   spec.source = { :path => '.' }
   spec.platform = :ios, '16.0'

@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:tatachat_attachment/mime.dart';
+import 'package:tatachat_core/chat_message.dart';
 import 'package:wechat_assets_picker/wechat_assets_picker.dart';
-
-import '../../attachment/mime.dart';
-import '../../core/chat_message.dart';
 
 /// 采集到的媒体文件(路径型,不载入字节)。
 class PickedMediaFile {

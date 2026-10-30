@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_chat_core/flutter_chat_core.dart';
-
-import '../core/chat_message.dart';
-import '../runtime/media_limit_policy.dart';
+import 'package:tatachat_core/chat_message.dart';
+import 'package:tatachat_runtime/media_limit_policy.dart';
 import 'compose/composer_action_panel.dart';
 import 'style.dart';
 

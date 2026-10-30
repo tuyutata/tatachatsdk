@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-
 import '../metrics.dart';
 
 /// Default action set for a direct or group conversation.

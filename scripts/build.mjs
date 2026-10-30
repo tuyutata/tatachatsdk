@@ -1,7 +1,7 @@
 // 按官方要求或推荐实现；必需的工具依赖有就复用，没有就下载；使用最简单的实现方式；本脚本只允许放编译构建代码和注释，禁止增加无关内容，禁止增加复杂的校验阻断。
 // config.mjs：只负责配置声明；build.mjs：只负责编译构建实现和必要注释；*.yml：负责全部GitHub流程，包括版本、作业编排、发布及历史清理。
-import {spawn,execFileSync} from 'node:child_process';
-import {mkdirSync,mkdtempSync,existsSync,readFileSync,writeFileSync,copyFileSync,cpSync,rmSync,realpathSync,lstatSync,readdirSync,rmdirSync} from 'node:fs';
+import {spawn} from 'node:child_process';
+import {mkdirSync,mkdtempSync,existsSync,readFileSync,writeFileSync,copyFileSync,cpSync,rmSync,realpathSync,lstatSync,readdirSync,rmdirSync,renameSync} from 'node:fs';
 import {join,dirname,resolve,basename,sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {homedir} from 'node:os';
@@ -43,7 +43,7 @@ async function run(command,args,{cwd=root,env={},capture=false,signal=controller
     if(alive){if(timer)clearTimeout(timer);const error=Error('SDK子进程组退出未确认，保留本轮现场');error.keepWork=true;return fail(error);}
    }
    if(timer)clearTimeout(timer);
-   if(failure||code!==0||termination||signal.aborted)return fail(failure||Error(`${basename(command)}执行失败（${code??termination}）：${diagnostic.slice(-1000)}`));
+   if(failure||code!==0||termination||signal.aborted){const error=failure||Error(`${basename(command)}执行失败（${code??termination}）：${diagnostic.slice(-1000)}`);if(capture)error.testOutput=text;return fail(error);}
    ok(text.trim());
   });
  });
@@ -60,18 +60,60 @@ async function flutterCheck(env){
  const version=JSON.parse(await run(executable,['--version','--machine'],{env,capture:true}));
  if(version.frameworkVersion!==tools.flutter)throw Error('Flutter版本与本产品声明不一致');return executable;
 }
-const analysisOptions='include: package:flutter_lints/flutter.yaml\nanalyzer:\n  exclude:\n    - lib/storage/chat_isar.g.dart\n    - build/**\n    - android/**\n    - ios/**\n  language:\n    strict-casts: true\n    strict-inference: true\n    strict-raw-types: true\nlinter:\n  rules:\n    - avoid_print\n    - directives_ordering\n    - unawaited_futures\n    - use_super_parameters\n';
+const analysisOptions='include: package:flutter_lints/flutter.yaml\nanalyzer:\n  exclude:\n    - storage/lib/chat_isar.g.dart\n    - build/**\n    - android/**\n    - ios/**\n  language:\n    strict-casts: true\n    strict-inference: true\n    strict-raw-types: true\nlinter:\n  rules:\n    - avoid_print\n    - directives_ordering\n    - unawaited_futures\n    - use_super_parameters\n';
 export function analysisOptionsBytes(){return Buffer.from(analysisOptions);}
 const layout=[['android/TataChatSdkPlugin.java','android/src/main/java/chat/tata/sdk/TataChatSdkPlugin.java'],['android/AndroidManifest.xml','android/src/main/AndroidManifest.xml']];
 function platformInput(source,flat,standard){
  const found=[flat,standard].filter(path=>existsSync(join(source,path)));if(found.length!==1)throw Error('SDK平台输入缺失或重复');return found[0];
 }
-// 现有消费产品仍调用这个真实公开接口；只装配Flutter要求的布局，不复制另一套SDK实现。
+// 正式源只读收集根层真实包声明，不启动Dart/Pub，不生成工具状态。
+export function workspacePackages(source){
+ const paths=[source,...readdirSync(source,{withFileTypes:true}).filter(item=>item.isDirectory()&&item.name!=='target'&&existsSync(join(source,item.name,'pubspec.yaml'))).map(item=>join(source,item.name))];
+ const packages=paths.map(path=>{
+  if(realpathSync(path)!==path)throw Error('SDK包目录经过链接');
+  const name=/^name:\s*([a-z][a-z0-9_]*)\s*$/mu.exec(readFileSync(join(path,'pubspec.yaml'),'utf8'))?.[1];
+  if(!name)throw Error('SDK包声明缺少有效名称');return {name,path};
+ });
+ if(new Set(packages.map(item=>item.name)).size!==packages.length)throw Error('SDK包名重复');
+ return packages;
+}
+// 只在已经装配的独占工程调用官方workspace命令，核对真实成员和声明归属。
+async function verifyWorkspace(project,env){
+ const dart=join(process.env.FLUTTER_ROOT||join(root,'target/cache/flutter'),'bin/cache/dart-sdk/bin/dart');
+ const actual=JSON.parse(await run(dart,['pub','workspace','list','--json'],{cwd:project,env,capture:true})).packages;
+ const expected=workspacePackages(project);
+ if(actual.length!==expected.length||expected.some(item=>!actual.some(value=>value.name===item.name&&resolve(value.path)===item.path)))throw Error('SDK workspace声明与实际包目录不一致');
+ return expected;
+}
+// 源码验收包含隐藏目录；只排除本产品根层target和Git元数据。
+export function assertNoDartTool(source){
+ function visit(folder){
+  for(const item of readdirSync(folder,{withFileTypes:true})){
+   if(item.name==='.dart_tool')throw Error('源码或交付残留.dart_tool：'+join(folder,item.name));
+   if(folder===source&&['target','.git'].includes(item.name))continue;
+   if(item.isDirectory())visit(join(folder,item.name));
+  }
+ }
+ visit(source);return source;
+}
+// 官方工具的状态只允许出现在临时工程，交付前按准确目录移除。
+export function removeGeneratedTools(project){
+ function visit(folder){
+  for(const item of readdirSync(folder,{withFileTypes:true})){
+   const path=join(folder,item.name);
+   if(item.name==='.dart_tool')rmSync(path,{recursive:true,force:true});
+   else if(item.isDirectory())visit(path);
+  }
+ }
+ visit(project);assertNoDartTool(project);
+}
+// 同一个公开布局接口装配源码与完整交付包，不保留旧路径转发。
 export function createFlutterSourceView(source,output){
  if(realpathSync(source)!==source||resolve(output)!==output||source===output||output.startsWith(source+sep)&&!output.startsWith(join(source,'target')+sep))throw Error('SDK工程目录无效');
+ const members=workspacePackages(source).filter(item=>item.path!==source);
+ if(existsSync(join(source,'test')))throw Error('正式源根目录禁止test');
  if(existsSync(output))throw Error('SDK工程目标已存在');mkdirSync(output,{recursive:true});
- for(const name of ['lib','test','native','ios','android','stickers','scripts','pubspec.yaml','pubspec.lock','README.md','LICENSE']){
-  if(!existsSync(join(source,name))&&name==='test')continue;
+ for(const name of ['lib','native','ios','android','scripts','pubspec.yaml','pubspec.lock','README.md','LICENSE',...members.map(item=>item.path.slice(source.length+1))]){
   cpSync(join(source,name),join(output,name),{recursive:true,filter:path=>!['target','.git','.dart_tool','build','.gradle'].includes(basename(path))});
  }
  for(const [flat,to]of layout){const from=platformInput(source,flat,to);if(from===to)continue;mkdirSync(dirname(join(output,to)),{recursive:true});copyFileSync(join(output,from),join(output,to));rmSync(join(output,from));}
@@ -80,8 +122,22 @@ export function createFlutterSourceView(source,output){
 export function assertFlutterSourceView(source,output){
  if(realpathSync(source)!==source||realpathSync(output)!==output||source===output)throw Error('SDK工程目录无效');
  for(const [flat,to]of layout){const from=platformInput(source,flat,to);if(existsSync(join(output,flat))||!readFileSync(join(source,from)).equals(readFileSync(join(output,to))))throw Error('SDK Flutter布局与本仓输入不一致');}
- for(const name of ['pubspec.yaml','pubspec.lock','native/tatachat_sdk.h'])if(!readFileSync(join(source,name)).equals(readFileSync(join(output,name))))throw Error('SDK工程声明漂移');
+ const members=workspacePackages(source).filter(item=>item.path!==source);
+ for(const name of ['pubspec.yaml','pubspec.lock','native/tatachat_sdk.h',...members.map(item=>join(item.path.slice(source.length+1),'pubspec.yaml'))])if(!readFileSync(join(source,name)).equals(readFileSync(join(output,name))))throw Error('SDK工程声明漂移');
+ for(const item of members)if(!existsSync(join(output,item.path.slice(source.length+1),'lib')))throw Error('SDK交付缺少成员源码');
+ if(existsSync(join(output,'test')))throw Error('SDK交付根目录禁止test');
+ if(!existsSync(join(output,'lib/test/build.test.mjs')))throw Error('SDK交付缺少lib测试入口');
+ if(!existsSync(join(output,'assets/stickers')))throw Error('SDK交付缺少贴纸资源');
  if(!readFileSync(join(output,'analysis_options.yaml')).equals(analysisOptionsBytes()))throw Error('SDK分析配置漂移');return output;
+}
+// 正式源与交付保留lib/test；仅独占验证工程映射到Flutter标准测试位置。
+export function prepareTestLayout(project){
+ if(realpathSync(project)===realpathSync(root))throw Error('禁止在正式源调整工具测试布局');
+ const source=join(project,'lib/test'),output=join(project,'test');
+ const entries=readdirSync(source,{withFileTypes:true}).filter(item=>item.isDirectory()||item.name.endsWith('.dart')).map(item=>item.name);mkdirSync(output,{recursive:true});
+ for(const name of entries)if(existsSync(join(output,name)))throw Error('测试布局存在重复输入');
+ for(const name of entries)renameSync(join(source,name),join(output,name));
+ return output;
 }
 export function sourceView(work){return createFlutterSourceView(root,join(work,'project'));}
 async function ensureTarget(target,env){await run('rustup',['target','add','--toolchain',tools.rust,target],{env});}
@@ -136,32 +192,37 @@ async function nativeTarget(target,work,env,version,device=false){
  return output;
 }
 export async function testSDK(){
+ assertNoDartTool(root);
  const work=taskDirectory('test'),cache=claimCache(work);mkdirSync(join(work,'tmp'));
  const env=buildEnvironment(work,cache);let safe=true;
  try{
   const flutter=await flutterCheck(env),project=sourceView(work);
+  await run(process.execPath,['--test',join(project,'lib/test/build.test.mjs'),join(project,'lib/test/runner.test.mjs')],{cwd:project,env});
+  const testPath=prepareTestLayout(project);
   await run('cargo',['test','--locked','--manifest-path',manifest],{env});
   const output=await nativeTarget('macos',work,env,'1.0.0');
-  await run(flutter,['pub','get','--enforce-lockfile'],{cwd:project,env});
+  await run(flutter,['pub','get','--enforce-lockfile',...(process.env.PUB_OFFLINE==='true'?['--offline']:[])],{cwd:project,env});
   const config=JSON.parse(readFileSync(join(project,'.dart_tool/package_config.json'),'utf8'));
   const entry=config.packages.find(value=>value.name==='isar_community_flutter_libs');if(!entry)throw Error('Pub原锁缺少Isar原生包');
   const packageRoot=fileURLToPath(new URL(entry.rootUri,new URL('file://'+join(project,'.dart_tool/package_config.json'))));
   const isar=join(work,'libisar.dylib');copyFileSync(join(packageRoot,'macos/libisar.dylib'),isar);
-  const testEnv={...env,FLUTTER_TEST:'true',TATACHATSDK_TEST_WORK_ROOT:work,TATACHATSDK_TEST_NATIVE_LIBRARY:join(output,'libtatachat_sdk.dylib'),ISAR_CORE_LIB_PATH:isar};
+  const testEnv={...env,FLUTTER_ROOT:dirname(dirname(flutter)),FLUTTER_TEST:'true',TATACHATSDK_TEST_WORK_ROOT:work,TATACHATSDK_TEST_NATIVE_LIBRARY:join(output,'libtatachat_sdk.dylib'),ISAR_CORE_LIB_PATH:isar};
+  const packages=await verifyWorkspace(project,testEnv);
   await run(flutter,['analyze','--fatal-infos'],{cwd:project,env:testEnv});
-  await run(flutter,['test','--concurrency=1','--reporter=expanded'],{cwd:project,env:testEnv});
- }catch(error){safe=!error.keepWork;throw error;}finally{if(safe){cache.release();rmSync(work,{recursive:true,force:true});}}
+  const {runWorkspaceTests}=await import('../lib/test/run.mjs');
+  await runWorkspaceTests({project,flutter,env:testEnv,run,packages:packages.map(item=>item.path===project?{...item,testPath}:item)});
+ }catch(error){safe=!error.keepWork;throw error;}finally{if(safe){cache.release();rmSync(work,{recursive:true,force:true});assertNoDartTool(root);}}
 }
 export function setPackageVersion(project,version){
  sdkName(version);
  for(const [file,pattern,text]of [
-  ['pubspec.yaml',/^version: .+$/mu,'version: '+version],
+  ...workspacePackages(project).map(item=>[join(item.path.slice(project.length+1),'pubspec.yaml'),/^version: .+$/mu,'version: '+version]),
   ['ios/tatachat_sdk.podspec',/spec\.version = '[^']*'/u,"spec.version = '"+version+"'"],
   ['android/build.gradle.kts',/^version = "[^"]*"$/mu,'version = "'+version+'"'],
  ]){const path=join(project,file),before=readFileSync(path,'utf8');if(!pattern.test(before))throw Error('SDK版本声明缺失：'+file);writeFileSync(path,before.replace(pattern,text));}
 }
 export async function buildSDK({target,version=process.env.SDK_VERSION||/^version: (\S+)$/mu.exec(readFileSync(join(root,'pubspec.yaml'),'utf8'))?.[1],device=false}={}){
- sdkName(version);const work=taskDirectory('build'),cache=claimCache(work);mkdirSync(join(work,'tmp'));let completed=false,safe=true;
+ assertNoDartTool(root);sdkName(version);const work=taskDirectory('build'),cache=claimCache(work);mkdirSync(join(work,'tmp'));let completed=false,safe=true;
  try{
   const env=buildEnvironment(work,cache);for(const value of target?[target]:['android','ios','macos'])await nativeTarget(value,work,env,version,device);
   if(target){completed=true;return {work,output:join(work,'native',target)};}
@@ -170,9 +231,11 @@ export async function buildSDK({target,version=process.env.SDK_VERSION||/^versio
   cpSync(join(work,'native/ios/TataChatSDK.xcframework'),join(project,'ios/TataChatSDK.xcframework'),{recursive:true});
   cpSync(join(work,'native/android'),join(project,'android/src/main/jniLibs'),{recursive:true});
   copyFileSync(join(work,'native/macos/libtatachat_sdk.dylib'),join(project,'native/libtatachat_sdk.dylib'));
+  await verifyWorkspace(project,env);
   setPackageVersion(project,version);
+  removeGeneratedTools(project);
   for(const entry of readdirSync(work))if(entry!=='project')rmSync(join(work,entry),{recursive:true,force:true});
-  completed=true;return {work,output:project};
+  assertNoDartTool(root);completed=true;return {work,output:project};
  }catch(error){safe=!error.keepWork;throw error;}finally{if(safe){cache.release();if(!completed)rmSync(work,{recursive:true,force:true});}}
 }
 export async function protocol(){
@@ -180,7 +243,7 @@ export async function protocol(){
  if(!protoc?.startsWith('/')||!plugin?.startsWith('/'))throw Error('协议生成须显式提供官方protoc及Dart插件绝对路径');
  if(await run(protoc,['--version'],{capture:true})!=='libprotoc '+tools.protoc)throw Error('protoc版本不符');
  const work=taskDirectory('build'),output=join(work,'protocol');mkdirSync(output);
- try{await run(protoc,['--proto_path='+join(root,'lib/protocol'),'--dart_out='+output,'--plugin=protoc-gen-dart='+plugin,...['basic_content','media_content','message','attachment','chat_frame'].map(name=>join(root,'lib/protocol',name+'.proto'))]);return {work,output};}
+ try{await run(protoc,['--proto_path='+join(root,'protocol/proto'),'--dart_out='+output,'--plugin=protoc-gen-dart='+plugin,...['basic_content','media_content','message','attachment','chat_frame'].map(name=>join(root,'protocol/proto',name+'.proto'))]);return {work,output};}
  catch(error){if(!error.keepWork)rmSync(work,{recursive:true,force:true});throw error;}
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)&&!process.env.NODE_TEST_CONTEXT){

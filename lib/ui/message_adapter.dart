@@ -1,9 +1,8 @@
 import 'package:flutter_chat_core/flutter_chat_core.dart';
-
-import '../core/chat_content.dart';
-import '../core/chat_message.dart';
-import '../runtime/media_limit_policy.dart';
-import '../storage/records.dart';
+import 'package:tatachat_core/chat_content.dart';
+import 'package:tatachat_core/chat_message.dart';
+import 'package:tatachat_runtime/media_limit_policy.dart';
+import 'package:tatachat_storage/records.dart';
 
 /// 解析媒体消息在本机缓存中的绝对路径。字节尚未到达时返回 null,由 UI 占位。
 typedef ChatMediaPathResolver = String? Function(ChatContent content);

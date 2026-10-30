@@ -1,5 +1,4 @@
 import 'dart:math' as math;
-
 import 'package:flutter/widgets.dart';
 
 /// Responsive geometry shared by TataChatSDK's default Flutter UI.

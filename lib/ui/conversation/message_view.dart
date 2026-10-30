@@ -5,18 +5,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter_blurhash/flutter_blurhash.dart';
 import 'package:flutter_chat_core/flutter_chat_core.dart';
 import 'package:flutter_chat_ui/flutter_chat_ui.dart';
+import 'package:tatachat_assets/sticker_pack.dart';
+import 'package:tatachat_core/chat_content.dart';
+import 'package:tatachat_core/chat_message.dart';
+import 'package:tatachat_runtime/chat_runtime.dart';
+import 'package:tatachat_runtime/direct_flow.dart';
+import 'package:tatachat_runtime/media_limit_policy.dart';
+import 'package:tatachat_storage/records.dart';
 
-import '../../core/chat_content.dart';
-import '../../core/chat_message.dart';
-import '../../runtime/chat_runtime.dart';
-import '../../runtime/direct_flow.dart';
-import '../../runtime/media_limit_policy.dart';
-import '../../storage/records.dart';
 import '../attachment/image_viewer_page.dart';
 import '../attachment/video_player_page.dart';
 import '../attachment/voice_message_player.dart';
 import '../message_adapter.dart';
-import '../sticker_pack.dart';
 import '../style.dart';
 
 typedef ChatMessageSnapshot = ({
@@ -26,23 +26,24 @@ typedef ChatMessageSnapshot = ({
 typedef ChatLoadMessageSnapshotCallback =
     Future<ChatMessageSnapshot> Function();
 typedef ChatSendTextCallback = Future<void> Function(String text);
-typedef ChatSendMediaCallback =
-    Future<void> Function(
-      ChatMediaDraft media, {
-      ChatMediaLocalCommitNotifier? onLocalCommitted,
-    });
-typedef ChatSendStickerCallback =
-    Future<void> Function(String packId, String stickerId);
+typedef ChatSendMediaCallback = Future<void> Function(
+  ChatMediaDraft media, {
+  ChatMediaLocalCommitNotifier? onLocalCommitted,
+});
+typedef ChatSendStickerCallback = Future<void> Function(
+  String packId,
+  String stickerId,
+);
 typedef ChatSyncCallback = Future<int> Function();
-typedef ChatStartRealtimeCallback =
-    Future<Future<void> Function()?> Function({
-      required Future<void> Function() onNotice,
-      Future<void> Function()? onDisconnected,
-    });
+typedef ChatStartRealtimeCallback = Future<Future<void> Function()?> Function({
+  required Future<void> Function() onNotice,
+  Future<void> Function()? onDisconnected,
+});
 typedef ChatDownloadAttachmentCallback =
     Future<ChatDownloadedAttachment> Function(String controlPlaintext);
-typedef ChatResolveMediaPathsCallback =
-    Future<Map<String, String>> Function(List<ChatContent> contents);
+typedef ChatResolveMediaPathsCallback = Future<Map<String, String>> Function(
+  List<ChatContent> contents,
+);
 typedef ChatMarkReadCallback = Future<void> Function(int readThroughMillis);
 typedef ChatErrorMessageCallback = String Function(Object error);
 typedef ChatControllerPauseCallback = Future<void> Function();
@@ -599,8 +600,9 @@ class ChatConversationController extends ChangeNotifier
 }
 
 typedef ChatConversationListCoordinateCallback = Future<void> Function();
-typedef ChatConversationListRefreshCallback =
-    Future<bool> Function(String scope);
+typedef ChatConversationListRefreshCallback = Future<bool> Function(
+  String scope,
+);
 
 /// 会话列表共用的生命周期、单飞协调、待发重试、WSS 订阅与轮询降级控制器。
 ///
@@ -821,8 +823,10 @@ class ChatConversationListController extends ChangeNotifier
   }
 }
 
-typedef ChatGroupSenderBuilder =
-    Widget Function(BuildContext context, String userId);
+typedef ChatGroupSenderBuilder = Widget Function(
+  BuildContext context,
+  String userId,
+);
 
 /// Reusable direct/group message viewport, including all message categories.
 class ChatMessageListView extends StatelessWidget {
@@ -1163,6 +1167,7 @@ class ChatMessageListView extends StatelessWidget {
     final content = known
         ? Image.asset(
             StickerPack.assetPath(stickerId),
+            package: 'tatachat_assets',
             fit: BoxFit.contain,
             errorBuilder: (_, _, _) => _stickerFallback(context),
           )

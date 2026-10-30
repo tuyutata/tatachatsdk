@@ -1,11 +1,9 @@
 import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
-
-import '../../call/coordinator.dart';
-import '../../call/flutter_peer.dart';
-import '../../call/peer.dart';
+import 'package:tatachat_call/coordinator.dart';
+import 'package:tatachat_call/flutter_peer.dart';
+import 'package:tatachat_call/peer.dart';
 import '../metrics.dart';
 
 Future<void> openOutgoingCallPage(

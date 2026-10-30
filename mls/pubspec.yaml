@@ -1,0 +1,27 @@
+name: tatachat_mls
+description: 塔塔聊天mls包。
+version: 1.0.0
+publish_to: none
+resolution: workspace
+environment:
+  sdk: ^3.8.0
+
+# 直接依赖由真实源码及平台运行需要定义，上游版本沿用原锁。
+dependencies:
+  crypto: 3.0.7
+  ffi: 2.2.0
+  fixnum: ^1.1.1
+  flutter:
+    sdk: flutter
+  path: ^1.9.1
+  tatachat_core:
+    path: ../core
+  tatachat_protocol:
+    path: ../protocol
+
+dev_dependencies:
+  flutter_lints: 6.0.0
+  flutter_test:
+    sdk: flutter
+  tatachat_testing:
+    path: ../testing

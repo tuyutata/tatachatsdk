@@ -104,13 +104,7 @@ public final class TataChatSdkPlugin implements FlutterPlugin, ActivityAware,
         if (context == null || context.isDeviceProtectedStorage()) throw new IOException("storage unavailable");
         UserManager users = (UserManager) context.getSystemService(Context.USER_SERVICE);
         if (users == null || !users.isUserUnlocked()) throw new IOException("storage locked");
-        // 精确删除旧 SDK 数据文件与附件目录；不读取、解密或改写其他业务数据库。
-        File support = context.getFilesDir().getCanonicalFile();
-        for (String name : new String[]{"tatachat_sdk_chat.isar", "tatachat_sdk_chat.isar.lock"}) {
-            eraseOwnedMlsDirectory(new File(support, name));
-        }
-        File documents = new File(context.getDataDir().getCanonicalFile(), "app_flutter");
-        eraseOwnedMlsDirectory(new File(documents, "chat"));
+        // 普通准备只验证当前保护域；旧数据只能由独立、明确的用户清理处理。
         File root = new File(context.getNoBackupFilesDir().getCanonicalFile(), "tatachat_sdk_data");
         if (!root.exists() && !root.mkdir()) throw new IOException("mkdir failed");
         protectOwnedTree(root);

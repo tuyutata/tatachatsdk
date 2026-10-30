@@ -1,0 +1,24 @@
+name: tatachat_transport
+description: 塔塔聊天transport包。
+version: 1.0.0
+publish_to: none
+resolution: workspace
+environment:
+  sdk: ^3.8.0
+
+# 直接依赖由真实源码及平台运行需要定义，上游版本沿用原锁。
+dependencies:
+  crypto: 3.0.7
+  fixnum: ^1.1.1
+  tatachat_core:
+    path: ../core
+  tatachat_mls:
+    path: ../mls
+  tatachat_protocol:
+    path: ../protocol
+
+dev_dependencies:
+  fake_async: 1.3.3
+  flutter_lints: 6.0.0
+  flutter_test:
+    sdk: flutter

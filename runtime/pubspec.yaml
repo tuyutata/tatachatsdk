@@ -1,0 +1,36 @@
+name: tatachat_runtime
+description: 塔塔聊天runtime包。
+version: 1.0.0
+publish_to: none
+resolution: workspace
+environment:
+  sdk: ^3.8.0
+
+# 直接依赖由真实源码及平台运行需要定义，上游版本沿用原锁。
+dependencies:
+  crypto: 3.0.7
+  flutter:
+    sdk: flutter
+  shared_preferences: ^2.5.5
+  tatachat_attachment:
+    path: ../attachment
+  tatachat_core:
+    path: ../core
+  tatachat_group:
+    path: ../group
+  tatachat_mls:
+    path: ../mls
+  tatachat_protocol:
+    path: ../protocol
+  tatachat_storage:
+    path: ../storage
+  tatachat_transport:
+    path: ../transport
+
+dev_dependencies:
+  fixnum: ^1.1.1
+  flutter_lints: 6.0.0
+  flutter_test:
+    sdk: flutter
+  tatachat_testing:
+    path: ../testing

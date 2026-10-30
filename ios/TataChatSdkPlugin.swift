@@ -129,18 +129,7 @@ public final class TataChatSdkPlugin: NSObject, FlutterPlugin,
     guard let support = manager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
       throw CocoaError(.fileNoSuchFile)
     }
-    // 只删除旧 SDK 明确拥有的数据；新目录不迁移旧结构。
-    stage = "legacy_database_cleanup"
-    for name in ["tatachat_sdk_chat.isar", "tatachat_sdk_chat.isar.lock"] {
-      let old = support.resolvingSymlinksInPath().appendingPathComponent(name)
-      try eraseOwnedData(old)
-    }
-    stage = "documents_directory"
-    guard let documents = manager.urls(for: .documentDirectory, in: .userDomainMask).first else {
-      throw CocoaError(.fileNoSuchFile)
-    }
-    stage = "legacy_chat_cleanup"
-    try eraseOwnedData(documents.resolvingSymlinksInPath().appendingPathComponent("chat", isDirectory: true))
+    // 普通准备只验证当前保护域，不删除或迁移旧数据库及附件。
     let root = support.resolvingSymlinksInPath().appendingPathComponent("tatachat_sdk_data", isDirectory: true)
     stage = "data_directory_create"
     if !manager.fileExists(atPath: root.path) {

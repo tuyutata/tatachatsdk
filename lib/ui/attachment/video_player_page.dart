@@ -1,9 +1,7 @@
 import 'dart:io';
-
 import 'package:flutter/material.dart';
+import 'package:tatachat_attachment/gallery_saver.dart';
 import 'package:video_player/video_player.dart';
-
-import '../../attachment/gallery_saver.dart';
 
 /// 视频播放页:video_player 播放 + 保存到相册。
 ///

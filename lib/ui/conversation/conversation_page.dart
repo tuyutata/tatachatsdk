@@ -1,16 +1,14 @@
 import 'dart:async';
 import 'dart:io';
-
 import 'package:flutter/material.dart';
-
-import '../../attachment/attachment_platform.dart';
-import '../../attachment/compressor.dart';
-import '../../attachment/mime.dart';
-import '../../attachment/probe.dart';
-import '../../attachment/voice_recorder.dart';
-import '../../core/chat_message.dart';
-import '../../runtime/chat_runtime.dart';
-import '../../runtime/direct_flow.dart';
+import 'package:tatachat_attachment/attachment_platform.dart';
+import 'package:tatachat_attachment/compressor.dart';
+import 'package:tatachat_attachment/mime.dart';
+import 'package:tatachat_attachment/probe.dart';
+import 'package:tatachat_attachment/voice_recorder.dart';
+import 'package:tatachat_core/chat_message.dart';
+import 'package:tatachat_runtime/chat_runtime.dart';
+import 'package:tatachat_runtime/direct_flow.dart';
 import '../attachment/media_picker.dart';
 import '../compose/camera_capture_page.dart';
 import '../compose/composer_action_panel.dart';

@@ -1,8 +1,6 @@
 import 'dart:math' as math;
-
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import 'package:flutter/material.dart';
-
 import '../sticker_panel.dart';
 import '../style.dart';
 

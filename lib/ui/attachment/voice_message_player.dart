@@ -1,9 +1,7 @@
 import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_chat_core/flutter_chat_core.dart';
 import 'package:just_audio/just_audio.dart';
-
 import '../metrics.dart';
 
 /// 本机已解密语音文件播放器。未到达时只触发既有附件下载，不读取远程明文 URL。

@@ -1,11 +1,9 @@
 import 'dart:async';
 import 'dart:io';
-
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
-
-import '../../attachment/mime.dart';
-import '../../core/chat_message.dart';
+import 'package:tatachat_attachment/mime.dart';
+import 'package:tatachat_core/chat_message.dart';
 import '../attachment/media_picker.dart';
 import '../metrics.dart';
 

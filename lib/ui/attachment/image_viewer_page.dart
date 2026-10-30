@@ -1,8 +1,6 @@
 import 'dart:io';
-
 import 'package:flutter/material.dart';
-
-import '../../attachment/gallery_saver.dart';
+import 'package:tatachat_attachment/gallery_saver.dart';
 import '../metrics.dart';
 
 /// 图片全屏查看:捏合缩放(InteractiveViewer)+ 保存到相册。

@@ -1,8 +1,7 @@
 import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
-
-import 'sticker_pack.dart';
+import 'package:tatachat_assets/model.dart';
+import 'package:tatachat_assets/sticker_pack.dart';
 
 /// 贴纸选择面板:Fluent 3D 内置包按分类分组的网格,点选回调 `(packId, stickerId)`。
 ///
@@ -91,7 +90,7 @@ class _StickerGrid extends StatelessWidget {
             padding: const EdgeInsets.all(6),
             child: Image.asset(
               StickerPack.assetPath(item.id),
-              package: 'tatachat_sdk',
+              package: 'tatachat_assets',
               fit: BoxFit.contain,
               errorBuilder: (_, _, _) =>
                   const Icon(Icons.broken_image_rounded, color: Colors.grey),

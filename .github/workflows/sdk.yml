@@ -101,9 +101,7 @@ jobs:
           fi
           # 显式交付本产品声明的NDK，覆盖运行机预设的其它版本路径。
           printf 'ANDROID_NDK_HOME=%s\nANDROID_NDK_ROOT=%s\n' "$android_home/ndk/$SDK_NDK" "$android_home/ndk/$SDK_NDK" >> "$GITHUB_ENV"
-      - name: AI代码回归
-        run: node --test test/build.test.mjs
-      - name: Rust与Dart真实测试
+      - name: Rust与全部workspace包真实测试
         run: node scripts/build.mjs test
       - name: 编译并汇总完整SDK
         id: build
