@@ -518,6 +518,44 @@ fn authentication_never_replaces_missing_corrupt_or_wrong_owner_identity() {
     assert!(!storage_path(&a.dir).exists());
 }
 #[test]
+fn key_packages_survive_directory_relocation_without_relaxing_business_fields() {
+    let mut a = Fixture::new("alice");
+    let mut request = a.request("key-package");
+    request["last_resort"] = json!(true);
+    let first = invoke(create_key_package_json, request.clone()).unwrap();
+    assert_eq!(
+        first,
+        invoke(create_key_package_json, request.clone()).unwrap()
+    );
+
+    // 只搬移真实FFI建立的合成存储，不重建身份、密钥或已提交结果。
+    let moved = a.dir.with_extension("moved");
+    fs::rename(&a.dir, &moved).unwrap();
+    a.dir = moved;
+    request["state_store_dir"] = json!(a.dir);
+    let identity = invoke(
+        identity_json,
+        json!({"action":"read","state_store_dir":a.dir,"user_id":a.user}),
+    )
+    .unwrap();
+    assert_eq!(identity["device_id"], a.device);
+    assert_eq!(
+        first,
+        invoke(create_key_package_json, request.clone()).unwrap()
+    );
+    a.acknowledge("key-package");
+    assert_eq!(
+        first,
+        invoke(create_key_package_json, request.clone()).unwrap()
+    );
+
+    request["last_resort"] = json!(false);
+    assert!(invoke(create_key_package_json, request)
+        .unwrap_err()
+        .starts_with("CHAT_MLS_REQUEST_CONFLICT"));
+}
+
+#[test]
 fn messages_survive_restart_before_host_commit() {
     let (a, b) = pair();
     let mut send = a.group("send-one", "group");

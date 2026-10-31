@@ -59,6 +59,31 @@ void main() {
       ),
     );
   });
+  test('存储目录搬移后复用同一身份和同一KeyPackage', () async {
+    final created = await Directory.systemTemp.createTemp(
+      'tatachat_relocation_',
+    );
+    final root = Directory(await created.resolveSymbolicLinks());
+    addTearDown(() => root.delete(recursive: true));
+    final directory = await Directory('${root.path}/before').create();
+    final before = MlsStateStore(directory, ownerUserId: 'user-a');
+    final identity = await before.prepareIdentity();
+    final crypto = NativeMlsCrypto(identity: identity, stateStore: before);
+    final first = await crypto.createKeyPackage(identity, lastResort: true);
+    before.dispose();
+    final moved = await directory.rename('${root.path}/after');
+    final after = MlsStateStore(moved, ownerUserId: 'user-a');
+    addTearDown(after.dispose);
+    final restored = await after.readIdentity();
+    expect(restored.deviceId, identity.deviceId);
+    expect(restored.publicKey, identity.publicKey);
+    final reopened = NativeMlsCrypto(identity: restored, stateStore: after);
+    final replay = await reopened.createKeyPackage(restored, lastResort: true);
+    expect(replay.keyPackageRef, first.keyPackageRef);
+    expect(replay.keyPackageHex, first.keyPackageHex);
+    expect(replay.notBeforeMillis, first.notBeforeMillis);
+    expect(replay.notAfterMillis, first.notAfterMillis);
+  });
   test('KeyPackage只在已持久化的同一MLS身份上生成', () async {
     final root = await Directory.systemTemp.createTemp(
       'tatachat_native_identity_',

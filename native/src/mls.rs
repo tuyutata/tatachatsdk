@@ -1346,7 +1346,13 @@ fn committed_response(
     require_attachment_operation(provider, kind, &request)?;
     let key = result_key(kind, &request)?;
     if let Some(saved) = provider.results.borrow().get(&key) {
-        if saved.request != request {
+        // 目录只定位当前已加载并加锁的存储；搬移不改变业务请求和已提交结果。
+        // 仅对齐历史请求副本的运行时路径，其他字段仍完整比较，不改写持久记录。
+        let mut original = saved.request.clone();
+        if let Some(fields) = original.as_object_mut() {
+            fields.insert("state_store_dir".into(), request["state_store_dir"].clone());
+        }
+        if original != request {
             return Err("CHAT_MLS_REQUEST_CONFLICT:同一message_id请求发生变化".to_string());
         }
         let mut response = saved.result.clone();
