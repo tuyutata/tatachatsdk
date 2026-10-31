@@ -2,8 +2,10 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
+
 import 'package:ffi/ffi.dart';
 import 'package:path/path.dart' as path;
+
 import 'mls_boundary.dart';
 import 'mls_group_boundary.dart';
 import 'mls_state_store.dart';
@@ -67,8 +69,18 @@ class NativeMlsCrypto implements MlsGroupCrypto, MlsPersistentCrypto {
     return MlsKeyPackage(
       userId: identity.userId,
       deviceId: identity.deviceId,
-      keyPackageRef: _requireField(response, 'key_package_ref'),
-      keyPackageBytes: _hexToBytes(_requireField(response, 'key_package_hex')),
+      keyPackageRef: _requireField(
+        response,
+        'key_package_ref',
+        operation: MlsNativeOperation.keyPackage,
+      ),
+      keyPackageBytes: _hexToBytes(
+        _requireField(
+          response,
+          'key_package_hex',
+          operation: MlsNativeOperation.keyPackage,
+        ),
+      ),
       cipherSuite: (response['cipher_suite'] ?? '').toString(),
       notBeforeMillis: (response['not_before_millis'] as num?)?.toInt() ?? 0,
       notAfterMillis: (response['not_after_millis'] as num?)?.toInt() ?? 0,
@@ -372,6 +384,7 @@ class MlsNativeBindings {
     MlsJsonDart function,
     Map<String, Object?> request,
   ) {
+    final operation = _operationFor(function);
     final requestPtr = jsonEncode(request).toNativeUtf8();
     final errorOut = calloc<Pointer<Utf8>>();
     Pointer<Utf8> resultPtr = nullptr;
@@ -385,10 +398,22 @@ class MlsNativeBindings {
         if (errorPtr != nullptr) {
           _freeString(errorPtr);
         }
-        throw MlsNativeException.fromTechnicalMessage(message);
+        throw MlsNativeException.fromTechnicalMessage(
+          message,
+          operation: operation,
+        );
       }
-      final json = jsonDecode(resultPtr.toDartString());
-      return (json as Map).cast<String, dynamic>();
+      try {
+        final json = jsonDecode(resultPtr.toDartString());
+        if (json is! Map<String, dynamic>) throw const FormatException();
+        return json;
+      } on FormatException {
+        throw MlsNativeException(
+          MlsNativeErrorCode.invalidResponse,
+          'OpenMLS native响应JSON结构无效',
+          operation: operation,
+        );
+      }
     } finally {
       calloc.free(requestPtr);
       calloc.free(errorOut);
@@ -396,6 +421,24 @@ class MlsNativeBindings {
         _freeString(resultPtr);
       }
     }
+  }
+
+  // 操作名只取本绑定持有的函数槽位，不读取或记录调用参数。
+  MlsNativeOperation _operationFor(MlsJsonDart function) {
+    for (final entry in <MlsJsonDart, MlsNativeOperation>{
+      createKeyPackage: MlsNativeOperation.keyPackage,
+      identity: MlsNativeOperation.identity,
+      store: MlsNativeOperation.store,
+      groupCreate: MlsNativeOperation.groupCreate,
+      groupAddMembers: MlsNativeOperation.groupAdd,
+      groupRemoveMembers: MlsNativeOperation.groupRemove,
+      groupCreateMessage: MlsNativeOperation.groupMessage,
+      groupProcess: MlsNativeOperation.groupProcess,
+      groupState: MlsNativeOperation.groupState,
+    }.entries) {
+      if (identical(function, entry.key)) return entry.value;
+    }
+    return MlsNativeOperation.unknown;
   }
 }
 
@@ -456,33 +499,88 @@ enum MlsNativeErrorCode {
   libraryUnavailable,
   invalidRequest,
   invalidResponse,
+  requestConflict,
+  pendingFull,
+  keyPackageFailed,
   operationFailed,
 }
 
-class MlsNativeException implements Exception {
-  const MlsNativeException(this.code, this.technicalMessage);
+/// 公开诊断只携带固定FFI操作，不暴露路径、身份或请求内容。
+enum MlsNativeOperation {
+  unknown,
+  identity,
+  store,
+  keyPackage,
+  groupCreate,
+  groupAdd,
+  groupRemove,
+  groupMessage,
+  groupProcess,
+  groupState,
+}
 
-  factory MlsNativeException.fromTechnicalMessage(String message) {
+class MlsNativeException implements Exception {
+  const MlsNativeException(
+    this.code,
+    this.technicalMessage, {
+    this.operation = MlsNativeOperation.unknown,
+  });
+
+  factory MlsNativeException.fromTechnicalMessage(
+    String message, {
+    MlsNativeOperation operation = MlsNativeOperation.unknown,
+  }) {
+    final classified = _classify(message);
+    return MlsNativeException(classified, message, operation: operation);
+  }
+
+  static MlsNativeErrorCode _classify(String message) {
+    if (message == '解析request_json失败，字段或结构非法') {
+      return MlsNativeErrorCode.invalidRequest;
+    }
     if (message.startsWith('CHAT_MLS_STATE_MISSING:')) {
-      return MlsNativeException(MlsNativeErrorCode.stateMissing, message);
+      return MlsNativeErrorCode.stateMissing;
     }
     if (message.contains('CHAT_MLS_STATE_OWNER_MISMATCH')) {
-      return MlsNativeException(MlsNativeErrorCode.stateOwnerMismatch, message);
+      return MlsNativeErrorCode.stateOwnerMismatch;
     }
     if (message.contains('CHAT_MLS_STORAGE_READ_FAILED')) {
-      return MlsNativeException(MlsNativeErrorCode.storageReadFailed, message);
+      return MlsNativeErrorCode.storageReadFailed;
     }
     if (message.contains('CHAT_MLS_STATE_INVALID')) {
-      return MlsNativeException(MlsNativeErrorCode.stateInvalid, message);
+      return MlsNativeErrorCode.stateInvalid;
     }
     if (message.contains('CHAT_MLS_SIGNER_MISSING')) {
-      return MlsNativeException(MlsNativeErrorCode.signerMissing, message);
+      return MlsNativeErrorCode.signerMissing;
     }
-    return MlsNativeException(MlsNativeErrorCode.operationFailed, message);
+    if (message.startsWith('CHAT_MLS_REQUEST_CONFLICT:')) {
+      return MlsNativeErrorCode.requestConflict;
+    }
+    if (message.startsWith('CHAT_MLS_PENDING_FULL:')) {
+      return MlsNativeErrorCode.pendingFull;
+    }
+    if (message.startsWith('生成 OpenMLS KeyPackage 失败:')) {
+      return MlsNativeErrorCode.keyPackageFailed;
+    }
+    return MlsNativeErrorCode.operationFailed;
   }
 
   final MlsNativeErrorCode code;
   final String technicalMessage;
+  final MlsNativeOperation operation;
+
+  String get diagnosticOperation => switch (operation) {
+    MlsNativeOperation.unknown => 'unknown',
+    MlsNativeOperation.identity => 'identity',
+    MlsNativeOperation.store => 'store',
+    MlsNativeOperation.keyPackage => 'key_package',
+    MlsNativeOperation.groupCreate => 'group_create',
+    MlsNativeOperation.groupAdd => 'group_add',
+    MlsNativeOperation.groupRemove => 'group_remove',
+    MlsNativeOperation.groupMessage => 'group_message',
+    MlsNativeOperation.groupProcess => 'group_process',
+    MlsNativeOperation.groupState => 'group_state',
+  };
 
   /// 脱敏诊断只记录该稳定码，不记录用户、账户、路径、密钥或底层文本。
   String get diagnosticCode => switch (code) {
@@ -496,6 +594,9 @@ class MlsNativeException implements Exception {
     MlsNativeErrorCode.libraryUnavailable => 'library_unavailable',
     MlsNativeErrorCode.invalidRequest => 'invalid_request',
     MlsNativeErrorCode.invalidResponse => 'invalid_response',
+    MlsNativeErrorCode.requestConflict => 'request_conflict',
+    MlsNativeErrorCode.pendingFull => 'pending_full',
+    MlsNativeErrorCode.keyPackageFailed => 'key_package_failed',
     MlsNativeErrorCode.operationFailed => 'operation_failed',
   };
 
@@ -510,6 +611,9 @@ class MlsNativeException implements Exception {
     MlsNativeErrorCode.libraryUnavailable => '聊天安全组件加载失败，请重新安装当前版本',
     MlsNativeErrorCode.invalidRequest ||
     MlsNativeErrorCode.invalidResponse ||
+    MlsNativeErrorCode.requestConflict ||
+    MlsNativeErrorCode.pendingFull ||
+    MlsNativeErrorCode.keyPackageFailed ||
     MlsNativeErrorCode.operationFailed => '聊天安全组件暂时无法使用，请稍后重试',
   };
 
@@ -573,12 +677,17 @@ String chatSdkUserErrorMessage(
 ///
 /// 只用于**恒非空**的字段;可为空的响应字段(如无新会话时的
 /// `welcome_wire_message_hex`、Welcome 消息的 `plaintext_hex`)照旧走 `?? ''`。
-String _requireField(Map<String, dynamic> response, String key) {
+String _requireField(
+  Map<String, dynamic> response,
+  String key, {
+  MlsNativeOperation operation = MlsNativeOperation.unknown,
+}) {
   final value = (response[key] ?? '').toString();
   if (value.isEmpty) {
     throw MlsNativeException(
       MlsNativeErrorCode.invalidResponse,
       'OpenMLS native 响应缺少必填字段 $key;请核对 Rust 侧 FFI 键名',
+      operation: operation,
     );
   }
   return value;

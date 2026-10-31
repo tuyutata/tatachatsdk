@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tatachat_mls/mls_boundary.dart';
 import 'package:tatachat_mls/mls_contact_sync.dart';
@@ -8,7 +9,6 @@ import 'package:tatachat_mls/mls_state_store.dart';
 import 'package:tatachat_testing/native.dart';
 
 void main() {
-
   requireChatSdkNative();
 
   test('同CID真实MLS Welcome、快照、丢回执重启和精确叶子移除', () async {
@@ -32,7 +32,45 @@ void main() {
         MlsContactSync(
           identity: devices[index],
           crypto: cryptos[index],
-          exchange: (request) => relay.call(devices[index].deviceId, request),
+          exchange: (request) async {
+            // 通讯录HTTP闭集来自现行服务协议；不把原生收据/密文载荷当HTTP字段。
+            const requestFields = {
+              'publish': {'action', 'key_package'},
+              'state': {'action'},
+              'reserve': {'action', 'group_rev', 'op_kind', 'target_devices'},
+              'commit': {'action', 'op_id', 'member_devices', 'messages'},
+              'ack': {'action', 'op_id', 'message_type'},
+            };
+            const responseFields = {
+              'publish': {'is_ok'},
+              'state': {
+                'is_ok',
+                'group_id',
+                'group_rev',
+                'creator_device',
+                'member_devices',
+                'eligible_device_ids',
+                'key_packages',
+                'messages',
+                'pending',
+                'busy',
+              },
+              'reserve': {
+                'is_ok',
+                'op_id',
+                'op_kind',
+                'target_devices',
+                'group_rev',
+              },
+              'commit': {'is_ok', 'group_rev'},
+              'ack': {'is_ok'},
+            };
+            final action = request['action'];
+            expect(request.keys.toSet(), requestFields[action]);
+            final result = await relay.call(devices[index].deviceId, request);
+            expect(result.keys.toSet(), responseFields[action]);
+            return result;
+          },
           requireCurrent: () async {
             if (!current) throw StateError('owner changed');
           },
@@ -95,5 +133,33 @@ void main() {
     await expectLater(sync(0, current: false), throwsStateError);
     expect(relay.receipts.length, calls);
   });
-}
 
+  test('拒绝旧HTTP成功字段后沿原身份和原KeyPackage恢复', () async {
+    final root = await Directory.systemTemp.createTemp('contact_wire_');
+    addTearDown(() => root.delete(recursive: true));
+    final device = await createTestMlsDevice(root, 'owner');
+    final relay = TestContactRelay();
+    var legacyResponse = true;
+    Future<List<List<int>>> sync() => MlsContactSync(
+      identity: device.identity,
+      crypto: device.crypto,
+      exchange: (request) async {
+        final result = await relay.call(device.identity.deviceId, request);
+        return legacyResponse && request['action'] == 'publish'
+            ? {'ok': true}
+            : result;
+      },
+      requireCurrent: () async {},
+    ).synchronize(snapshots: () async => [], apply: (_) async {});
+    await expectLater(sync(), throwsStateError);
+    final keyPackage = relay.packages[device.identity.deviceId];
+    legacyResponse = false;
+    await sync();
+    expect(relay.revision, 1);
+    expect(relay.packages[device.identity.deviceId], keyPackage);
+    expect(
+      (await device.store.readIdentity()).deviceId,
+      device.identity.deviceId,
+    );
+  });
+}

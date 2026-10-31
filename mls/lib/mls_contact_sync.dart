@@ -1,9 +1,11 @@
 import 'dart:convert';
+
 import 'mls_boundary.dart';
 import 'mls_group_boundary.dart';
 
-typedef ContactMlsExchange =
-    Future<Map<String, dynamic>> Function(Map<String, Object?> request);
+typedef ContactMlsExchange = Future<Map<String, dynamic>> Function(
+  Map<String, Object?> request,
+);
 typedef ContactMlsApply = Future<void> Function(List<int> payload);
 
 /// 同 CID 的真实 OpenMLS 组。只接受已有持久 MLS 身份，不调用聊天权益或宿主供钥。
@@ -26,7 +28,7 @@ final class MlsContactSync {
     await requireCurrent();
     final result = await exchange(body);
     await requireCurrent();
-    if (result['ok'] != true) throw StateError('通讯录 MLS 请求未确认');
+    if (result['is_ok'] != true) throw StateError('通讯录 MLS 请求未确认');
     return result;
   }
 
@@ -70,11 +72,7 @@ final class MlsContactSync {
           : <String>[];
       final sent = await _commit(
         recoveryState['group_id'] as String,
-        {
-          'operation_id': parts[1],
-          'operation_kind': kind,
-          'target_device_ids': targets,
-        },
+        {'op_id': parts[1], 'op_kind': kind, 'target_devices': targets},
         recoveryState,
         null,
       );
@@ -83,7 +81,7 @@ final class MlsContactSync {
     for (var round = 0; round < 128; round++) {
       final state = await _request({'action': 'state'});
       final groupId = state['group_id'];
-      final revision = state['group_revision'];
+      final revision = state['group_rev'];
       if (groupId is! String ||
           !_operationPattern.hasMatch(groupId) ||
           revision is! int ||
@@ -95,9 +93,9 @@ final class MlsContactSync {
       if (messages.isNotEmpty) {
         for (final item in messages) {
           final message = (item as Map).cast<String, dynamic>();
-          final operation = message['operation_id'];
+          final operation = message['op_id'];
           final type = message['message_type'];
-          final sender = message['sender_device_id'];
+          final sender = message['sender_device'];
           if (operation is! String ||
               !_operationPattern.hasMatch(operation) ||
               !['welcome', 'commit', 'application'].contains(type) ||
@@ -143,14 +141,14 @@ final class MlsContactSync {
           await crypto.acknowledgeMessage(nativeId);
           await _request({
             'action': 'ack',
-            'operation_id': operation,
+            'op_id': operation,
             'message_type': type,
           });
         }
         continue;
       }
       if (state['busy'] == true) throw StateError('通讯录 MLS 有其他设备操作待确认');
-      final members = _devices(state['member_device_ids']);
+      final members = _devices(state['member_devices']);
       final eligible = _devices(state['eligible_device_ids']);
       Map<String, dynamic>? pending = state['pending'] == null
           ? null
@@ -165,7 +163,7 @@ final class MlsContactSync {
       List<int>? payload;
       if (pending == null) {
         if (revision == 0) {
-          if (state['creator_device_id'] != identity.deviceId) {
+          if (state['creator_device'] != identity.deviceId) {
             throw StateError('通讯录等待组创建者');
           }
           kind = 'create';
@@ -194,9 +192,9 @@ final class MlsContactSync {
               }
               final reserved = await _request({
                 'action': 'reserve',
-                'group_revision': latest['group_revision'],
-                'operation_kind': 'application',
-                'target_device_ids': <String>[],
+                'group_rev': latest['group_rev'],
+                'op_kind': 'application',
+                'target_devices': <String>[],
               });
               final sent = await _commit(groupId, reserved, latest, snapshot);
               if (sent != null) completed.add(sent);
@@ -209,12 +207,12 @@ final class MlsContactSync {
         }
         pending = await _request({
           'action': 'reserve',
-          'group_revision': revision,
-          'operation_kind': kind,
-          'target_device_ids': targets,
+          'group_rev': revision,
+          'op_kind': kind,
+          'target_devices': targets,
         });
       }
-      kind = pending['operation_kind'] as String;
+      kind = pending['op_kind'] as String;
       if (kind == 'application') {
         final currentSnapshots = await snapshots();
         if (currentSnapshots.isEmpty) throw StateError('通讯录预留操作缺少业务快照');
@@ -232,8 +230,8 @@ final class MlsContactSync {
     Map<String, dynamic> state,
     List<int>? payload,
   ) async {
-    final operation = pending['operation_id'];
-    final kind = pending['operation_kind'];
+    final operation = pending['op_id'];
+    final kind = pending['op_kind'];
     if (operation is! String ||
         !_operationPattern.hasMatch(operation) ||
         !['create', 'add', 'remove', 'application'].contains(kind)) {
@@ -244,7 +242,7 @@ final class MlsContactSync {
     final original = prior.isEmpty
         ? null
         : (prior.single['request'] as Map).cast<String, dynamic>();
-    final targets = _devices(pending['target_device_ids']);
+    final targets = _devices(pending['target_devices']);
     final envelopes = <Map<String, Object?>>[];
     List<String> next;
     if (kind == 'create') {
@@ -279,9 +277,9 @@ final class MlsContactSync {
         nativeId,
         () => crypto.addMembers(groupId, packages),
       );
-      final existing = _members(
-        result.priorMemberIdentities,
-      ).where((id) => id != identity.deviceId).toList();
+      final existing = _members(result.priorMemberIdentities)
+          .where((id) => id != identity.deviceId)
+          .toList();
       if (result.welcome == null) throw StateError('通讯录 MLS 缺少 Welcome');
       envelopes.add({
         'message_type': 'commit',
@@ -342,8 +340,8 @@ final class MlsContactSync {
     await requireCurrent();
     await _request({
       'action': 'commit',
-      'operation_id': operation,
-      'member_device_ids': next,
+      'op_id': operation,
+      'member_devices': next,
       'messages': envelopes,
     });
     await crypto.acknowledgeMessage(nativeId);

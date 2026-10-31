@@ -122,6 +122,9 @@ SDK用户清理和全量擦除的所有权与执行边界见本机存储章节�
 
 ### 同CID通讯录MLS组
 
+通讯录HTTP交换唯一使用CitizenServe现行is_ok、group_rev、op_id、op_kind、member_devices、target_devices、creator_device、sender_device和mail_seq。SDK实现、TestContactRelay及完整真实MLS回归共用该规范；不保留旧HTTP字段别名，不在宿主手工翻译。原生FFI收据和已加密业务载荷归各自既有合同，HTTP改名不重写历史密文或更换身份。FFI失败附带固定操作枚举及稳定分类；技术原文仍不进入宿主日志。
+
+
 MlsContactSync 使用与聊天及普通认证相同的持久MLS身份，业务交换由宿主提供，仅接受已验证的HTTPS接口。它不依赖聊天权益或聊天连接，不增加私钥。Native add_members 核对实际 KeyPackage credential、叶子签名公钥与预期 user_id:device_id；remove_members 仅接受完整、无重复且存在的精确设备叶子，聊天上层按用户展开设备列表。
 
 CitizenServe按当前MLS会话派生CID和设备，闭集动作publish/state/reserve/commit/ack。组版本CAS、operation_id幂等和原生精确请求/结果共同覆盖提交中断。实际应用消息发送者必须与队列公开发送设备一致；application只接受operation_id、owner_cid_number和规范payload_base64，32KiB业务载荷由SDK编码后封装。业务落库后才确认原生结果，再确认设备队列；已确认原生结果的队列重放只补ACK，不重复合并或消耗发送链。新设备只能经有效成员Welcome加入；全部MLS状态丢失无法用钱包恢复旧组。未完成预留操作必须由原设备恢复，不能通过重新建组跳过已推进的协议状态。

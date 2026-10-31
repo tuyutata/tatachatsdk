@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tatachat_core/chat_content.dart';
 import 'package:tatachat_core/chat_message.dart';
@@ -32,10 +33,6 @@ MlsAuthenticationRequest createAuthenticationRequest({
   requestTarget: target,
   bodyBytes: body,
 );
-
-
-
-
 
 class TestMlsDevice {
   TestMlsDevice(this.store, this.identity, this.root);
@@ -110,16 +107,12 @@ ChatContent copyTestMediaContent(
   cipherSha256: cipherSha256 ?? c.cipherSha256!,
 );
 
-
-
-  Future<Directory> createMlsTestDirectory() async {
-    final temp = await Directory.systemTemp.createTemp('mls_attachment_');
-    final dir = Directory(await temp.resolveSymbolicLinks());
-    addTearDown(() => dir.delete(recursive: true));
-    return dir;
-  }
-
-
+Future<Directory> createMlsTestDirectory() async {
+  final temp = await Directory.systemTemp.createTemp('mls_attachment_');
+  final dir = Directory(await temp.resolveSymbolicLinks());
+  addTearDown(() => dir.delete(recursive: true));
+  return dir;
+}
 
 class TestContactRelay {
   final group = '11' * 16;
@@ -135,6 +128,12 @@ class TestContactRelay {
   bool loseCommitReply = false;
   String? rejectNextAckFor;
   bool busy = false;
+  // 仅导出真实HTTP字段，夹具内部设备归属不混入服务响应。
+  Map<String, dynamic> _pendingView() => {
+    for (final key in ['op_id', 'op_kind', 'target_devices', 'group_rev'])
+      key: pending![key],
+  };
+
   Future<Map<String, dynamic>> call(
     String device,
     Map<String, Object?> request,
@@ -144,14 +143,14 @@ class TestContactRelay {
         creator ??= device;
         eligible.add(device);
         packages[device] = request['key_package'] as String;
-        return {'ok': true};
+        return {'is_ok': true};
       case 'state':
         return {
-          'ok': true,
+          'is_ok': true,
           'group_id': group,
-          'group_revision': revision,
-          'creator_device_id': creator,
-          'member_device_ids': members.toList(),
+          'group_rev': revision,
+          'creator_device': creator,
+          'member_devices': members.toList(),
           'eligible_device_ids': eligible.toList(),
           'key_packages': packages.entries
               .where((entry) => eligible.contains(entry.key))
@@ -160,7 +159,7 @@ class TestContactRelay {
               )
               .toList(),
           'messages': List<Map<String, dynamic>>.from(queues[device] ?? []),
-          'pending': pending?['device'] == device ? pending : null,
+          'pending': pending?['device'] == device ? _pendingView() : null,
           'busy': busy || (pending != null && pending?['device'] != device),
         };
       case 'reserve':
@@ -168,33 +167,33 @@ class TestContactRelay {
           throw StateError('busy');
         }
         pending ??= {
-          'operation_id': (++serial).toRadixString(16).padLeft(32, '0'),
-          'operation_kind': request['operation_kind'],
-          'group_revision': revision,
-          'target_device_ids': request['target_device_ids'],
+          'op_id': (++serial).toRadixString(16).padLeft(32, '0'),
+          'op_kind': request['op_kind'],
+          'group_rev': revision,
+          'target_devices': request['target_devices'],
           'device': device,
         };
-        return {'ok': true, ...pending!};
+        return {'is_ok': true, ..._pendingView()};
       case 'commit':
-        final operation = request['operation_id'] as String;
+        final operation = request['op_id'] as String;
         if (!receipts.containsKey(operation)) {
-          if (pending?['operation_id'] != operation) {
+          if (pending?['op_id'] != operation) {
             throw StateError('conflict');
           }
           receipts[operation] = Map<String, Object?>.from(request);
           revision++;
-          members = (request['member_device_ids'] as List).cast<String>();
+          members = (request['member_devices'] as List).cast<String>();
           var index = 0;
           for (final value in request['messages'] as List) {
             final message = (value as Map).cast<String, dynamic>();
             for (final recipient
                 in (message['device_ids'] as List).cast<String>()) {
               (queues[recipient] ??= []).add({
-                'operation_id': operation,
+                'op_id': operation,
                 'message_type': message['message_type'],
                 'mls_message': message['mls_message'],
-                'sender_device_id': device,
-                'sequence': revision * 2 + index,
+                'sender_device': device,
+                'mail_seq': revision * 2 + index,
               });
             }
             index++;
@@ -205,7 +204,7 @@ class TestContactRelay {
           loseCommitReply = false;
           throw StateError('synthetic lost reply');
         }
-        return {'ok': true, 'group_revision': revision};
+        return {'is_ok': true, 'group_rev': revision};
       case 'ack':
         if (rejectNextAckFor == device &&
             request['message_type'] == 'application') {
@@ -214,12 +213,11 @@ class TestContactRelay {
         }
         queues[device]?.removeWhere(
           (message) =>
-              message['operation_id'] == request['operation_id'] &&
+              message['op_id'] == request['op_id'] &&
               message['message_type'] == request['message_type'],
         );
-        return {'ok': true};
+        return {'is_ok': true};
     }
     throw StateError('unexpected action');
   }
 }
-

@@ -1,4 +1,5 @@
 import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tatachat_mls/mls_boundary.dart';
 import 'package:tatachat_mls/mls_native.dart';
@@ -16,6 +17,48 @@ MlsAuthenticationRequest _authenticationRequest() => MlsAuthenticationRequest(
 
 void main() {
   requireChatSdkNative();
+  test('原生诊断只公开固定码和操作，私密技术文本不进入用户提示', () {
+    for (final entry in {
+      'CHAT_MLS_REQUEST_CONFLICT:合成私密文本': MlsNativeErrorCode.requestConflict,
+      'CHAT_MLS_PENDING_FULL:合成私密文本': MlsNativeErrorCode.pendingFull,
+      '生成 OpenMLS KeyPackage 失败:合成私密文本': MlsNativeErrorCode.keyPackageFailed,
+      '未知合成私密文本': MlsNativeErrorCode.operationFailed,
+    }.entries) {
+      final error = MlsNativeException.fromTechnicalMessage(
+        entry.key,
+        operation: MlsNativeOperation.keyPackage,
+      );
+      expect(error.code, entry.value);
+      expect(error.diagnosticOperation, 'key_package');
+      expect(error.diagnosticCode, isNot(contains('私密文本')));
+      expect(error.userMessage, isNot(contains('私密文本')));
+    }
+  });
+  test('真实FFI坏请求带精确操作名和固定分类', () {
+    final bindings = MlsNativeBindings.load();
+    expect(
+      () => bindings.callJson(bindings.createKeyPackage, {'unexpected': true}),
+      throwsA(
+        isA<MlsNativeException>()
+            .having((e) => e.code, 'code', MlsNativeErrorCode.invalidRequest)
+            .having(
+              (e) => e.operation,
+              'operation',
+              MlsNativeOperation.keyPackage,
+            ),
+      ),
+    );
+    expect(
+      () => bindings.callJson(bindings.identity, {'unexpected': true}),
+      throwsA(
+        isA<MlsNativeException>().having(
+          (e) => e.operation,
+          'operation',
+          MlsNativeOperation.identity,
+        ),
+      ),
+    );
+  });
   test('KeyPackage只在已持久化的同一MLS身份上生成', () async {
     final root = await Directory.systemTemp.createTemp(
       'tatachat_native_identity_',
@@ -176,9 +219,8 @@ void main() {
     final store = MlsStateStore(root, ownerUserId: 'phase-user');
     final first = await store.prepareIdentity();
     final before = await File('${root.path}/state.bin').readAsBytes();
-    await File(
-      '${root.path}/state.lock',
-    ).writeAsString('initializing\n', flush: true);
+    await File('${root.path}/state.lock')
+        .writeAsString('initializing\n', flush: true);
     expect((await store.prepareIdentity()).deviceId, first.deviceId);
     expect(await File('${root.path}/state.bin').readAsBytes(), before);
     await File('${root.path}/state.bin').delete();
