@@ -183,7 +183,7 @@ class ChatStore implements ChatFlowStore<ChatBindingFenceToken> {
   ///
   /// 消息载荷先在事务外校验；在最终事务内再复核持久代次，拒绝旧绑定晚写。
   /// 这里只串行 Chat 域内同一 user ID 的绑定
-  /// 变更，不接入 WalletIsar，也不阻塞其它 user ID。
+  /// 变更，不接入 宿主用户库，也不阻塞其它 user ID。
   static final _ChatBindingMutationGate _processBindingMutationGate =
       _ChatBindingMutationGate();
 

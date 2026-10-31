@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:isar_community/isar.dart';
 import 'package:tatachat_core/chat_content.dart';
@@ -35,8 +37,130 @@ const _nextBinding = ChatBinding(
 
 String _payload(String text) => ChatPayloadCodec.encode(ChatContent.text(text));
 
+const _physicalColumns = <String, Set<String>>{
+  'conversation': {
+    'id',
+    'owner_id',
+    'bind_rev',
+    'account_id',
+    'conversation_id',
+    'peer_id',
+    'title',
+    'summary',
+    'updated_at',
+    'unread_count',
+    'delivery_state',
+    'kind',
+  },
+  'message': {
+    'id',
+    'owner_id',
+    'bind_rev',
+    'account_id',
+    'message_id',
+    'conversation_id',
+    'direction',
+    'sender_id',
+    'recipient_id',
+    'kind',
+    'delivery_state',
+    'payload_json',
+    'search_tokens',
+    'message_bytes',
+    'created_at',
+  },
+  'outbound': {
+    'id',
+    'owner_id',
+    'message_id',
+    'conversation_id',
+    'recipient_id',
+    'message_bytes',
+    'updated_at',
+  },
+  'media': {
+    'id',
+    'owner_id',
+    'attachment_id',
+    'recipient_id',
+    'conversation_id',
+    'file_name',
+    'content_type',
+    'byte_size',
+    'created_at',
+  },
+  'inbound': {
+    'id',
+    'owner_id',
+    'message_id',
+    'conversation_id',
+    'message_bytes',
+    'created_at',
+  },
+  'route': {
+    'id',
+    'owner_id',
+    'peer_id',
+    'route_name',
+    'device_id',
+    'safety_number',
+    'nearby_hint',
+    'route_note',
+    'created_at',
+    'updated_at',
+  },
+  'group': {
+    'id',
+    'owner_id',
+    'group_id',
+    'group_name',
+    'creator_id',
+    'group_epoch',
+    'has_left',
+  },
+  'member': {'id', 'owner_id', 'group_id', 'member_id', 'member_role'},
+  'commit': {
+    'id',
+    'owner_id',
+    'message_id',
+    'group_id',
+    'message_epoch',
+    'message_bytes',
+    'created_at',
+  },
+  'fence': {
+    'id',
+    'owner_id',
+    'bind_rev',
+    'account_id',
+    'bind_scope',
+    'fence_rev',
+    'fence_state',
+  },
+};
+
 void main() {
   useIsolatedChatIsar();
+
+  test('实际开库及关闭重开只使用最终聊天文件名', () async {
+    final first = await ChatIsar.instance.db();
+    expect(first.name, 'tatachatsdk_chat');
+    expect(first.path, isNotNull);
+    expect(File(first.path!).existsSync(), isTrue);
+    final files = Directory(first.directory!)
+        .listSync()
+        .whereType<File>()
+        .where((file) => file.path.endsWith('.isar'))
+        .map((file) => file.uri.pathSegments.last);
+    expect(files, ['tatachatsdk_chat.isar']);
+    final path = first.path;
+    await first.close();
+    final reopened = await ChatIsar.instance.db();
+    expect(reopened.name, 'tatachatsdk_chat');
+    expect(reopened.path, path);
+    expect(reopened.isOpen, isTrue);
+    expect(File(reopened.path!).existsSync(), isTrue);
+  });
 
   test('十集合使用规范物理名，逐收件人事实用三元自然索引', () async {
     const schemas = <CollectionSchema<dynamic>>[
@@ -65,9 +189,10 @@ void main() {
     });
     for (final schema in schemas) {
       expect(schema.idName, 'id');
-      for (final name in schema.properties.keys) {
-        expect(name, matches(RegExp(r'^[a-z]+(?:_[a-z]+)*$')));
-      }
+      expect({
+        schema.idName,
+        ...schema.properties.keys,
+      }, _physicalColumns[schema.name]);
     }
     expect(
       ChatOutgoingMediaEntitySchema.properties,

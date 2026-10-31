@@ -123,7 +123,10 @@ export function assertFlutterSourceView(source,output){
  if(realpathSync(source)!==source||realpathSync(output)!==output||source===output)throw Error('SDK工程目录无效');
  for(const [flat,to]of layout){const from=platformInput(source,flat,to);if(existsSync(join(output,flat))||!readFileSync(join(source,from)).equals(readFileSync(join(output,to))))throw Error('SDK Flutter布局与本仓输入不一致');}
  const members=workspacePackages(source).filter(item=>item.path!==source);
- for(const name of ['pubspec.yaml','pubspec.lock','native/tatachat_sdk.h',...members.map(item=>join(item.path.slice(source.length+1),'pubspec.yaml'))])if(!readFileSync(join(source,name)).equals(readFileSync(join(output,name))))throw Error('SDK工程声明漂移');
+ for(const name of ['pubspec.yaml','pubspec.lock','native/tatachat_sdk.h',
+  'storage/lib/chat_isar.dart','storage/lib/chat_isar.g.dart','storage/lib/chat_store.dart',
+  'runtime/lib/chat_runtime.dart','mls/lib/mls_state_store.dart',
+  ...members.map(item=>join(item.path.slice(source.length+1),'pubspec.yaml'))])if(!readFileSync(join(source,name)).equals(readFileSync(join(output,name))))throw Error('SDK工程声明漂移');
  for(const item of members)if(!existsSync(join(output,item.path.slice(source.length+1),'lib')))throw Error('SDK交付缺少成员源码');
  if(existsSync(join(output,'test')))throw Error('SDK交付根目录禁止test');
  if(!existsSync(join(output,'lib/test/build.test.mjs')))throw Error('SDK交付缺少lib测试入口');

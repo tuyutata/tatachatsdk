@@ -374,7 +374,7 @@ SDK继续只交付实际连接、命令及附件传输事实，不定义会员�
 附件系统选择的唯一大小输入由ChatAttachmentPlatform.pickFile(maxBytes:)交付，聊天页面读取宿主mediaLimits的file规则；Android/iOS在读取前及流式复制中均校验同份整数字节上限，删除固定512MiB限额。无效上限在打开选择器前拒绝，系统取消、单文件、沙箱及临时文件清理保持。附件HTTP的5xx以storage_unavailable交付原资源钩子，让宿主保留缺回执的未知消耗；SDK不建立会员账本或改变聊天协议。
 
 
-本机持久化保持conversation/message/outbound/media/inbound/route/group/member/commit/fence十集合，含必需row_id共85列。Dart实体与成员遵循UpperCamelCase/lowerCamelCase，物理名称由官方@Name表达。media以ownerUserId/attachmentId/recipientUserId三元唯一，member以ownerUserId/groupId/memberUserId三元唯一，不存拼接键；群名只归group，人数直接读member，会话时间成员为updatedAtMillis、物理列updated_at。
+本机持久化保持conversation/message/outbound/media/inbound/route/group/member/commit/fence十集合，含主键id共85列。Dart实体与成员遵循UpperCamelCase/lowerCamelCase，物理名称由官方@Name表达。media以ownerUserId/attachmentId/recipientUserId三元唯一，member以ownerUserId/groupId/memberUserId三元唯一，不存拼接键；群名只归group，人数直接读member，会话时间成员为updatedAtMillis、物理列updated_at。
 
 出站队列仅表示真实待投递事实，不复制消息展示状态，也不保存无人消费的尝试计数、末次错误。入站缓冲不保存不参与回放的原因文本；群与成员镜像删除无人消费的创建/更新时间和加入时间，内部存储参数及实际调用同步删除。消息发送设备保留在冻结MLS原字节，不另存无人读取的列。epoch、角色、退群状态、Commit到达顺序、签发绑定、围栏和逐收件人重试密文保留；失败分类、重试、ACK及原收件集合保持。真实旧库不由普通打开迁移或清除。
 
@@ -410,3 +410,8 @@ Flutter对lib下导入按生产依赖检查；根SDK测试正式归属lib/test�
 存储正文在事务外同步准备，摘要和bigram索引共用一次解码结果；写入前的账户、绑定、持久围栏与事务内校验保持。群出站路由直接取冻结设备消息，不再传递userId到自身的映射；同用户不同设备仍逐条持久化，空收件人与非法载荷使事务失败，不保留半笔消息。
 
 认证与通讯录复用_requireCurrentAccount的账户、用户、修订、绑定域、宿主索引及撤销代次判定。各自原有的调用阶段和错误文案保持，通讯录仍复核持久围栏；签名前后及文件屏障退出后均继续核验。身份准备、认证与通讯录仍使用同一持久MLS身份，不额外建立网络或权限链。
+
+
+### 存储命名正式交付验收
+
+ChatIsar实际文件固定为tatachatsdk_chat.isar。存储回归须真实开库、关闭并重开，核对唯一物理文件名及十集合/物理列闭集；不能仅搜索源码字符串。生成代码保持原锁生成器的真实输出，不额外插入手工检查忽略标记。公开工程视图验收同时比对数据库声明、生成代码、ChatStore、Runtime及MLS状态存储的真实输入字节，交付副本漂移直接失败。正式发布后以同一发布提交、Run/attempt及正式ZIP再次运行存储回归，确认改名已经进入交付，不以本机提交代替正式发布。

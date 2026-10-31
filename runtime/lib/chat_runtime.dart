@@ -276,8 +276,7 @@ class _ChatCrossIsolateCoordinator {
   static const String _userMutationLeasePrefix = '.tatachatsdk_chat_user_';
   static const String _userMutationLeaseSuffix = '.mutation_lease';
   static const String _userMutationStaleSuffix = '.stale';
-  static const String _startupBarrierName =
-      '.tatachatsdk_chat_startup.barrier';
+  static const String _startupBarrierName = '.tatachatsdk_chat_startup.barrier';
   static const Duration _leaseDrainTimeout = Duration(seconds: 5);
   static const Duration _leasePollInterval = Duration(milliseconds: 20);
   static const Duration _leaseStaleAfter = Duration(seconds: 30);
@@ -1626,7 +1625,7 @@ class ChatRuntimeCore {
   }
 
   /// 启动与退后台只按 Chat 文件域结构清除短命明文，不构造 Runtime、不读取默认账户、
-  /// WalletIsar 或任何密钥。每个物理 user ID 分区仍取得同一跨 isolate lease。
+  /// 宿主用户库 或任何密钥。每个物理 user ID 分区仍取得同一跨 isolate lease。
   static Future<void> purgePlainAttachmentsWithoutAccount({
     Future<Directory> Function()? documentsDirectoryProvider,
   }) async {
