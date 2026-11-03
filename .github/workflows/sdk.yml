@@ -35,17 +35,25 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          gh api "repos/$GITHUB_REPOSITORY/actions/workflows/sdk.yml/runs?branch=main&event=workflow_dispatch&status=success&per_page=1" > "$RUNNER_TEMP/previous.json"
+          gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases?per_page=100" > "$RUNNER_TEMP/releases.json"
           node --input-type=module >> "$GITHUB_OUTPUT" <<'NODE'
           import {readFileSync} from 'node:fs';
-          import {execFileSync} from 'node:child_process';
-          let version=/^version:\s*([^+\s]+)/mu.exec(readFileSync('pubspec.yaml','utf8'))[1];
-          const previous=JSON.parse(readFileSync(process.env.RUNNER_TEMP+'/previous.json','utf8')).workflow_runs[0];
-          if(previous){
-            const data=JSON.parse(execFileSync('gh',['api','repos/'+process.env.GITHUB_REPOSITORY+'/actions/runs/'+previous.id+'/artifacts?per_page=100'],{encoding:'utf8'}));
-            const prefix="塔塔聊天·SDK·v";
-            const artifact=data.artifacts.find(value=>value.name.startsWith(prefix)&&/^\d+\.\d+\.\d+$/u.test(value.name.slice(prefix.length)));
-            const parts=artifact.name.slice(prefix.length).split('.');parts[2]=String(BigInt(parts[2])+1n);version=parts.join('.');
+          const releases=JSON.parse(readFileSync(process.env.RUNNER_TEMP+'/releases.json','utf8')).flat();
+          const valid=value=>typeof value==='string'&&/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u.test(value);
+          const versions=releases.flatMap(release=>{
+            if(release.draft||release.prerelease||!release.published_at)return [];
+            let proof;try{proof=JSON.parse(release.body);}catch{return [];}
+            return proof?.product_id==='tatachatsdk'&&proof.platform==='sdk'&&valid(proof.software_version)?[proof.software_version]:[];
+          }).sort((left,right)=>{
+            const a=left.split('.').map(BigInt),b=right.split('.').map(BigInt);
+            for(let i=0;i<3;i++)if(a[i]!==b[i])return a[i]>b[i]?-1:1;return 0;
+          });
+          let version=/^version: (\S+)$/mu.exec(readFileSync('pubspec.yaml','utf8'))[1];
+          if(!valid(version))throw Error('SDK版本声明无效');
+          if(versions.length){
+            const next=versions[0].split('.').map(BigInt);next[2]++;
+            const declared=version.split('.').map(BigInt);
+            for(let i=0;i<3;i++){if(next[i]===declared[i])continue;if(next[i]>declared[i])version=next.join('.');break;}
           }
           console.log('version='+version);
           NODE
@@ -120,6 +128,7 @@ jobs:
           jq -n --arg version "$SDK_VERSION" --arg sha "$GITHUB_SHA" --argjson run "$GITHUB_RUN_ID" --argjson attempt "$GITHUB_RUN_ATTEMPT" --arg file "$name.zip" --arg digest "$digest" \
             '{product_id:"tatachatsdk",platform:"sdk",software_version:$version,git_commit_sha:$sha,producer_run_id:$run,producer_run_attempt:$attempt,assets:[{name:$file,sha256:$digest}]}' > "$artifact/$name.json"
           (cd "$artifact" && shasum -a 256 "$name.zip" "$name.json" > "$name.sha256")
+          TATACHATSDK_PACKAGE="$artifact" node scripts/build.mjs consume "$GITHUB_SHA" "$work/consumer" >/dev/null
           printf 'path=%s\n' "$artifact" >> "$GITHUB_OUTPUT"
           printf 'SDK_NAME=%s\n' "$name" >> "$GITHUB_ENV"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -233,11 +242,15 @@ jobs:
             jq -r --arg prefix "$PREFIX" '[.[][]|select(.draft==false and (.tag_name|startswith($prefix)))]|sort_by(.published_at,.id)|reverse|.[1:][]|.tag_name' "$RUNNER_TEMP/releases.json" |
             while IFS= read -r tag; do gh release delete "$tag" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag; done
           fi
+          gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases?per_page=100" > "$RUNNER_TEMP/sdk-release-records.json"
           gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/actions/workflows/$workflow/runs?branch=main&event=workflow_dispatch&per_page=100" > "$RUNNER_TEMP/runs.json"
-          jq --argjson current "$GITHUB_RUN_ID" --arg result "$RESULT" '
+          jq --argjson current "$GITHUB_RUN_ID" --arg result "$RESULT" --slurpfile releases "$RUNNER_TEMP/sdk-release-records.json" '
             [.[].workflow_runs[]|select(.status=="completed" or .id==$current)|
              .+{state:(if .id==$current then $result elif .conclusion=="success" then "success" else "failure" end)}]|
-            group_by(.state)|map(sort_by(.run_number)|last.id)' "$RUNNER_TEMP/runs.json" > "$RUNNER_TEMP/keep.json"
+            (group_by(.state)|map(sort_by(.run_number)|last.id)) +
+            [$releases[0][][] | select(.draft==false and .prerelease==false and .published_at!=null) |
+             .body | fromjson? | select(.product_id=="tatachatsdk" and .platform=="sdk") | .producer_run_id] |
+            unique' "$RUNNER_TEMP/runs.json" > "$RUNNER_TEMP/keep.json"
           jq -r --argjson current "$GITHUB_RUN_ID" --slurpfile keep "$RUNNER_TEMP/keep.json" '
             [.[].workflow_runs[]|select(.status=="completed" and .id!=$current)|select(.id as $id|$keep[0]|index($id)|not)]|
             sort_by(.conclusion=="success",.run_number)[]|.id' "$RUNNER_TEMP/runs.json" |

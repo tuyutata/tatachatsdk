@@ -1,7 +1,8 @@
 // 按官方要求或推荐实现；必需的工具依赖有就复用，没有就下载；使用最简单的实现方式；本脚本只允许放编译构建代码和注释，禁止增加无关内容，禁止增加复杂的校验阻断。
 // config.mjs：只负责配置声明；build.mjs：只负责编译构建实现和必要注释；*.yml：负责全部GitHub流程，包括版本、作业编排、发布及历史清理。
 import {spawn} from 'node:child_process';
-import {mkdirSync,mkdtempSync,existsSync,readFileSync,writeFileSync,copyFileSync,cpSync,rmSync,realpathSync,lstatSync,readdirSync,rmdirSync,renameSync} from 'node:fs';
+import {createHash} from 'node:crypto';
+import {createReadStream,mkdirSync,mkdtempSync,existsSync,readFileSync,writeFileSync,copyFileSync,cpSync,rmSync,realpathSync,lstatSync,readdirSync,rmdirSync,renameSync} from 'node:fs';
 import {join,dirname,resolve,basename,sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {homedir} from 'node:os';
@@ -14,6 +15,53 @@ export function sdkName(version){
 export const root=resolve(fileURLToPath(new URL('../',import.meta.url)));
 import {manifest as configuration,tools,repository} from './config.mjs';
 const manifest=join(root,'native/Cargo.toml');
+async function fileHash(file,signal){const hash=createHash('sha256');for await(const bytes of createReadStream(file,{signal}))hash.update(bytes);return hash.digest('hex');}
+// 完整Release的ZIP、来源回执和摘要必须来自同一生产提交与Run；消费不联网或重编译。
+export async function verifyPackage(directory,source,signal){
+ const name=sdkName(source.version),expected=['zip','json','sha256'].map(extension=>name+'.'+extension);
+ if(!/^[a-f0-9]{40}$/u.test(source.sourceSha)||![source.sourceRun,source.sourceAttempt].every(value=>Number.isSafeInteger(value)&&value>0))throw Error('SDK生产来源无效');
+ if(realpathSync(directory)!==resolve(directory)||JSON.stringify(readdirSync(directory).sort())!==JSON.stringify([...expected].sort()))throw Error('SDK产物文件闭集无效');
+ for(const file of expected){const info=lstatSync(join(directory,file));if(!info.isFile()||!info.size)throw Error('SDK产物文件类型或长度无效');}
+ if(lstatSync(join(directory,expected[1])).size>65536||lstatSync(join(directory,expected[2])).size>4096)throw Error('SDK产物回执超过边界');
+ const proof=JSON.parse(readFileSync(join(directory,expected[1]),'utf8'));
+ if(proof?.product_id!==configuration.product_id||proof.platform!=='sdk'||proof.software_version!==source.version||proof.git_commit_sha!==source.sourceSha||proof.producer_run_id!==source.sourceRun||proof.producer_run_attempt!==source.sourceAttempt||proof.assets?.length!==1||proof.assets[0].name!==expected[0])throw Error('SDK产物回执与来源不一致');
+ const zip=await fileHash(join(directory,expected[0]),signal),json=await fileHash(join(directory,expected[1]),signal);
+ if(proof.assets[0].sha256!==zip||readFileSync(join(directory,expected[2]),'utf8')!==zip+'  '+expected[0]+'\n'+json+'  '+expected[1]+'\n')throw Error('SDK产物校验失败');
+ return proof;
+}
+export async function consume({directory,sourceSha,sourceRun,sourceAttempt,output,signal=controller.signal}={}){
+ signal.throwIfAborted();
+ if(typeof directory!=='string'||realpathSync(directory)!==resolve(directory)||typeof output!=='string'||resolve(output)!==output||existsSync(output)||realpathSync(dirname(output))!==dirname(output))throw Error('SDK消费输入或输出无效');
+ if(output===directory||output.startsWith(directory+sep)||directory.startsWith(output+sep))throw Error('SDK消费目录交叠');
+ const receipts=readdirSync(directory).filter(name=>name.endsWith('.json'));if(receipts.length!==1)throw Error('SDK完整交付回执不唯一');
+ const receipt=join(directory,receipts[0]),info=lstatSync(receipt);if(!info.isFile()||info.size>65536)throw Error('SDK完整交付回执无效');
+ const proof=JSON.parse(readFileSync(receipt,'utf8'));
+ sourceRun??=proof.producer_run_id;sourceAttempt??=proof.producer_run_attempt;
+ await verifyPackage(directory,{version:proof.software_version,sourceSha,sourceRun,sourceAttempt},signal);
+ const work=mkdtempSync(join(dirname(output),'.chat-consume-'));let safe=true,complete=false;
+ try{
+  const input=join(work,'input');mkdirSync(input);
+  for(const extension of ['zip','json','sha256'])copyFileSync(join(directory,sdkName(proof.software_version)+'.'+extension),join(input,sdkName(proof.software_version)+'.'+extension));
+  await verifyPackage(input,{version:proof.software_version,sourceSha,sourceRun,sourceAttempt},signal);
+  const archive=join(input,sdkName(proof.software_version)+'.zip');
+  const names=(await run('unzip',['-Z1',archive],{capture:true,signal})).split('\n');
+  const lines=(await run('unzip',['-Z','-l',archive],{capture:true,signal})).split('\n').filter(value=>/^[dl-][rwxstST-]{9}\s/u.test(value));
+  if(!names.length||names.length>65536||new Set(names).size!==names.length||lines.length!==names.length)throw Error('SDK归档条目无效');
+  let total=0;
+  for(let index=0;index<names.length;index++){
+   const name=names[index],parts=name.replace(/\/$/u,'').split('/'),row=lines[index];
+   if(!['project','__MACOSX'].includes(parts[0])||parts.some(part=>!part||part==='.'||part==='..'||/[\s\\:\x00-\x1f<>|?*]/u.test(part))||!row.endsWith(' '+name)||row[0]==='l')throw Error('SDK归档路径或类型无效');
+   const size=Number(row.trim().split(/\s+/u)[3]);if(!Number.isSafeInteger(size)||size<0||(total+=size)>8*1024**3||row[0]==='d'&&!name.endsWith('/')||row[0]==='-'&&name.endsWith('/'))throw Error('SDK归档长度或类型无效');
+  }
+  await run('unzip',['-q',archive,'-d',work],{signal});
+  const source=join(work,'project');assertNoDartTool(source);
+  for(const file of ['pubspec.lock','native/tatachat_sdk.h','native/libtatachat_sdk.dylib','android/src/main/jniLibs/arm64-v8a/libtatachat_sdk.so','ios/TataChatSDK.xcframework/Info.plist','ios/TataChatSDK.xcframework/ios-arm64/TataChatSDK.framework/TataChatSDK','ios/TataChatSDK.xcframework/ios-arm64-simulator/TataChatSDK.framework/TataChatSDK']){
+   const path=join(source,file);if(!existsSync(path)||!lstatSync(path).isFile()||!lstatSync(path).size)throw Error('完整SDK产物缺失：'+file);
+  }
+  for(const member of workspacePackages(source))if(/^version: (\S+)$/mu.exec(readFileSync(join(member.path,'pubspec.yaml'),'utf8'))?.[1]!==proof.software_version)throw Error('SDK包版本与Release不一致');
+  createFlutterSourceView(source,output);assertFlutterSourceView(source,output);signal.throwIfAborted();complete=true;return {output};
+ }catch(error){safe=!error.keepWork;throw error;}finally{if(safe){rmSync(work,{recursive:true,force:true});if(!complete)rmSync(output,{recursive:true,force:true});}}
+}
 export function testRoot(){const base=join(root,'target/test');mkdirSync(base,{recursive:true});return base;}
 function taskDirectory(kind){const base=join(root,'target',kind);mkdirSync(base,{recursive:true});if(realpathSync(base)!==base)throw Error('本轮目录经过链接');return mkdtempSync(join(base,'sdk-'));}
 // 原子领取缓存，不等待其它任务；占用或不可写即使用本轮独立目录。
@@ -200,7 +248,7 @@ export async function testSDK(){
  const env=buildEnvironment(work,cache);let safe=true;
  try{
   const flutter=await flutterCheck(env),project=sourceView(work);
-  await run(process.execPath,['--test',join(project,'lib/test/build.test.mjs'),join(project,'lib/test/runner.test.mjs')],{cwd:project,env});
+  await run(process.execPath,['--test',join(root,'lib/test/build.test.mjs'),join(root,'lib/test/runner.test.mjs'),join(root,'lib/test/release.test.mjs')],{env});
   const testPath=prepareTestLayout(project);
   await run('cargo',['test','--locked','--manifest-path',manifest],{env});
   const output=await nativeTarget('macos',work,env,'1.0.0');
@@ -255,9 +303,10 @@ if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)&&!
   const [command,...args]=process.argv.slice(2);
   if(process.versions.node!==tools.node)throw Error('Node版本与本产品声明不一致');
   if(command==='test')await testSDK();
+  else if(command==='consume')console.log(JSON.stringify(await consume({directory:process.env.TATACHATSDK_PACKAGE,sourceSha:args[0],output:args[1]})));
   else if(command==='protocol')console.log(JSON.stringify(await protocol()));
   else if(command==='native')console.log(JSON.stringify(await buildSDK({target:args[0],device:args.includes('--device')})));
   else if(!command){const result=await buildSDK();console.log(JSON.stringify(result));}
-  else throw Error('用法：node scripts/build.mjs [test|native android/ios/macos|protocol]');
+  else throw Error('用法：node scripts/build.mjs [test|native android/ios/macos|protocol|consume 源码SHA 输出]');
  }catch(error){console.error(error.message);process.exitCode=1;}
 }
