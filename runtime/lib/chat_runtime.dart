@@ -3587,7 +3587,9 @@ class ChatRuntimeCore {
   /// 媒体先完成私有 encrypted object storage 密文上传，再发送端到端加密控制消息；附件网络失败只保留
   /// 当前本机 pending，不得越过同会话顺序或阻塞其它会话。
   Future<int> retryOutgoing({String? recipientUserId, String? conversationId}) {
-    return _runWithReadyBinding((context) async {
+    // 重连补发同样会解析设备及投递密文，资源授权可回调MLS认证；文件改写沿各自
+    // 绑定边界取得短锁，不能用外层文件锁包住整个网络重试。
+    return _runWithReadyContext((context) async {
       await _flushPendingOutgoing(
         context,
         recipientUserId: recipientUserId,
@@ -4788,62 +4790,75 @@ class ChatRuntimeCore {
   Future<ChatRuntimeAccountContext> _buildAccountContext(
     ChatRuntimeAccount account,
   ) async {
+    final generation = _accountGenerations[account.accountId] ?? 0;
     final bindingToken = await _convergeBindingFence(account);
-    return _runBindingFileMutation(
-      bindingToken,
-      () => _buildAccountContextForBinding(account, bindingToken),
-    );
-  }
-
-  Future<ChatRuntimeAccountContext> _buildAccountContextForBinding(
-    ChatRuntimeAccount account,
-    ChatBindingFenceToken bindingToken,
-  ) async {
     final prefs = await _prefs;
-    final stateStore = await _stateStore(account.userId);
+    MlsStateStore? stateStore;
     ChatServiceTransport? transport;
     var keepStateStore = false;
     try {
-      final identity = await stateStore.prepareIdentity();
-      final deviceId = identity.deviceId;
-      final finalCrypto =
-          _cryptoFactory?.call(identity, stateStore) ??
-          NativeMlsCrypto(identity: identity, stateStore: stateStore);
-      final fencedCrypto = _ChatBindingFencedMlsCrypto(
-        runtime: this,
-        bindingToken: bindingToken,
-        delegate: finalCrypto,
-      );
-      final localKeyPackage = await fencedCrypto.createKeyPackage(
-        identity,
-        lastResort: true,
-      );
+      // 只在本机身份及KeyPackage准备期间持绑定文件锁。宿主认证会回调同一实例
+      // 读取身份和签名；网络等待必须退出此锁，避免嵌套的空令牌与当前绑定冲突。
+      final local = await _runBindingFileMutation(bindingToken, () async {
+        await _requireCurrentAccount(account, generation);
+        final store = await _stateStore(account.userId);
+        stateStore = store;
+        final identity = await store.prepareIdentity();
+        final crypto =
+            _cryptoFactory?.call(identity, store) ??
+            NativeMlsCrypto(identity: identity, stateStore: store);
+        final fencedCrypto = _ChatBindingFencedMlsCrypto(
+          runtime: this,
+          bindingToken: bindingToken,
+          delegate: crypto,
+        );
+        final keyPackage = await fencedCrypto.createKeyPackage(
+          identity,
+          lastResort: true,
+        );
+        await _requireCurrentAccount(account, generation);
+        return (
+          identity: identity,
+          crypto: crypto,
+          fencedCrypto: fencedCrypto,
+          keyPackage: keyPackage,
+        );
+      });
+      await _requireCurrentAccount(account, generation);
       final service = await _ensureServiceReady(
         account: account,
-        identity: identity,
+        identity: local.identity,
         prefs: prefs,
       );
       transport = service.transport;
+      // 锁外等待期间允许认证和其它本机操作进入；发布前仍须确认原绑定令牌有效。
+      await _runBindingFileMutation(bindingToken, () async {
+        await _requireCurrentAccount(account, generation);
+      });
       final context = ChatRuntimeAccountContext(
         account: account,
         bindingToken: bindingToken,
-        deviceId: deviceId,
-        localKeyPackage: localKeyPackage,
+        deviceId: local.identity.deviceId,
+        localKeyPackage: local.keyPackage,
         stateStore: stateStore,
-        crypto: fencedCrypto,
+        crypto: local.fencedCrypto,
         transport: transport,
       );
       // 私聊与群聊共用该包；登记失败必须阻止上下文就绪。
       await _publishCurrentKeyPackage(context);
-      // 登记可能跨日；按实际包引用确认原提交，不能重新计算生成时的message_id。
-      for (final entry in await finalCrypto.pendingMessageResults(null)) {
-        final result = (entry['result'] as Map).cast<String, dynamic>();
-        if (result['key_package_ref'] == localKeyPackage.keyPackageRef) {
-          await finalCrypto.acknowledgeMessage(
-            (entry['request'] as Map)['message_id'] as String,
-          );
+      await _runBindingFileMutation(bindingToken, () async {
+        await _requireCurrentAccount(account, generation);
+        // 登记可能跨日；按实际包引用确认原提交，不能重新计算生成时的message_id。
+        for (final entry in await local.crypto.pendingMessageResults(null)) {
+          final result = (entry['result'] as Map).cast<String, dynamic>();
+          if (result['key_package_ref'] == local.keyPackage.keyPackageRef) {
+            await local.crypto.acknowledgeMessage(
+              (entry['request'] as Map)['message_id'] as String,
+            );
+          }
         }
-      }
+        await _requireCurrentAccount(account, generation);
+      });
       keepStateStore = true;
       return context;
     } finally {
@@ -4851,7 +4866,7 @@ class ChatRuntimeCore {
         try {
           if (transport != null) await _disposeUnownedTransport(transport);
         } finally {
-          stateStore.dispose();
+          stateStore?.dispose();
         }
       }
     }

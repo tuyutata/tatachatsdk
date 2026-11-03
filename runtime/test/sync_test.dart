@@ -18,6 +18,7 @@ import 'package:tatachat_runtime/direct_flow.dart';
 import 'package:tatachat_runtime/media_limit_policy.dart';
 import 'package:tatachat_storage/chat_store.dart';
 import 'package:tatachat_testing/isar.dart';
+import 'package:tatachat_testing/native.dart';
 import 'package:tatachat_transport/chat_service_transport.dart';
 import 'package:tatachat_transport/chat_transport.dart';
 
@@ -75,6 +76,7 @@ final class _Host implements ChatRuntimeHost, ChatAttachmentAuthorizationHost {
   }
 
   Completer<ChatAccess>? access;
+  Future<void> Function(ChatDevice)? authenticate;
   final enteredAccess = Completer<void>();
   @override
   ChatPushBridge get push => _Push();
@@ -91,6 +93,7 @@ final class _Host implements ChatRuntimeHost, ChatAttachmentAuthorizationHost {
     required ChatRuntimeAccount account,
     required ChatDevice identity,
   }) async {
+    await authenticate?.call(identity);
     if (!enteredAccess.isCompleted) enteredAccess.complete();
     return access == null
         ? ChatAccess(
@@ -189,6 +192,8 @@ final class _Transport implements ChatServiceTransport {
   final messages = <ChatMailboxMessage>[];
   final acknowledged = <List<String>>[];
   final published = <MlsKeyPackage>[];
+  Future<void> Function()? onPublish;
+  Future<void> Function()? beforeResolve, beforeSend;
   Completer<List<ChatMailboxMessage>>? fetch;
   Completer<void>? emptyMailbox;
   Completer<void>? enteredFetch;
@@ -214,6 +219,7 @@ final class _Transport implements ChatServiceTransport {
 
   @override
   Future<void> publishKeyPackage(MlsKeyPackage keyPackage) async {
+    await onPublish?.call();
     published.add(keyPackage);
   }
 
@@ -306,6 +312,7 @@ final class _Transport implements ChatServiceTransport {
 
   @override
   Future<List<MlsKeyPackage>> resolveKeyPackages(String userId) async {
+    await beforeResolve?.call();
     resolutions++;
     return userId == 'user-a' ? published : remotePackages;
   }
@@ -316,11 +323,14 @@ final class _Transport implements ChatServiceTransport {
     required List<int> messageBytes,
     required String recipientUserId,
     required String recipientDeviceId,
-  }) async => ChatDeliveryResult(
-    messageId: messageId,
-    transportType: ChatTransportType.server,
-    state: ChatMessageDeliveryState.sent,
-  );
+  }) async {
+    await beforeSend?.call();
+    return ChatDeliveryResult(
+      messageId: messageId,
+      transportType: ChatTransportType.server,
+      state: ChatMessageDeliveryState.sent,
+    );
+  }
 
   @override
   dynamic noSuchMethod(Invocation invocation) =>
@@ -480,6 +490,200 @@ void main() {
   });
   TestWidgetsFlutterBinding.ensureInitialized();
   useIsolatedChatIsar();
+  test('聊天初始化及发布续期可回调同一实例的真实MLS身份与认证证明', () async {
+    final temporary = await Directory.systemTemp.createTemp('context-auth-');
+    final root = Directory(await temporary.resolveSymbolicLinks());
+    final state = await Directory('${root.path}/mls').create();
+    final host = _Host()
+      ..account = ChatRuntimeAccount(
+        hostIndex: 0,
+        bindingScope: _account.bindingScope,
+        userId: _account.userId,
+        bindingRevision: 1,
+        accountId: '0x${'b' * 64}',
+        displayName: 'A',
+      );
+    final store = ChatStore();
+    late _Transport transport;
+    final runtime = ChatRuntimeCore(
+      host: host,
+      store: store,
+      documentsDirectoryProvider: () async => root,
+      stateStoreFactory: (user) async => MlsStateStore(state, ownerUserId: user),
+      transportFactory: ({required identity, required accessProvider}) =>
+          transport = _Transport(accessProvider, store)
+            ..onPublish = () async {
+              await accessProvider();
+            },
+    );
+    addTearDown(() async {
+      await runtime.close();
+      await root.delete(recursive: true);
+    });
+    final proofs = <MlsAuthenticationProof>[];
+    host.authenticate = (identity) async {
+      final local = await runtime.readLocalMlsIdentity();
+      expect(local.deviceId, identity.deviceId);
+      final proof = await runtime.createMlsAuthenticationProof(
+        createAuthenticationRequest(),
+      );
+      expect(proof.toJson()['public_key'], local.publicKey);
+      expect(proof.toJson()['device_id'], identity.deviceId);
+      proofs.add(proof);
+    };
+    await Future.wait([
+      runtime.ensureReady(host.account.accountId),
+      runtime.ensureReady(host.account.accountId),
+    ]);
+    expect(proofs, hasLength(2));
+    expect(transport.published, hasLength(1));
+    expect(
+      transport.published.single.deviceId,
+      proofs.first.toJson()['device_id'],
+    );
+    expect(
+      await MlsStateStore(state, ownerUserId: _account.userId).pendingResults(null),
+      isEmpty,
+    );
+    final before = await runtime.readLocalMlsIdentity();
+    await runtime.invalidateAccount(host.account.accountId);
+    await runtime.ensureReady(host.account.accountId);
+    final after = await runtime.readLocalMlsIdentity();
+    expect(after.deviceId, before.deviceId);
+    expect(proofs, hasLength(3));
+    final peerState = MlsStateStore(
+      await Directory('${root.path}/peer').create(),
+      ownerUserId: 'user-b',
+    );
+    final peer = await peerState.prepareIdentity();
+    transport.remotePackages = [
+      await NativeMlsCrypto(identity: peer, stateStore: peerState)
+          .createKeyPackage(peer),
+    ];
+    var commandProofs = 0;
+    Future<void> authenticateCommand() async {
+      final identity = await runtime.readLocalMlsIdentity();
+      final proof = await runtime.createMlsAuthenticationProof(
+        createAuthenticationRequest(),
+      );
+      expect(proof.toJson()['device_id'], identity.deviceId);
+      commandProofs++;
+    }
+    transport.beforeResolve = authenticateCommand;
+    transport.beforeSend = authenticateCommand;
+    final token = await store.captureBindingFenceToken(
+      ChatBinding(
+        userId: host.account.userId,
+        accountId: host.account.accountId,
+        bindingRevision: host.account.bindingRevision,
+        bindingScope: host.account.bindingScope,
+      ),
+    );
+    await store.savePendingOutgoingMessage(
+      bindingToken: token,
+      ownerUserId: host.account.userId,
+      currentAccountId: host.account.accountId,
+      localMessageId: 'pending:authentication-retry',
+      conversationId: _conversation,
+      recipientUserId: 'user-b',
+      messageKind: ChatMessageKind.text,
+      payload: ChatPayloadCodec.encode(ChatContent.text('retry after reconnect')),
+      createdAtMillis: DateTime.now().millisecondsSinceEpoch,
+    );
+    expect(
+      await runtime.retryOutgoing(recipientUserId: 'user-b'),
+      greaterThan(0),
+    );
+    expect(commandProofs, greaterThanOrEqualTo(2));
+    expect(
+      await store.readPendingOutgoingMessages(
+        bindingToken: token,
+        ownerUserId: host.account.userId,
+        currentAccountId: host.account.accountId,
+      ),
+      isEmpty,
+    );
+  });
+  test('许可网络等待不占用MLS身份文件锁，失败后可用原设备重试', () async {
+    final fixture = await _Fixture.create();
+    fixture.host.access = Completer<ChatAccess>();
+    final rejected = expectLater(
+      fixture.runtime.ensureReady(_account.accountId),
+      throwsStateError,
+    );
+    await fixture.host.enteredAccess.future;
+    final identity = await fixture.runtime.readLocalMlsIdentity().timeout(
+      const Duration(seconds: 2),
+    );
+    expect(identity.deviceId, _device);
+    fixture.host.access!.completeError(StateError('synthetic connection failure'));
+    await rejected;
+    expect(fixture.transport.closes, 1);
+    expect(fixture.transport.published, isEmpty);
+    fixture.host.access = null;
+    await fixture.runtime.ensureReady(_account.accountId);
+    expect(fixture.transport.published.single.deviceId, identity.deviceId);
+  });
+  for (final stage in ['access', 'publication']) {
+    for (final changed in [
+      'account', 'user', 'domain', 'host', 'generation', 'fence', 'close',
+    ]) {
+      test('$stage等待期间$changed变化，旧上下文失败并回收传输', () async {
+        final fixture = await _Fixture.create();
+        fixture.host.access = Completer<ChatAccess>();
+        final rejected = expectLater(
+          fixture.runtime.ensureReady(_account.accountId),
+          throwsStateError,
+        );
+        await fixture.host.enteredAccess.future;
+        final releasePublication = Completer<void>();
+        final enteredPublication = Completer<void>();
+        fixture.transport.onPublish = () async {
+          enteredPublication.complete();
+          await releasePublication.future;
+        };
+        final access = ChatAccess(
+          realtimeUrl: Uri.parse('wss://chat.example.test/api/tatachat/realtime'),
+          accessToken: 'synthetic-token',
+          expiresAtMillis: DateTime.now().millisecondsSinceEpoch + 300000,
+        );
+        if (stage == 'publication') {
+          fixture.host.access!.complete(access);
+          await enteredPublication.future;
+        }
+        Future<void>? stopping;
+        if (changed == 'close') {
+          stopping = fixture.runtime.close();
+        } else if (changed == 'generation') {
+          stopping = fixture.runtime.invalidateAccount(_account.accountId);
+        } else if (changed == 'fence') {
+          await fixture.store.convergeFinalizedBinding(ChatBinding(
+            userId: _account.userId,
+            accountId: _account.accountId,
+            bindingRevision: 2,
+            bindingScope: _account.bindingScope,
+          ));
+        } else {
+          fixture.host.account = ChatRuntimeAccount(
+            hostIndex: changed == 'host' ? 1 : _account.hostIndex,
+            bindingScope: changed == 'domain' ? 'other' : _account.bindingScope,
+            userId: changed == 'user' ? 'user-b' : _account.userId,
+            bindingRevision: _account.bindingRevision,
+            accountId: changed == 'account' ? 'account-b' : _account.accountId,
+            displayName: 'A',
+          );
+        }
+        if (stage == 'access') {
+          fixture.host.access!.complete(access);
+        }
+        releasePublication.complete();
+        await rejected;
+        if (stopping != null) await stopping;
+        expect(fixture.transport.closes, 1);
+        if (stage == 'access') expect(fixture.transport.published, isEmpty);
+      });
+    }
+  }
   setUp(() => SharedPreferences.setMockInitialValues({}));
   for (final group in [false, true]) {
     test('运行时${group ? '群聊' : '单聊'}发送先等待授权，拒绝不处理/落盘/上传', () async {
