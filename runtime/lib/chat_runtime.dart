@@ -1517,7 +1517,7 @@ class ChatRuntimeCore {
   /// 正在经 HTTPS 上传 encrypted object storage 密文的媒体 attachmentId（初始发送或补发中），用于去重：
   /// 启动、恢复前台或推送触发的补发不得对在途媒体再整块重传。
   // Chat 列表、会话页和后台同步可能各持有 ChatRuntimeCore；附件网络状态必须进程
-  // 唯一，否则多个实例会同时为同一 attachmentId prepare/abort 并耗尽 D1。
+  // 唯一，否则多个实例会同时为同一 attachmentId prepare/abort。
   static final Set<String> _mediaBytesInFlight = {};
   static bool _mediaUploadBusy = false;
   static final Map<String, int> _mediaUploadFailures = <String, int>{};
